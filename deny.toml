@@ -53,4 +53,19 @@ ignore = [
   { id = "RUSTSEC-2023-0071", reason = "No patched rsa release exists (advisory covers all versions); JWT use is local public-key verification only." },
   # Informational 'unmaintained' advisory for paste - stale Cargo.lock entry, not in the workspace dep graph.
   { id = "RUSTSEC-2024-0436", reason = "paste is a stale Cargo.lock entry; cargo tree -i paste is empty, nothing to replace." },
+  # gtk-rs 0.18 GTK3 bindings are Linux-only transitive deps of tray-icon's gtk
+  # backend. They never compile or ship into the Windows tray artifact
+  # (sharecli ships a separate native Linux tray via ksni). Unmaintained per
+  # RUSTSEC-2024-0412/0413/0415/0416/0418/0419/0420.
+  { id = "RUSTSEC-2024-0412", reason = "gtk-rs GTK3 unmaintained - Linux-only dep of tray-icon gtk backend for Windows tray; dead code on our target." },
+  { id = "RUSTSEC-2024-0413", reason = "gtk-rs GTK3 unmaintained - Linux-only dep of tray-icon gtk backend; not compiled for Windows tray." },
+  { id = "RUSTSEC-2024-0415", reason = "gtk-rs GTK3 unmaintained - Linux-only dep of tray-icon gtk backend; not compiled for Windows tray." },
+  { id = "RUSTSEC-2024-0416", reason = "gtk-rs GTK3 unmaintained - Linux-only dep of tray-icon gtk backend; not compiled for Windows tray." },
+  { id = "RUSTSEC-2024-0418", reason = "gtk-rs GTK3 unmaintained - Linux-only dep of tray-icon gtk backend; not compiled for Windows tray." },
+  { id = "RUSTSEC-2024-0419", reason = "gtk-rs GTK3 unmaintained - Linux-only dep of tray-icon gtk backend; not compiled for Windows tray." },
+  { id = "RUSTSEC-2024-0420", reason = "gtk-rs GTK3 unmaintained - Linux-only dep of tray-icon gtk backend; not compiled for Windows tray." },
+  # proc-macro-error pulled in by tray-icon's Linux gtk backend (via tao/muda
+  # gtk deps). Linux-only, not compiled for the Windows tray artifact; no safe
+  # upgrade in the 1.x line.
+  { id = "RUSTSEC-2024-0370", reason = "proc-macro-error unmaintained - transitive via tray-icon Linux gtk backend only; not compiled for Windows tray." },
 ]
