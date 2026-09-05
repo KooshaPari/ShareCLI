@@ -54,86 +54,57 @@ jobs:
             sudo -E bash "$RUNNER_TEMP/infisical-setup.deb.sh"
             sudo apt-get install -y infisical
           fi
-          # Per-secret read: avoids ALL dotenv quoting/escaping issues that
-          # affect the macOS Infisical CLI v0.43.129 (which adds escape
-          # backslashes for special chars like '=' and '+' inside long b64
-          # values, breaking any bash parameter-expansion or tr-based extract).
-          # Each `infisical secrets get --plain` writes the raw b64 to a file
-          # with no quoting at all (just the value followed by a newline).
-          infisical secrets get APPLE_CERTIFICATE \
+          infisical export \
             --projectId "$INFISICAL_PROJECT_ID" \
             --env "$INFISICAL_ENV" \
             --token "$INFISICAL_TOKEN" \
-            --plain > "$RUNNER_TEMP/APPLE_CERTIFICATE.b64"
-          for key in APPLE_CERTIFICATE_PWD APPLE_ID APPLE_TEAM_ID APPLE_APP_PASSWORD; do
-            # --plain returns the raw value (no Infisical table header like
-            # 'SECRET NAME | SECRET VALUE | SECRET TYPE'), so writing to
-            # $GITHUB_ENV never triggers 'Unable to process file command'.
-            val=$(infisical secrets get "$key" \
-              --projectId "$INFISICAL_PROJECT_ID" \
-              --env "$INFISICAL_ENV" \
-              --token "$INFISICAL_TOKEN" \
-              --plain)
-            if [[ -z "$val" ]]; then
+            --format=dotenv > "$RUNNER_TEMP/infisical.env"
+
+          # Load only the 5 Apple signing secrets into GITHUB_ENV (masked by GitHub).
+          declare -a WANTED=(APPLE_CERTIFICATE APPLE_CERTIFICATE_PWD APPLE_ID APPLE_TEAM_ID APPLE_APP_PASSWORD)
+          for key in "${WANTED[@]}"; do
+            line=$(grep -E "^${key}=" "$RUNNER_TEMP/infisical.env" || true)
+            if [[ -z "$line" ]]; then
               echo "::error::${key} not found in Infisical env '${INFISICAL_ENV}'"
               exit 1
             fi
-            echo "${key}=${val}" >> "$GITHUB_ENV"
+            echo "$line" >> "$GITHUB_ENV"
           done
+          echo "All Apple signing secrets fetched from Infisical"
 
-      # Decode the native p12 (PBES2) from the raw base64 file. The b64 is read
-      # DIRECTLY from a file written by the Infisical CLI's per-secret read
-      # (not via the $APPLE_CERTIFICATE env var) because GitHub Actions
-      # truncates env vars at ~18KB and the b64 is ~41KB. No openssl re-wrap:
-      # macOS `security import` accepts the native p12 produced by
-      # `security export` (verified RAW_IMPORT_OK=1), and the earlier
-      # 'passphrase incorrect' error was the env-var truncation, not the
-      # p12 format.
-      - name: Decode Apple certificate (native p12 from b64)
+      - name: Re-wrap p12 to legacy PBES1 (macOS import compatibility)
+        # macOS SecKeychainItemImport silently rejects PBES2 (AES-256/SHA-256) p12s
+        # produced by `security export -P` from the login keychain, even though openssl
+        # reads the same file fine. Re-wrap on the runner to legacy PBES1 (RC2-40 cert + 3DES
+        # key + SHA-1 MAC) which `security import` accepts reliably.
+        env:
+          APPLE_CERTIFICATE_PWD: ${{ env.APPLE_CERTIFICATE_PWD }}
         run: |
           set -euo pipefail
-          CERT_B64=$(cat "$RUNNER_TEMP/APPLE_CERTIFICATE.b64" | tr -d '[:space:]')
-          if (( ${#CERT_B64} % 4 != 0 )); then
-            echo "::error::APPLE_CERTIFICATE b64 length ${#CERT_B64} is NOT a multiple of 4 (raw b64 from Infisical corrupted?)"
-            exit 1
-          fi
-          printf '%s' "$CERT_B64" | base64 --decode > "$RUNNER_TEMP/DeveloperID_Application.p12"
-          echo "native p12 size: $(wc -c < "$RUNNER_TEMP/DeveloperID_Application.p12") bytes"
-          # Emit the file path as a workflow env var so the next step can
-          # reference it via $P12_PATH (paths don't suffer truncation).
-          echo "P12_PATH=$RUNNER_TEMP/DeveloperID_Application.p12" >> "$GITHUB_ENV"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/apple_in.p12"
+          openssl pkcs12 -in "$RUNNER_TEMP/apple_in.p12" \
+            -passin "pass:${APPLE_CERTIFICATE_PWD}" \
+            -out "$RUNNER_TEMP/apple_legacy.p12" \
+            -passout "pass:${APPLE_CERTIFICATE_PWD}" \
+            -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-RC2-40 -macalg sha1
+          # Verify the re-wrap is self-readable (catches any passphrase mismatch early)
+          openssl pkcs12 -in "$RUNNER_TEMP/apple_legacy.p12" \
+            -passin "pass:${APPLE_CERTIFICATE_PWD}" -nokeys -info >/dev/null
+          APPLE_CERTIFICATE=$(base64 -i "$RUNNER_TEMP/apple_legacy.p12" | tr -d '\n')
+          echo "APPLE_CERTIFICATE=$APPLE_CERTIFICATE" >> "$GITHUB_ENV"
+          echo "Re-wrapped p12 to legacy PBES1 for macOS import compatibility"
 
       - name: Import Apple certificate
         uses: apple-actions/import-codesign-certs@5142e029c445c10ffc7149d172e540235a065466 # v7.0.0
         with:
-          p12-filepath: ${{ env.P12_PATH }}
+          p12-file-base64: ${{ env.APPLE_CERTIFICATE }}
           p12-password: ${{ env.APPLE_CERTIFICATE_PWD }}
-
-      - name: Install zig (spawn-core-sys build dependency)
-        run: |
-          set -euo pipefail
-          ZIG_VER=0.14.1
-          if [[ "$(uname -m)" == "arm64" ]]; then
-            TARGET=zig-aarch64-macos
-          else
-            TARGET=zig-x86_64-macos
-          fi
-          curl -sSfL "https://ziglang.org/download/${ZIG_VER}/${TARGET}-${ZIG_VER}.tar.xz" \
-            -o "$RUNNER_TEMP/zig.tar.xz"
-          tar -xf "$RUNNER_TEMP/zig.tar.xz" -C "$RUNNER_TEMP"
-          ZIG_DIR="$RUNNER_TEMP/${TARGET}-${ZIG_VER}"
-          # Export the absolute extracted dir on GITHUB_PATH (affects NEXT steps)
-          # and verify NOW via the absolute path (GITHUB_PATH is not live in the
-          # current step).
-          echo "$ZIG_DIR" >> "$GITHUB_PATH"
-          "$ZIG_DIR/zig" version && echo "ZIG_INSTALLED=$ZIG_DIR"
 
       - name: Build release binary
         run: cargo build --release --locked 2>&1 | tail -5
 
       - name: Codesign release binary
-        run: |
-          codesign --force --sign "Developer ID Application: Koosha Paridehpour (GCT2BN8WLL)" target/release/sharecli
+        run: codesign --force --sign "-" target/release/sharecli
 
       - name: Notarize release binary
         env:
