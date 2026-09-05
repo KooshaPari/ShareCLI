@@ -213,20 +213,60 @@ fn socket_path_str() -> String {
 }
 
 fn find_sidecar(name: &str) -> Option<String> {
+    // Candidate names: on Windows the sidecar ships as `name.exe`; on Unix it's
+    // just `name`. Try the platform-appropriate extension first, then the bare name.
+    let mut candidates: Vec<String> = Vec::new();
+    #[cfg(windows)]
+    {
+        candidates.push(format!("{name}.exe"));
+        candidates.push(name.to_string());
+    }
+    #[cfg(not(windows))]
+    {
+        candidates.push(name.to_string());
+    }
+
     // 1. same directory as the current executable (app bundle Resources/bin)
     if let Ok(mut exe) = std::env::current_exe() {
         exe.pop();
-        let candidate = exe.join(name);
-        if candidate.exists() {
-            return Some(candidate.to_string_lossy().into_owned());
+        for cand in &candidates {
+            let candidate = exe.join(cand);
+            if candidate.exists() {
+                return Some(candidate.to_string_lossy().into_owned());
+            }
         }
     }
-    // 2. PATH
-    if let Ok(output) = std::process::Command::new("which").arg(name).output() {
-        if output.status.success() {
-            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !path.is_empty() {
-                return Some(path);
+    // 2. PATH lookup. `which` is Unix-only; on Windows use the `where` built-in
+    //    (via `cmd /c where`) to resolve the executable.
+    #[cfg(windows)]
+    {
+        for cand in &candidates {
+            if let Ok(output) = std::process::Command::new("cmd")
+                .args(["/c", "where", cand])
+                .output()
+            {
+                if output.status.success() {
+                    let path = String::from_utf8_lossy(&output.stdout)
+                        .lines()
+                        .next()
+                        .unwrap_or_default()
+                        .trim()
+                        .to_string();
+                    if !path.is_empty() {
+                        return Some(path);
+                    }
+                }
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        if let Ok(output) = std::process::Command::new("which").arg(name).output() {
+            if output.status.success() {
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !path.is_empty() {
+                    return Some(path);
+                }
             }
         }
     }
