@@ -2,7 +2,7 @@
 name = "sharecli-tray-windows"
 version = "0.1.0"
 edition = "2021"
-description = "Windows WinUI tray wire types + mapping helpers for sharecli (FR-007 AC-007.51/AC-007.52/AC-007.54)"
+description = "Native system-tray client for sharecli (FR-007 AC-007.51/AC-007.52/AC-007.54): tray-icon NotificationIcon + IPC sidecar spawn + dashboard link"
 license = "MIT"
 authors = ["Phenotype"]
 repository = "https://github.com/KooshaPari/sharecli"
@@ -11,6 +11,13 @@ repository = "https://github.com/KooshaPari/sharecli"
 name = "sharecli_tray_windows"
 path = "src/lib.rs"
 
+[[bin]]
+name = "sharecli-tray-windows"
+path = "src/main.rs"
+
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tray-icon = "0.24"
+
+[dev-dependencies]
