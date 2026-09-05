@@ -8,3 +8,43 @@ reason = "rsa Marvin-attack advisory covers every released version (introduced 0
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0436"
 reason = "Informational 'unmaintained' advisory for the paste crate. paste 1.0.15 is a stale Cargo.lock entry: no package in the workspace dependency graph references it (cargo tree -i paste is empty), so there is nothing to replace."
+
+# gtk-rs 0.18 family (gtk/atk/gdk/glib/proc-macro-error) — Linux-only
+# transitive deps of the `tray-icon` crate's Linux backend, recorded in the
+# workspace Cargo.lock because Cargo resolves all target-specific deps. sharecli
+# ships a separate native Linux tray (`sharecli-tray-linux`) built on `ksni` (a
+# D-Bus StatusNotifierItem), so tray-icon's gtk backend is platform-gated dead
+# code that is never compiled into nor shipped from any sharecli artifact. The
+# Windows tray (the only consumer of tray-icon) compiles the `windows-sys`
+# backend exclusively; glib 0.18.5's patched version is 0.20.0, a breaking
+# release that gtk 0.18.2 does not accept, so there is no non-breaking upgrade.
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0413"
+reason = "gtk-rs 0.18 family, Linux-only gtk backend of tray-icon; not compiled or shipped by sharecli (Linux tray uses ksni). Dead platform-gated code."
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0416"
+reason = "gtk-rs 0.18 family, Linux-only gtk backend of tray-icon; not compiled or shipped by sharecli (Linux tray uses ksni). Dead platform-gated code."
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0412"
+reason = "gtk-rs 0.18 family, Linux-only gtk backend of tray-icon; not compiled or shipped by sharecli (Linux tray uses ksni). Dead platform-gated code."
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0418"
+reason = "gtk-rs 0.18 family, Linux-only gtk backend of tray-icon; not compiled or shipped by sharecli (Linux tray uses ksni). Dead platform-gated code."
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0429"
+reason = "gtk-rs 0.18 family (glib). Linux-only gtk backend of tray-icon; not compiled/shipped. Patched 0.20.0 is a breaking release gtk 0.18.2 cannot accept; no non-breaking upgrade."
+[[IgnoredVulns]]
+id = "GHSA-wrw7-89jp-8q8g"
+reason = "gtk-rs 0.18 family, Linux-only gtk backend of tray-icon (glib advisory); not compiled or shipped by sharecli (Linux tray uses ksni). Dead platform-gated code."
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0415"
+reason = "gtk-rs 0.18 family, Linux-only gtk backend of tray-icon; not compiled or shipped by sharecli (Linux tray uses ksni). Dead platform-gated code."
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0420"
+reason = "gtk-rs 0.18 family, Linux-only gtk backend of tray-icon; not compiled or shipped by sharecli (Linux tray uses ksni). Dead platform-gated code."
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0419"
+reason = "gtk-rs 0.18 family (gtk3-macros), Linux-only gtk backend of tray-icon; not compiled or shipped by sharecli (Linux tray uses ksni). Dead platform-gated code."
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0370"
+reason = "gtk-rs 0.18 family (proc-macro-error via gtk3-macros), Linux-only gtk backend of tray-icon; a build-time transitive that is not compiled or shipped by sharecli (Linux tray uses ksni). Dead platform-gated code."
