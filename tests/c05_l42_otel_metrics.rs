@@ -1,4 +1,4 @@
-//! C05 L42 — OTel instrumentation acceptance gate (FR-003).
+//! FR: FR-003 — C05 L42 OTel instrumentation acceptance gate.
 //!
 //! Verifies the trace-context inject/extract counters are wired end-to-end:
 //! middleware increments -> MetricsRegistry -> `/metrics/prometheus` output.
@@ -44,8 +44,7 @@ fn fr003_middleware_increments_inject_counter() {
         "inject counter must be incremented"
     );
     assert!(
-        src.contains("traceparent")
-            && src.contains("response.headers_mut().insert"),
+        src.contains("traceparent") && src.contains("response.headers_mut().insert"),
         "inject point must write the outgoing traceparent header"
     );
 }
@@ -53,10 +52,7 @@ fn fr003_middleware_increments_inject_counter() {
 #[test]
 fn fr003_prometheus_handler_reads_both_counters() {
     let src = serve_src();
-    assert!(
-        src.contains("metrics_prometheus_handler"),
-        "prometheus handler must exist"
-    );
+    assert!(src.contains("metrics_prometheus_handler"), "prometheus handler must exist");
     assert!(
         src.contains(&format!("counter(\"{INJECTED}\").get()")),
         "prometheus handler must read the injected counter value"
