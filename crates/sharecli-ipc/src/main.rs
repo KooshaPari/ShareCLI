@@ -137,3 +137,65 @@ pub fn socket_path() -> PathBuf {
 pub fn ipc_addr() -> String {
     std::env::var("SHARECLI_IPC_ADDR").unwrap_or_else(|_| "127.0.0.1:27182".to_string())
 }
+
+#[cfg(all(test, unix))]
+mod acceptance_tests {
+    use super::*;
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[ignore = "requires SHARECLI_ACCEPTANCE_BRIDGE pointing to a pinned external consumer"]
+    async fn current_resume_bridge_uses_actual_uds_handler() {
+        let bridge = std::env::var("SHARECLI_ACCEPTANCE_BRIDGE")
+            .expect("set SHARECLI_ACCEPTANCE_BRIDGE to the pinned resume-all bridge");
+        let temp = tempfile::tempdir().unwrap();
+        let socket = temp.path().join("ipc.sock");
+        let database = temp.path().join("sessions.sqlite");
+        let handler = Arc::new(Handler::with_fixture_store(&database).unwrap());
+        let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+        let server = tokio::spawn(async move {
+            loop {
+                let (stream, _) = listener.accept().await.unwrap();
+                let handler = handler.clone();
+                tokio::spawn(async move { serve_unix_connection(stream, handler).await.unwrap() });
+            }
+        });
+        let result = tokio::task::spawn_blocking(move || {
+            std::process::Command::new("python3")
+                .arg("-c")
+                .arg(r#"
+import importlib.util, json, os, socket
+spec = importlib.util.spec_from_file_location('bridge', os.environ['SHARECLI_ACCEPTANCE_BRIDGE'])
+bridge = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(bridge)
+with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
+    conn.settimeout(10)
+    conn.connect(os.environ['SHARECLI_IPC_SOCK'])
+    conn.sendall(b'{"id":4294967295,"method":"status.')
+    conn.sendall(b'snapshot","params":{}}\n{"id":17,"method":"fixture.unknown"}\n')
+    reader = conn.makefile('rb')
+    snapshot = json.loads(reader.readline())
+    assert snapshot['id'] == 4294967295 and snapshot['error'] is None
+    assert isinstance(snapshot['result']['agents'], list)
+    assert isinstance(snapshot['result']['total_processes'], int)
+    rejected = json.loads(reader.readline())
+    assert rejected['id'] == 17 and rejected['error'] and rejected['result'] is None
+response = bridge.sharecli_call('status.snapshot', timeout=10)
+assert response['error'] is None and isinstance(response['id'], int)
+assert isinstance(response['result']['agents'], list)
+rows = bridge.sharecli_session_list(timeout=10)
+assert isinstance(rows, list)
+for row in rows:
+    assert {'pid', 'name', 'harness', 'state', 'mem_rss', 'mem_rss_bytes', 'session_id'} <= row.keys()
+print('PASS: fragmented/pipelined NDJSON, correlation, error envelope, current bridge normalization')
+"#)
+                .env("SHARECLI_ACCEPTANCE_BRIDGE", bridge)
+                .env("SHARECLI_IPC_SOCK", socket)
+                .env("PYTHONDONTWRITEBYTECODE", "1")
+                .output().unwrap()
+        }).await.unwrap();
+        server.abort();
+        assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+        assert!(database.exists());
+        println!("{}", String::from_utf8_lossy(&result.stdout));
+    }
+}

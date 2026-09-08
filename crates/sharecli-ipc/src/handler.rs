@@ -299,6 +299,15 @@ pub struct Handler {
 }
 
 impl Handler {
+    #[cfg(test)]
+    pub fn with_fixture_store(path: &std::path::Path) -> Result<Self> {
+        Ok(Self {
+            pool: Arc::new(ProcessPool::new()),
+            config: Arc::new(RwLock::new(Config::default())),
+            sessions: Arc::new(SessionStore::open(path)?),
+        })
+    }
+
     pub async fn new() -> Result<Self> {
         let pool = Arc::new(ProcessPool::new());
         let config = Arc::new(RwLock::new(Config::load().unwrap_or_default()));
