@@ -465,7 +465,7 @@ impl ProcessPool {
     /// Kill a process by PID via substrate ProcessPort
     pub async fn kill(&self, pid: u32) -> Result<()> {
         let mut procs = self.processes.write().await;
-        if let Some(managed) = procs.remove(&pid) {
+        if let Some(managed) = procs.get(&pid) {
             let capability = spawn_capability(&managed.info.name, &managed.info.harness);
             match self.port.kill_group(&managed.handle).await {
                 Ok(()) => {
@@ -476,6 +476,7 @@ impl ProcessPool {
                     return Err(anyhow::anyhow!("kill pid {pid}: {e}"));
                 }
             }
+            procs.remove(&pid);
         }
         Ok(())
     }
@@ -483,13 +484,30 @@ impl ProcessPool {
     /// Kill all managed processes
     pub async fn kill_all(&self) -> Result<()> {
         let mut procs = self.processes.write().await;
-        for (pid, managed) in procs.drain() {
+        let mut stopped = Vec::new();
+        let mut failures = Vec::new();
+        for (&pid, managed) in procs.iter() {
             let capability = spawn_capability(&managed.info.name, &managed.info.harness);
-            let outcome =
-                if self.port.kill_group(&managed.handle).await.is_ok() { "ok" } else { "denied" };
+            let outcome = match self.port.kill_group(&managed.handle).await {
+                Ok(()) => {
+                    stopped.push(pid);
+                    "ok"
+                }
+                Err(error) => {
+                    failures.push(format!("kill pid {pid}: {error}"));
+                    "denied"
+                }
+            };
             emit_stop_audit(&managed.info.project, &capability, pid, outcome);
         }
-        Ok(())
+        for pid in stopped {
+            procs.remove(&pid);
+        }
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!(failures.join("; ")))
+        }
     }
 
     /// Get system memory usage
@@ -828,6 +846,49 @@ impl ProcessPool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    async fn insert_unowned_handle(pool: &ProcessPool) -> u32 {
+        let pid = std::process::id();
+        let system = pool.system.read().await;
+        let info = ProcessInfo::from_sysinfo(Pid::from_u32(pid), "fixture".into(), &system)
+            .expect("test process must be visible");
+        drop(system);
+        pool.processes.write().await.insert(
+            pid,
+            ManagedProcess { info, handle: ProcessHandle { id: Default::default(), pid } },
+        );
+        pid
+    }
+
+    #[tokio::test]
+    async fn failed_kill_retains_tracking() {
+        let pool = ProcessPool::new();
+        let pid = insert_unowned_handle(&pool).await;
+        assert!(pool.kill(pid).await.is_err());
+        assert!(pool.processes.read().await.contains_key(&pid));
+    }
+
+    #[tokio::test]
+    async fn failed_kill_all_reports_error_and_retains_tracking() {
+        let pool = ProcessPool::new();
+        let pid = insert_unowned_handle(&pool).await;
+        let result = pool.kill_all().await;
+        assert!(result.is_err(), "failed stop must not acknowledge success");
+        assert!(pool.processes.read().await.contains_key(&pid));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn kill_all_removes_successful_children_but_retains_failures() {
+        let pool = ProcessPool::new();
+        let child = pool.spawn("sleep", &["30".into()], None, None, None).await.unwrap();
+        let failed_pid = insert_unowned_handle(&pool).await;
+        assert!(pool.kill_all().await.is_err());
+        let tracked = pool.processes.read().await;
+        assert!(tracked.contains_key(&failed_pid));
+        assert!(!tracked.contains_key(&child.pid));
+        assert_eq!(tracked.len(), 1);
+    }
 
     #[tokio::test]
     async fn test_process_pool() {
