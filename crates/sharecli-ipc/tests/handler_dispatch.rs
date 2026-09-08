@@ -3,10 +3,28 @@
 //! FR-003 / C01 — sharecli-ipc JSON-RPC handler dispatch coverage.
 
 use sharecli_ipc::handler::Handler;
+use sharecli_session::SessionStore;
+use tempfile::TempDir;
+
+/// Fields drop in declaration order: close the store before removing its directory.
+struct HandlerFixture {
+    handler: Handler,
+    _directory: TempDir,
+}
+
+impl HandlerFixture {
+    fn new() -> Self {
+        let directory = tempfile::tempdir().expect("isolated handler directory");
+        let store = SessionStore::open(directory.path().join("sessions.sqlite"))
+            .expect("isolated handler store");
+        Self { handler: Handler::with_session_store(store), _directory: directory }
+    }
+}
 
 #[tokio::test]
 async fn fr003_ipc_handler_process_list_and_health() {
-    let handler = Handler::new().await.expect("handler init");
+    let fixture = HandlerFixture::new();
+    let handler = &fixture.handler;
 
     let list_resp = handler.dispatch(r#"{"id":1,"method":"process.list","params":{}}"#).await;
     assert!(list_resp.error.is_none(), "process.list error: {:?}", list_resp.error);
@@ -19,7 +37,8 @@ async fn fr003_ipc_handler_process_list_and_health() {
 
 #[tokio::test]
 async fn fr003_ipc_handler_config_get_and_unknown_method() {
-    let handler = Handler::new().await.expect("handler init");
+    let fixture = HandlerFixture::new();
+    let handler = &fixture.handler;
 
     let cfg_resp = handler.dispatch(r#"{"id":3,"method":"config.get","params":{}}"#).await;
     assert!(cfg_resp.error.is_none());
@@ -32,7 +51,8 @@ async fn fr003_ipc_handler_config_get_and_unknown_method() {
 
 #[tokio::test]
 async fn fr003_ipc_handler_rejects_invalid_json() {
-    let handler = Handler::new().await.expect("handler init");
+    let fixture = HandlerFixture::new();
+    let handler = &fixture.handler;
     let resp = handler.dispatch("not-json").await;
     assert!(resp.error.is_some());
     assert!(resp.error.unwrap().contains("parse error"));
@@ -40,7 +60,8 @@ async fn fr003_ipc_handler_rejects_invalid_json() {
 
 #[tokio::test]
 async fn fr003_ipc_handler_config_set_and_process_kill_all() {
-    let handler = Handler::new().await.expect("handler init");
+    let fixture = HandlerFixture::new();
+    let handler = &fixture.handler;
 
     let set_resp = handler
         .dispatch(
@@ -61,14 +82,16 @@ async fn fr003_ipc_handler_config_set_and_process_kill_all() {
 
 #[tokio::test]
 async fn fr003_ipc_handler_process_kill_missing_pid() {
-    let handler = Handler::new().await.expect("handler init");
+    let fixture = HandlerFixture::new();
+    let handler = &fixture.handler;
     let resp = handler.dispatch(r#"{"id":9,"method":"process.kill","params":{}}"#).await;
     assert!(resp.error.is_some());
 }
 
 #[tokio::test]
 async fn fr003_ipc_handler_monitoring_report() {
-    let handler = Handler::new().await.expect("handler init");
+    let fixture = HandlerFixture::new();
+    let handler = &fixture.handler;
     let resp = handler.dispatch(r#"{"id":10,"method":"monitoring.report","params":{}}"#).await;
     assert!(resp.error.is_none(), "monitoring.report error: {:?}", resp.error);
     assert!(resp.result.is_object());
@@ -77,7 +100,8 @@ async fn fr003_ipc_handler_monitoring_report() {
 /// FR-003 / C01 — pool.status + status.snapshot nest gate/host_watch siblings.
 #[tokio::test]
 async fn fr003_ipc_handler_pool_status_and_status_snapshot() {
-    let handler = Handler::new().await.expect("handler init");
+    let fixture = HandlerFixture::new();
+    let handler = &fixture.handler;
 
     let pool_resp = handler.dispatch(r#"{"id":11,"method":"pool.status","params":{}}"#).await;
     assert!(pool_resp.error.is_none(), "pool.status error: {:?}", pool_resp.error);
@@ -97,7 +121,8 @@ async fn fr003_ipc_handler_pool_status_and_status_snapshot() {
 /// FR-003 / C01 — config.set rejects missing key; process.kill rejects bad pid type.
 #[tokio::test]
 async fn fr003_ipc_handler_config_set_missing_key_and_kill_bad_pid() {
-    let handler = Handler::new().await.expect("handler init");
+    let fixture = HandlerFixture::new();
+    let handler = &fixture.handler;
 
     let missing_key =
         handler.dispatch(r#"{"id":13,"method":"config.set","params":{"value":1}}"#).await;
@@ -111,7 +136,8 @@ async fn fr003_ipc_handler_config_set_missing_key_and_kill_bad_pid() {
 
 #[tokio::test]
 async fn fr003_ipc_handler_session_recovery_methods_are_dry_run_safe() {
-    let handler = Handler::new().await.expect("handler init");
+    let fixture = HandlerFixture::new();
+    let handler = &fixture.handler;
     let list = handler.dispatch(r#"{"id":15,"method":"session.list","params":{}}"#).await;
     assert!(list.error.is_none(), "session.list error: {:?}", list.error);
     assert!(list.result.is_array());
@@ -174,7 +200,8 @@ async fn fr003_ipc_handler_session_recovery_methods_are_dry_run_safe() {
 
 #[tokio::test]
 async fn fr003_ipc_handler_persists_and_lists_validated_layouts() {
-    let handler = Handler::new().await.expect("handler init");
+    let fixture = HandlerFixture::new();
+    let handler = &fixture.handler;
     let snapshot = serde_json::json!({
         "id": "ipc-layout",
         "terminal": "ghostty",

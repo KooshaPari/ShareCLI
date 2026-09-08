@@ -343,13 +343,19 @@ mod database_path_tests {
 }
 
 impl Handler {
-    #[cfg(test)]
-    pub fn with_fixture_store(path: &std::path::Path) -> Result<Self> {
-        Ok(Self {
+    /// Construct a handler with an explicitly owned store and default configuration.
+    /// This does not read database-path environment variables or user configuration.
+    pub fn with_session_store(sessions: SessionStore) -> Self {
+        Self {
             pool: Arc::new(ProcessPool::new()),
             config: Arc::new(RwLock::new(Config::default())),
-            sessions: Arc::new(SessionStore::open(path)?),
-        })
+            sessions: Arc::new(sessions),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn with_fixture_store(path: &std::path::Path) -> Result<Self> {
+        Ok(Self::with_session_store(SessionStore::open(path)?))
     }
 
     pub async fn new() -> Result<Self> {
