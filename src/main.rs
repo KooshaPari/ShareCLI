@@ -34,6 +34,7 @@ mod health_check;
 mod http_red;
 mod jsonschema_subset;
 mod md_table;
+mod metrics;
 mod monitoring;
 mod notifier;
 mod otel;

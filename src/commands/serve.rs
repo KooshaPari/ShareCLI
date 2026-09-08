@@ -40,6 +40,7 @@ use crate::config_watcher::ConfigWatcher;
 use crate::error_envelope::ErrorEnvelope;
 use crate::health_check::{HealthCheckScheduler, HealthCheckStore};
 use crate::http_red::{render_http_red_metrics, HttpRedMetrics};
+use crate::metrics::MetricsRegistry;
 use crate::monitoring::HostResourceWatchJson;
 use crate::notifier::Notifier;
 #[cfg(test)]
@@ -96,6 +97,8 @@ struct AppState {
     http_red: Arc<HttpRedMetrics>,
     /// Optional sliding-window HTTP rate limiter (`None` = disabled).
     rate_limit: Arc<ServeRateLimitState>,
+    /// OTel-style trace-context observability counters (inject / extract).
+    metrics: Arc<MetricsRegistry>,
 }
 
 // ---------------------------------------------------------------------------
@@ -228,6 +231,7 @@ pub async fn run(bind: &str, on_conflict: OnConflict) -> Result<()> {
         health_store,
         http_red: Arc::new(HttpRedMetrics::default()),
         rate_limit: Arc::new(std::sync::Mutex::new(rate_limit)),
+        metrics: Arc::new(MetricsRegistry::new()),
     };
 
     // Spawn background thermal poller (uses parse_pressure_level as the canonical parser).
@@ -339,6 +343,9 @@ async fn http_observability_middleware(
     let path = req.uri().path().to_owned();
     let incoming =
         req.headers().get("traceparent").and_then(|v| v.to_str().ok()).map(str::to_owned);
+    if incoming.is_some() {
+        state.metrics.counter("sharecli_tracecontext_extracted_total").inc();
+    }
 
     let span = tracing::info_span!(
         "http.request",
@@ -353,6 +360,7 @@ async fn http_observability_middleware(
     state.http_red.record(status, start.elapsed());
 
     let outgoing = incoming.unwrap_or_else(synthesize_traceparent);
+    state.metrics.counter("sharecli_tracecontext_injected_total").inc();
     if let Ok(val) = HeaderValue::from_str(&outgoing) {
         response.headers_mut().insert(HeaderName::from_static("traceparent"), val);
     }
@@ -546,6 +554,15 @@ async fn metrics_prometheus_handler(State(state): State<AppState>) -> impl IntoR
     let health_map = state.health_store.lock().await;
     let mut body = render_prometheus_metrics(&processes, &health_map);
     render_http_red_metrics(&mut body, &state.http_red.snapshot());
+    // C05 L42: trace-context counters consumed by the L49 sharecli-trace dashboard panel.
+    let injected = state.metrics.counter("sharecli_tracecontext_injected_total").get();
+    let extracted = state.metrics.counter("sharecli_tracecontext_extracted_total").get();
+    body.push_str("# HELP sharecli_tracecontext_injected_total W3C traceparent headers injected by sharecli serve\n");
+    body.push_str("# TYPE sharecli_tracecontext_injected_total counter\n");
+    body.push_str(&format!("sharecli_tracecontext_injected_total {injected}\n"));
+    body.push_str("# HELP sharecli_tracecontext_extracted_total W3C traceparent headers extracted from inbound requests\n");
+    body.push_str("# TYPE sharecli_tracecontext_extracted_total counter\n");
+    body.push_str(&format!("sharecli_tracecontext_extracted_total {extracted}\n"));
     ([(header::CONTENT_TYPE, "text/plain; version=0.0.4; charset=utf-8")], body)
 }
 
