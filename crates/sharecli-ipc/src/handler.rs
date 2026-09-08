@@ -298,6 +298,50 @@ pub struct Handler {
     sessions: Arc<SessionStore>,
 }
 
+// An explicit database path is opt-in; open failures propagate without fallback.
+fn session_database_path(
+    override_path: Option<std::ffi::OsString>,
+    data_root: Option<std::path::PathBuf>,
+) -> Result<std::path::PathBuf> {
+    if let Some(path) = override_path {
+        anyhow::ensure!(!path.is_empty(), "SHARECLI_SESSION_DB must not be empty");
+        return Ok(std::path::PathBuf::from(path));
+    }
+    Ok(data_root.unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
+        .join("sharecli")
+        .join("sessions.sqlite"))
+}
+
+#[cfg(test)]
+mod database_path_tests {
+    use super::*;
+
+    #[test]
+    fn explicit_database_overrides_default() {
+        assert_eq!(
+            session_database_path(Some("fixture.sqlite".into()), Some("default".into())).unwrap(),
+            std::path::PathBuf::from("fixture.sqlite")
+        );
+    }
+
+    #[test]
+    fn empty_override_is_rejected() {
+        assert!(session_database_path(Some("".into()), Some("default".into())).is_err());
+    }
+
+    #[test]
+    fn unset_override_preserves_default_selection() {
+        assert_eq!(
+            session_database_path(None, Some("default".into())).unwrap(),
+            std::path::PathBuf::from("default/sharecli/sessions.sqlite")
+        );
+        assert_eq!(
+            session_database_path(None, None).unwrap(),
+            std::path::PathBuf::from("/tmp/sharecli/sessions.sqlite")
+        );
+    }
+}
+
 impl Handler {
     #[cfg(test)]
     pub fn with_fixture_store(path: &std::path::Path) -> Result<Self> {
@@ -311,10 +355,7 @@ impl Handler {
     pub async fn new() -> Result<Self> {
         let pool = Arc::new(ProcessPool::new());
         let config = Arc::new(RwLock::new(Config::load().unwrap_or_default()));
-        let path = dirs::data_local_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
-            .join("sharecli")
-            .join("sessions.sqlite");
+        let path = session_database_path(std::env::var_os("SHARECLI_SESSION_DB"), dirs::data_local_dir())?;
         let sessions = Arc::new(SessionStore::open(path)?);
         Ok(Self { pool, config, sessions })
     }

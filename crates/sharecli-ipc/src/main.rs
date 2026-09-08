@@ -4,6 +4,10 @@
 //! Windows: listens on TCP loopback `127.0.0.1:27182`
 //! (or override via SHARECLI_IPC_SOCK or SHARECLI_IPC_ADDR env vars)
 //!
+//! Session database: default local data directory `sharecli/sessions.sqlite`.
+//! Set SHARECLI_SESSION_DB to a nonempty file path to isolate durable session state.
+//! Invalid database overrides fail startup without falling back to the default.
+//!
 //! Protocol: newline-delimited JSON (NDJSON).
 //! Request:  `{"id": N, "method": "...", "params": {...}}`
 //! Response: `{"id": N, "result": ..., "error": null}` or `{"id": N, "result": null, "error": "..."}`
