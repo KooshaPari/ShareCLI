@@ -1,113 +1,110 @@
 # =============================================================================
 # Trunk.io — Plugin versions for linting/formatting tools
 # =============================================================================
-# This file is auto-generated. Run `trunk upgrade` to update.
-# https://docs.trunk.io/check/reference
+# Migrated to v0.1 schema (legacy `linters`/`formatters`/`actions`/`cache`/`env`
+# keys were rejected by Trunk CLI >= 1.22.x). See
+# https://docs.trunk.io/check/reference for the canonical schema.
 # =============================================================================
+
+version: 0.1
+
+cli:
+  version: 1.22.2
 
 plugins:
   sources:
     - id: trunk
       ref: v1.2.2
-    - id: community
-      ref: main
+      uri: https://github.com/trunk-io/plugins
 
+# -----------------------------------------------------------------------------
 # Linters (auto-detected by file type)
-linters:
-  actionlint:
-    enabled: true
-    commands:
-      - name: actionlint
-        run: actionlint ${target}
-        direct_configs:
-          - .github/workflows/*.yml
-  black:
-    enabled: true
-    commands:
-      - name: black
-        run: black --check --line-length 100 ${target}
-        direct_configs:
-          - pyproject.toml
-          - ruff.toml
-  clippy:
-    enabled: true
-    commands:
-      - name: clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
-  eslint:
-    enabled: true
-    direct_configs:
-      - .eslintrc.*
-      - eslint.config.*
-  golangci-lint:
-    enabled: true
-    direct_configs:
-      - .golangci.yml
-      - .golangci.yaml
-  mypy:
-    enabled: true
-    commands:
-      - name: mypy
-        run: mypy --ignore-missing-imports ${target}
-  ruff:
-    enabled: true
-    commands:
-      - name: ruff
-        run: ruff check --output-format=github ${target}
-        direct_configs:
-          - ruff.toml
-          - pyproject.toml
-  shellcheck:
-    enabled: true
-  taplo:
-    enabled: true
-  yamllint:
-    enabled: true
+# -----------------------------------------------------------------------------
+lint:
+  enabled:
+    - actionlint
+    - black
+    - clippy
+    - eslint
+    - golangci-lint
+    - mypy
+    - ruff
+    - shellcheck
+    - taplo
+    - yamllint
+  definitions:
+    - name: actionlint
+      direct_configs:
+        - .github/workflows/*.yml
+    - name: black
+      commands:
+        - name: lint
+          run: black --check --line-length 100 ${target}
+          output: regex
+          parse_regex: '(?P<path>.*?):(?P<line>\d+):\s*(?P<message>.*)'
+          success_codes: [0, 1]
+          read_output_from: stdout
+      direct_configs:
+        - pyproject.toml
+        - ruff.toml
+    - name: clippy
+      commands:
+        - name: lint
+          run: cargo clippy --all-targets --all-features -- -D warnings
+          output: regex
+          parse_regex: '(?P<path>.*?):(?P<line>\d+):(?P<col>\d+):\s*(?P<severity>\w+):\s*(?P<message>.*)'
+          success_codes: [0, 1]
+          read_output_from: stdout
+    - name: eslint
+      direct_configs:
+        - .eslintrc.*
+        - eslint.config.*
+    - name: mypy
+      commands:
+        - name: lint
+          run: mypy --ignore-missing-imports ${target}
+          output: regex
+          parse_regex: '(?P<path>.*?):(?P<line>\d+):(?P<col>\d+):\s*(?P<severity>\w+):\s*(?P<message>.*)'
+          success_codes: [0, 1]
+          read_output_from: stdout
+    - name: ruff
+      commands:
+        - name: lint
+          run: ruff check --output-format=github ${target}
+          output: regex
+          parse_regex: '::(?P<severity>.*?) (?P<code>.*?)::(?P<path>.*?):(?P<line>\d+):(?P<col>\d+):(?P<message>.*)'
+          success_codes: [0, 1]
+          read_output_from: stdout
+      direct_configs:
+        - ruff.toml
+        - pyproject.toml
 
-# Formatters
-formatters:
-  black:
-    enabled: true
-    commands:
-      - name: black
-        run: black --line-length 100 ${target}
-        direct_configs:
-          - pyproject.toml
-  prettier:
-    enabled: true
-    direct_configs:
-      - .prettierrc
-      - prettier.config.*
-  rustfmt:
-    enabled: true
-    commands:
-      - name: rustfmt
-        run: rustfmt ${target}
+# -----------------------------------------------------------------------------
+# Runtimes (optional — trunk auto-installs required runtimes for each lint;
+# pinning versions here forces a specific install which can fail if the
+# version is not available for the runner's OS/CPU. Default is recommended.)
+# -----------------------------------------------------------------------------
+# runtimes:
+#   enabled:
+#     - node
+#     - python
+#     - go
 
-# Actions (CI optimization)
-actions:
-  trunk-check:
-    enabled: true
-    size: 5GB
-    memory: 16GB
-    disk: 10GB
-  trunk-merge:
-    enabled: true
-    size: 5GB
-  trunk-push:
-    enabled: true
-    size: 5GB
+# -----------------------------------------------------------------------------
+# Formatters (v0.1 uses lint.definitions[] with success_codes for formatters
+# too; runtime `trunk fmt` discovers them automatically.)
+# -----------------------------------------------------------------------------
 
-# Caching
-cache:
-  enabled: true
-  storage: local
+# -----------------------------------------------------------------------------
+# Actions (CI optimization — these are now CLI flags, not config keys)
+# trunk-check is invoked by trunk-action at the configured size/memory/disk
+# in the workflow file.
+# -----------------------------------------------------------------------------
 
-# CLI
-cli:
-  version: 1.22.2
-
-# Environment
-env:
-  variables:
-    EDITOR: vim
+# -----------------------------------------------------------------------------
+# Merge gate (used by `trunk-merge` action)
+# -----------------------------------------------------------------------------
+merge:
+  required_statuses:
+    - "build"
+    - "Lint & Format"
