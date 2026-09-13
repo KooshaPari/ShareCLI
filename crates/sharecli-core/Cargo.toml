@@ -1,6 +1,6 @@
 [package]
 name = "sharecli-core"
-version = "0.1.0"
+version = "0.8.0"
 edition = "2021"
 description = "Hypervisor engine tier for sharecli — process spawn/lifecycle/IO-ownership with Lock-Wait-Cache coalescing"
 license = "MIT"

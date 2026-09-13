@@ -1,6 +1,6 @@
 [package]
 name = "sharecli-ipc"
-version = "0.1.0"
+version = "0.8.0"
 edition = "2021"
 license = "MIT"
 description = "IPC server + coalesce/debounce/queue primitives for sharecli — Unix socket JSON-RPC + Lock-Wait-Cache command deduplication"

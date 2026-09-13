@@ -1,6 +1,6 @@
 [package]
 name = "spawn-core-sys"
-version = "0.1.0"
+version = "0.8.0"
 edition = "2021"
 description = "FFI bindings to Zig spawn-core (Unix) / Rust stub (Windows)"
 license = "MIT OR Apache-2.0"

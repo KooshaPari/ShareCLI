@@ -1,6 +1,6 @@
 [package]
 name = "sharecli"
-version = "0.3.0"
+version = "0.8.0"
 edition = "2021"
 rust-version = "1.89"
 description = "Shared CLI process manager for multi-project agent orchestration"

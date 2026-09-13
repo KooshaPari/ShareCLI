@@ -851,6 +851,20 @@ Release commit: `a290e3a` — *chore(release): bump version to 1.0.0*
 
 ---
 
+## [0.8.0] - 2026-09-12
+
+Release tagged `v0.8.0` (`1c4d3ff`). Version drift fix aligning canonical
+version across Cargo.toml, Info.plist, and all workspace crates.
+
+### Added
+- **T-70 appcast pipeline** — release notes for Sparkle appcast generation.
+
+### Fixed
+- **Version drift** — canonical version bumped from `0.3.0` to `0.8.0` across
+  root `Cargo.toml`, all `crates/*/Cargo.toml`, and macOS tray `Info.plist`.
+
+---
+
 ## [0.3.0] - 2026-07-04
 
 Tagged release `v0.3.0` (`c203265`). Snapshot of mid-summer 2026 work:
@@ -1109,10 +1123,12 @@ Initial development predating the first tagged release.
 | Tag      | Commit    | Date       | Notes                                            |
 |----------|-----------|------------|--------------------------------------------------|
 | `v1.0.0` | `a290e3a` | 2026-08-31 | First stable major release. Wave 20 spec ships.  |
+| `v0.8.0` | `1c4d3ff` | 2026-09-12 | Version drift fix + T-70 appcast pipeline.        |
 | `v0.3.0` | `c203265` | 2026-07-04 | Mid-summer lift to overall ~64 % C.              |
 | `v0.1.0` | `464e737` | 2026-07-02 | First tagged public release (`health_beat` T54). |
 
-[Unreleased]: https://github.com/KooshaPari/sharecli/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/KooshaPari/sharecli/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/KooshaPari/sharecli/releases/tag/v0.8.0
 [1.0.0]: https://github.com/KooshaPari/sharecli/releases/tag/v1.0.0
 [0.3.0]: https://github.com/KooshaPari/sharecli/releases/tag/v0.3.0
 [0.1.0]: https://github.com/KooshaPari/sharecli/releases/tag/v0.1.0

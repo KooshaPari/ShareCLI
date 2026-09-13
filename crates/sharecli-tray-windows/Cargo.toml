@@ -1,6 +1,6 @@
 [package]
 name = "sharecli-tray-windows"
-version = "0.1.0"
+version = "0.8.0"
 edition = "2021"
 description = "Native system-tray client for sharecli (FR-007 AC-007.51/AC-007.52/AC-007.54): tray-icon NotificationIcon + IPC sidecar spawn + dashboard link"
 license = "MIT"

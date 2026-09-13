@@ -1,6 +1,6 @@
 [package]
 name = "sharecli-thermal-tui"
-version = "0.1.0"
+version = "0.8.0"
 edition = "2021"
 description = "Live thermal-gate / hypervisor-state TUI for sharecli"
 license = "MIT"
