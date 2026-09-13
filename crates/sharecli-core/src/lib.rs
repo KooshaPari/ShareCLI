@@ -1484,4 +1484,205 @@ mod tests {
             "error must mention thermally throttled, got: {msg}"
         );
     }
+
+    // ── New tests: SpawnRequest, SpawnOutcome, CachedResult, edge cases ──────
+
+    /// SpawnRequest::new wires queue_priority to Normal (default operator path).
+    #[test]
+    fn spawn_request_new_defaults_to_normal_priority() {
+        let req = SpawnRequest::new(
+            vec!["cargo".into(), "build".into()],
+            PathBuf::from("/repo"),
+            vec![],
+        );
+        assert_eq!(req.queue_priority, QueuePriority::Normal);
+        assert_eq!(req.argv, vec!["cargo", "build"]);
+        assert_eq!(req.cwd, PathBuf::from("/repo"));
+        assert!(req.env.is_empty());
+    }
+
+    /// SpawnRequest::with_queue_priority overrides the priority field.
+    #[test]
+    fn spawn_request_with_queue_priority_overrides() {
+        let req = SpawnRequest::new(vec!["echo".into()], PathBuf::from("."), vec![])
+            .with_queue_priority(QueuePriority::High);
+        assert_eq!(req.queue_priority, QueuePriority::High);
+    }
+
+    /// SpawnOutcome::agent_family returns None when detected_agent is None.
+    #[test]
+    fn spawn_outcome_agent_family_none_when_no_agent() {
+        let outcome = SpawnOutcome {
+            exit_code: 0,
+            stdout: vec![],
+            stderr: vec![],
+            from_cache: false,
+            resource_watch: ResourceWatchSample::default(),
+            detected_agent: None,
+            fuse_session_id: None,
+            fuse_backing: None,
+            fuse_mountpoint: None,
+        };
+        assert_eq!(outcome.agent_family(), None);
+    }
+
+    /// SpawnOutcome::fuse_intercept_active returns false when no FUSE session.
+    #[test]
+    fn spawn_outcome_fuse_intercept_inactive_without_session() {
+        let outcome = SpawnOutcome {
+            exit_code: 0,
+            stdout: vec![],
+            stderr: vec![],
+            from_cache: false,
+            resource_watch: ResourceWatchSample::default(),
+            detected_agent: None,
+            fuse_session_id: None,
+            fuse_backing: None,
+            fuse_mountpoint: None,
+        };
+        assert!(!outcome.fuse_intercept_active());
+    }
+
+    /// SpawnOutcome::fuse_intercept_active returns true when session is set.
+    #[test]
+    fn spawn_outcome_fuse_intercept_active_with_session() {
+        let outcome = SpawnOutcome {
+            exit_code: 0,
+            stdout: vec![],
+            stderr: vec![],
+            from_cache: false,
+            resource_watch: ResourceWatchSample::default(),
+            detected_agent: None,
+            fuse_session_id: Some("hv-abcdef0123456789".into()),
+            fuse_backing: Some(PathBuf::from("/repo")),
+            fuse_mountpoint: Some(PathBuf::from("/tmp/fuse")),
+        };
+        assert!(outcome.fuse_intercept_active());
+    }
+
+    /// SpawnOutcome::remap_fuse_path returns None when FUSE is inactive.
+    #[test]
+    fn spawn_outcome_remap_fuse_path_none_without_intercept() {
+        let outcome = SpawnOutcome {
+            exit_code: 0,
+            stdout: vec![],
+            stderr: vec![],
+            from_cache: false,
+            resource_watch: ResourceWatchSample::default(),
+            detected_agent: None,
+            fuse_session_id: None,
+            fuse_backing: None,
+            fuse_mountpoint: None,
+        };
+        assert_eq!(outcome.remap_fuse_path(Path::new("/some/path")), None);
+    }
+
+    /// CachedResult -> SpawnOutcome conversion preserves data and sets from_cache=true.
+    #[test]
+    fn cached_result_to_spawn_outcome_preserves_fields() {
+        let cached = CachedResult {
+            exit_code: 42,
+            stdout: b"hello".to_vec(),
+            stderr: b"err".to_vec(),
+        };
+        let outcome: SpawnOutcome = cached.into();
+        assert_eq!(outcome.exit_code, 42);
+        assert_eq!(outcome.stdout, b"hello");
+        assert_eq!(outcome.stderr, b"err");
+        assert!(outcome.from_cache, "From<CachedResult> must set from_cache=true");
+        assert!(outcome.detected_agent.is_none());
+        assert!(outcome.fuse_session_id.is_none());
+    }
+
+    /// SpawnOutcome -> CachedResult conversion preserves exit_code, stdout, stderr.
+    #[test]
+    fn spawn_outcome_to_cached_result_preserves_output() {
+        let outcome = SpawnOutcome {
+            exit_code: 7,
+            stdout: b"out".to_vec(),
+            stderr: vec![],
+            from_cache: false,
+            resource_watch: ResourceWatchSample::default(),
+            detected_agent: None,
+            fuse_session_id: None,
+            fuse_backing: None,
+            fuse_mountpoint: None,
+        };
+        let cached: CachedResult = outcome.into();
+        assert_eq!(cached.exit_code, 7);
+        assert_eq!(cached.stdout, b"out");
+        assert!(cached.stderr.is_empty());
+    }
+
+    /// fuse_session_id_for_command_key truncates short keys gracefully.
+    #[test]
+    fn fuse_session_id_for_short_command_key() {
+        // Key shorter than 16 chars — prefix should be the full key.
+        let key = CommandKey("abc".into());
+        let id = fuse_session_id_for_command_key(&key);
+        assert!(id.starts_with("hv-"));
+        assert_eq!(id, "hv-abc");
+    }
+
+    /// fuse_session_id_for_command_key uses exactly 16 chars from the key.
+    #[test]
+    fn fuse_session_id_uses_exactly_16_char_prefix() {
+        let key = CommandKey("0123456789abcdef12345678".into());
+        let id = fuse_session_id_for_command_key(&key);
+        assert_eq!(id, "hv-0123456789abcdef");
+        assert_eq!(id.len(), 19); // "hv-" + 16 hex chars
+    }
+
+    /// combine_thermal_agent_decision: Warn thermal + AgentsOk stays Warn.
+    #[test]
+    fn combine_thermal_agent_decision_warn_agents_ok_stays_warn() {
+        assert_eq!(
+            combine_thermal_agent_decision(ThermalDecision::Warn, AgentContentionTier::Ok),
+            ThermalDecision::Warn
+        );
+    }
+
+    /// combine_thermal_agent_decision: Warn thermal + AgentsRefuse -> Refuse.
+    #[test]
+    fn combine_thermal_agent_decision_warn_agents_refuse_escalates() {
+        assert_eq!(
+            combine_thermal_agent_decision(ThermalDecision::Warn, AgentContentionTier::Refuse),
+            ThermalDecision::Refuse
+        );
+    }
+
+    /// queue_lane_from_argv: extracts basename from argv[0].
+    #[test]
+    fn queue_lane_from_argv_extracts_basename() {
+        let argv = vec!["/usr/local/bin/cargo".into()];
+        assert_eq!(queue_lane_from_argv(&argv), "cargo");
+    }
+
+    /// queue_lane_from_argv: returns "unknown" for empty argv.
+    #[test]
+    fn queue_lane_from_argv_empty_returns_unknown() {
+        let argv: Vec<String> = vec![];
+        assert_eq!(queue_lane_from_argv(&argv), "unknown");
+    }
+
+    /// Hypervisor accessors: coalesce_ttl, queue_max_concurrent, nocache_args.
+    #[test]
+    fn hypervisor_accessor_methods_return_config_values() {
+        let dir = TempDir::new().expect("tempdir");
+        let hv = allow_hypervisor(dir.path());
+        assert_eq!(hv.coalesce_ttl(), CoalesceCache::DEFAULT_TTL);
+        assert_eq!(hv.queue_max_concurrent(), 1);
+        assert!(!hv.nocache_args().is_empty(), "default nocache_args should not be empty");
+    }
+
+    /// Hypervisor::set_nocache_args replaces the flag list.
+    #[test]
+    fn hypervisor_set_nocache_args_replaces_flags() {
+        let dir = TempDir::new().expect("tempdir");
+        let mut hv = allow_hypervisor(dir.path());
+        let original_len = hv.nocache_args().len();
+        hv.set_nocache_args(vec!["--force".into(), "--clean".into()]);
+        assert_eq!(hv.nocache_args(), &["--force", "--clean"]);
+        assert_ne!(hv.nocache_args().len(), original_len);
+    }
 }

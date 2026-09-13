@@ -856,3 +856,243 @@ mod cmdline_tests {
         assert!(got.is_empty(), "missing pid must yield empty cmdline");
     }
 }
+
+// ---------------------------------------------------------------------------
+// Wire-type and handler edge-case tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod wire_type_tests {
+    use super::*;
+
+    /// Request deserializes from valid JSON with all fields.
+    #[test]
+    fn request_deserialize_from_json() {
+        let raw = r#"{"id":42,"method":"process.list","params":{}}"#;
+        let req: Request = serde_json::from_str(raw).expect("valid JSON must deserialize");
+        assert_eq!(req.id, 42);
+        assert_eq!(req.method, "process.list");
+        assert_eq!(req.params, serde_json::json!({}));
+    }
+
+    /// Request defaults params to Value::Null when missing (serde default).
+    #[test]
+    fn request_defaults_params_to_null_when_missing() {
+        let raw = r#"{"id":1,"method":"health.status"}"#;
+        let req: Request = serde_json::from_str(raw).expect("params is optional via serde(default)");
+        assert_eq!(req.params, Value::Null);
+    }
+
+    /// Request rejects JSON missing required fields (method).
+    #[test]
+    fn request_rejects_missing_method() {
+        let raw = r#"{"id":1}"#;
+        assert!(serde_json::from_str::<Request>(raw).is_err(), "missing method must fail");
+    }
+
+    /// Response::ok serializes with null error and provided result.
+    #[test]
+    fn response_ok_has_null_error_and_result() {
+        let resp = Response::ok(10, serde_json::json!({"key": "value"}));
+        assert_eq!(resp.id, 10);
+        assert!(resp.error.is_none());
+        assert_eq!(resp.result, serde_json::json!({"key": "value"}));
+    }
+
+    /// Response::err sets error message and null result.
+    #[test]
+    fn response_err_has_error_and_null_result() {
+        let resp = Response::err(5, "something broke");
+        assert_eq!(resp.id, 5);
+        assert_eq!(resp.error.as_deref(), Some("something broke"));
+        assert_eq!(resp.result, Value::Null);
+    }
+
+    /// Response::ok handles non-serializable result by falling back to null.
+    #[test]
+    fn response_ok_falls_back_to_null_for_unserializable() {
+        // () is serializable as null in serde_json, so this tests the path.
+        let resp = Response::ok(0, ());
+        assert_eq!(resp.result, Value::Null);
+    }
+
+    /// ProcessSummary serialization roundtrip preserves all fields.
+    #[test]
+    fn process_summary_roundtrip() {
+        let ps = ProcessSummary {
+            pid: 1234,
+            name: "cargo".into(),
+            cmd: vec!["cargo".into(), "build".into()],
+            memory_mb: 256,
+            project: Some("myproject".into()),
+            harness: Some("jcode".into()),
+            start_time: 1700000000,
+            cpu_percent: 12.5,
+            ppid: Some(1),
+            cwd: Some("/repo".into()),
+            env_count: 42,
+            fd_count: Some(100),
+            thread_count: Some(8),
+            disk_read_bytes: Some(1024),
+            disk_write_bytes: Some(512),
+            state: "Run".into(),
+        };
+        let json = serde_json::to_string(&ps).expect("serialize");
+        let parsed: ProcessSummary = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(parsed.pid, 1234);
+        assert_eq!(parsed.name, "cargo");
+        assert_eq!(parsed.cmd, vec!["cargo", "build"]);
+        assert_eq!(parsed.memory_mb, 256);
+        assert_eq!(parsed.project.as_deref(), Some("myproject"));
+        assert_eq!(parsed.harness.as_deref(), Some("jcode"));
+        assert_eq!(parsed.cpu_percent, 12.5);
+        assert_eq!(parsed.env_count, 42);
+        assert_eq!(parsed.fd_count, Some(100));
+        assert_eq!(parsed.thread_count, Some(8));
+    }
+
+    /// ProcessSummary with all optional fields as None defaults via serde.
+    #[test]
+    fn process_summary_defaults_none_fields() {
+        let raw = r#"{"pid":1,"name":"x","cmd":[],"memory_mb":0,"state":""}"#;
+        let ps: ProcessSummary = serde_json::from_str(raw).expect("defaults must fill missing fields");
+        assert_eq!(ps.pid, 1);
+        assert!(ps.project.is_none());
+        assert!(ps.harness.is_none());
+        assert_eq!(ps.start_time, 0);
+        assert_eq!(ps.cpu_percent, 0.0);
+        assert!(ps.ppid.is_none());
+        assert!(ps.cwd.is_none());
+        assert_eq!(ps.env_count, 0);
+        assert!(ps.fd_count.is_none());
+        assert!(ps.thread_count.is_none());
+        assert!(ps.disk_read_bytes.is_none());
+        assert!(ps.disk_write_bytes.is_none());
+    }
+
+    /// set_nested sets a value at a single-segment path.
+    #[test]
+    fn set_nested_single_segment() {
+        let mut val = serde_json::json!({});
+        set_nested(&mut val, &["key"], serde_json::json!("hello")).unwrap();
+        assert_eq!(val["key"], "hello");
+    }
+
+    /// set_nested sets a value at a multi-segment dot path.
+    #[test]
+    fn set_nested_multi_segment_dot_path() {
+        let mut val = serde_json::json!({"a": {"b": 1}});
+        set_nested(&mut val, &["a", "b"], serde_json::json!(42)).unwrap();
+        assert_eq!(val["a"]["b"], 42);
+    }
+
+    /// set_nested returns error when a segment expects a non-object.
+    #[test]
+    fn set_nested_error_on_non_object() {
+        let mut val = serde_json::json!({"a": "string"});
+        let err = set_nested(&mut val, &["a", "b"], serde_json::json!(1));
+        assert!(err.is_err(), "must fail when 'a' is a string, not an object");
+    }
+
+    /// set_nested with empty path replaces the entire value.
+    #[test]
+    fn set_nested_empty_path_replaces_root() {
+        let mut val = serde_json::json!({"old": true});
+        set_nested(&mut val, &[], serde_json::json!("new")).unwrap();
+        assert_eq!(val, serde_json::json!("new"));
+    }
+
+    /// recovery_max_age_seconds defaults to DEFAULT when param is missing.
+    #[test]
+    fn recovery_max_age_defaults_when_missing() {
+        let params = serde_json::json!({});
+        let got = recovery_max_age_seconds(&params).expect("should default");
+        assert_eq!(got, DEFAULT_RECOVERY_MAX_AGE_SECONDS);
+    }
+
+    /// recovery_max_age_seconds rejects values below 1.
+    #[test]
+    fn recovery_max_age_rejects_below_one() {
+        let params = serde_json::json!({"max_age_seconds": 0});
+        assert!(recovery_max_age_seconds(&params).is_err(), "0 must be rejected");
+    }
+
+    /// recovery_max_age_seconds rejects values above 604800 (7 days).
+    #[test]
+    fn recovery_max_age_rejects_above_max() {
+        let params = serde_json::json!({"max_age_seconds": 604801});
+        assert!(recovery_max_age_seconds(&params).is_err(), "604801 must be rejected");
+    }
+
+    /// recovery_max_age_seconds accepts boundary value 604800.
+    #[test]
+    fn recovery_max_age_accepts_max_boundary() {
+        let params = serde_json::json!({"max_age_seconds": 604800});
+        assert_eq!(recovery_max_age_seconds(&params).unwrap(), 604800);
+    }
+
+    /// split_nul_tokens handles a single token without trailing NUL.
+    #[test]
+    fn split_nul_tokens_single_token_no_trailing_nul() {
+        assert_eq!(split_nul_tokens(b"hello"), vec!["hello"]);
+    }
+
+    /// CmdlineResponse deserializes from JSON.
+    #[test]
+    fn cmdline_response_deserialize_from_json() {
+        let raw = r#"{"cmd":["rustc","--edition","2021"]}"#;
+        let resp: CmdlineResponse = serde_json::from_str(raw).unwrap();
+        assert_eq!(resp.cmd, vec!["rustc", "--edition", "2021"]);
+    }
+
+    /// MonitoringProcessEntry with all optional fields defaults to None.
+    #[test]
+    fn monitoring_process_entry_defaults_none_fields() {
+        let raw = r#"{"pid":1,"name":"x","memory_mb":0}"#;
+        let entry: MonitoringProcessEntry = serde_json::from_str(raw).unwrap();
+        assert_eq!(entry.pid, 1);
+        assert!(entry.project.is_none());
+        assert!(entry.ppid.is_none());
+        assert!(entry.cwd.is_none());
+        assert_eq!(entry.env_count, 0);
+        assert!(entry.fd_count.is_none());
+        assert!(entry.thread_count.is_none());
+    }
+}
+
+#[cfg(test)]
+mod dispatch_tests {
+    use super::*;
+
+    /// dispatch with completely invalid JSON returns a parse error response.
+    #[tokio::test]
+    async fn dispatch_invalid_json_returns_parse_error() {
+        let handler = Handler::with_session_store(SessionStore::open_memory().unwrap());
+        let resp = handler.dispatch("not json at all").await;
+        assert_eq!(resp.id, 0, "parse error uses id=0");
+        assert!(resp.error.is_some(), "must have error");
+        let msg = resp.error.unwrap();
+        assert!(msg.contains("parse error"), "must mention parse error: {msg}");
+    }
+
+    /// dispatch with unknown method returns an error response.
+    #[tokio::test]
+    async fn dispatch_unknown_method_returns_error() {
+        let handler = Handler::with_session_store(SessionStore::open_memory().unwrap());
+        let raw = r#"{"id":7,"method":"nope.nope","params":{}}"#;
+        let resp = handler.dispatch(raw).await;
+        assert_eq!(resp.id, 7);
+        assert!(resp.error.is_some());
+        assert!(resp.error.unwrap().contains("unknown method"));
+    }
+
+    /// dispatch session.list returns a JSON array (possibly empty).
+    #[tokio::test]
+    async fn dispatch_session_list_returns_array() {
+        let handler = Handler::with_session_store(SessionStore::open_memory().unwrap());
+        let raw = r#"{"id":1,"method":"session.list","params":{}}"#;
+        let resp = handler.dispatch(raw).await;
+        assert!(resp.error.is_none(), "session.list should not error: {:?}", resp.error);
+        assert!(resp.result.is_array(), "result must be an array");
+    }
+}

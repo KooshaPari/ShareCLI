@@ -542,3 +542,423 @@ pub enum ProjectCmd {
         json: bool,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -----------------------------------------------------------------------
+    // Default values
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn config_default_has_expected_projects() {
+        let cfg = Config::default();
+        assert!(cfg.projects.contains_key("helios-cli"));
+        assert!(cfg.projects.contains_key("portage"));
+        assert!(cfg.projects.contains_key("agentapi"));
+        assert!(cfg.projects.contains_key("cliproxy"));
+        assert!(cfg.projects.contains_key("colab"));
+        assert_eq!(cfg.projects.len(), 5);
+    }
+
+    #[test]
+    fn runtime_config_defaults() {
+        let rt = RuntimeConfig::default();
+        assert_eq!(rt.node_path, None);
+        assert_eq!(rt.bun_path, None);
+        assert_eq!(rt.max_memory_mb, Some(4096));
+        assert_eq!(rt.max_processes, Some(100));
+    }
+
+    #[test]
+    fn pool_config_defaults() {
+        let pool = PoolConfig::default();
+        assert!(pool.enabled);
+        assert_eq!(pool.max_per_type, 5);
+        assert_eq!(pool.idle_timeout_secs, 300);
+        assert_eq!(pool.max_age_secs, 3600);
+        assert_eq!(pool.spawn_delay_ms, 100);
+    }
+
+    #[test]
+    fn monitoring_config_defaults() {
+        let m = MonitoringConfig::default();
+        assert_eq!(m.health_check_interval_secs, 30);
+        assert_eq!(m.idle_threshold_secs, 300);
+        assert_eq!(m.high_memory_threshold_mb, 4096);
+        assert_eq!(m.idle_process_threshold, 5);
+        assert_eq!(m.per_process_warn_memory_bytes, 1024 * 1024 * 1024);
+    }
+
+    #[test]
+    fn cast_config_defaults() {
+        let c = CastConfig::default();
+        assert_eq!(c.default_transport, "wezterm");
+        assert_eq!(c.pane_map_path, None);
+        assert_eq!(c.handshake_timeout_ms, 250);
+        assert_eq!(c.max_retry_attempts, 3);
+        assert_eq!(c.retry_backoff_ms, 200);
+    }
+
+    #[test]
+    fn spawn_policy_config_defaults() {
+        let s = SpawnPolicyConfig::default();
+        assert_eq!(s.nice_level, 10);
+        assert_eq!(s.max_concurrent_builds, 2);
+        assert!(!s.use_sccache);
+    }
+
+    #[test]
+    fn serve_config_defaults() {
+        let s = ServeConfig::default();
+        assert_eq!(s.bearer_token, None);
+        assert_eq!(s.auth_mode, None);
+        assert!(s.jwt.is_none());
+        assert_eq!(s.rate_limit_max, None);
+        assert_eq!(s.rate_limit_window_secs, None);
+    }
+
+    #[test]
+    fn default_harness_config_values() {
+        let c = DefaultHarnessConfig::default();
+        assert!(c.enabled);
+        assert_eq!(c.max_instances, 10);
+        assert_eq!(c.memory_limit_mb, 256);
+    }
+
+    #[test]
+    fn project_limits_config_defaults() {
+        let c = ProjectLimitsConfig::default();
+        assert_eq!(c.memory_limit_mb, 1024);
+        assert_eq!(c.max_processes, 10);
+    }
+
+    #[test]
+    fn spawn_config_defaults() {
+        let c = SpawnConfig::default();
+        assert_eq!(c.default_harness, "claude");
+        assert_eq!(c.prune_idle_seconds, 300);
+    }
+
+    #[test]
+    fn paths_config_defaults() {
+        let c = PathsConfig::default();
+        assert_eq!(c.discovery_path, "~/CodeProjects/Phenotype/repos");
+        assert_eq!(c.default_compose_output, "process-compose.yml");
+    }
+
+    // -----------------------------------------------------------------------
+    // TOML parsing
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn config_from_full_toml() {
+        let toml_str = r#"
+            [runtime]
+            node_path = "/usr/local/bin/node"
+            bun_path = "/usr/local/bin/bun"
+            max_memory_mb = 8192
+            max_processes = 50
+
+            [pool]
+            enabled = false
+            max_per_type = 10
+            idle_timeout_secs = 600
+            max_age_secs = 7200
+            spawn_delay_ms = 200
+
+            [monitoring]
+            health_check_interval_secs = 60
+            idle_threshold_secs = 600
+            high_memory_threshold_mb = 8192
+            idle_process_threshold = 10
+            per_process_warn_memory_bytes = 2147483648
+
+            [port]
+            sharewei_port = 4100
+
+            [paths]
+            discovery_path = "/tmp/repos"
+            default_compose_output = "output.yml"
+
+            [project_limits]
+            memory_limit_mb = 2048
+            max_processes = 20
+
+            [spawn]
+            default_harness = "forge"
+            prune_idle_seconds = 600
+
+            [spawn_policy]
+            nice_level = 20
+            max_concurrent_builds = 4
+            use_sccache = true
+
+            [cast]
+            default_transport = "ghostty"
+            handshake_timeout_ms = 500
+            max_retry_attempts = 5
+            retry_backoff_ms = 400
+
+            [notifications]
+            desktop = false
+            webhooks = ["https://example.com/hook"]
+
+            [serve]
+            bearer_token = "secret-token"
+            auth_mode = "bearer"
+            rate_limit_max = 120
+            rate_limit_window_secs = 30
+        "#;
+
+        let cfg: Config = toml::from_str(toml_str).expect("parse full TOML");
+
+        assert_eq!(cfg.runtime.node_path.as_deref(), Some("/usr/local/bin/node"));
+        assert_eq!(cfg.runtime.bun_path.as_deref(), Some("/usr/local/bin/bun"));
+        assert_eq!(cfg.runtime.max_memory_mb, Some(8192));
+        assert_eq!(cfg.runtime.max_processes, Some(50));
+
+        assert!(!cfg.pool.enabled);
+        assert_eq!(cfg.pool.max_per_type, 10);
+
+        assert_eq!(cfg.monitoring.health_check_interval_secs, 60);
+        assert_eq!(cfg.monitoring.high_memory_threshold_mb, 8192);
+
+        assert_eq!(cfg.port.sharewei_port, 4100);
+        assert_eq!(cfg.paths.discovery_path, "/tmp/repos");
+        assert_eq!(cfg.project_limits.memory_limit_mb, 2048);
+        assert_eq!(cfg.spawn.default_harness, "forge");
+        assert_eq!(cfg.spawn.prune_idle_seconds, 600);
+
+        assert_eq!(cfg.spawn_policy.nice_level, 20);
+        assert_eq!(cfg.spawn_policy.max_concurrent_builds, 4);
+        assert!(cfg.spawn_policy.use_sccache);
+
+        assert_eq!(cfg.cast.default_transport, "ghostty");
+        assert_eq!(cfg.cast.handshake_timeout_ms, 500);
+        assert_eq!(cfg.cast.max_retry_attempts, 5);
+
+        assert!(!cfg.notifications.desktop);
+        assert_eq!(cfg.notifications.webhooks, vec!["https://example.com/hook"]);
+
+        assert_eq!(cfg.serve.bearer_token.as_deref(), Some("secret-token"));
+        assert_eq!(cfg.serve.auth_mode.as_deref(), Some("bearer"));
+        assert_eq!(cfg.serve.rate_limit_max, Some(120));
+        assert_eq!(cfg.serve.rate_limit_window_secs, Some(30));
+    }
+
+    #[test]
+    fn config_from_partial_toml_uses_defaults() {
+        // Only override port; everything else should fall back to defaults.
+        let toml_str = r#"
+            [port]
+            sharewei_port = 9999
+        "#;
+
+        let cfg: Config = toml::from_str(toml_str).expect("parse partial TOML");
+
+        // Port field from the TOML.
+        assert_eq!(cfg.port.sharewei_port, 9999);
+
+        // Other sub-configs remain default.
+        assert_eq!(cfg.cast.default_transport, "wezterm");
+        assert!(cfg.notifications.desktop);
+        assert!(cfg.pool.enabled);
+        assert_eq!(cfg.pool.max_per_type, 5);
+        assert_eq!(cfg.monitoring.health_check_interval_secs, 30);
+        assert_eq!(cfg.spawn_policy.nice_level, 10);
+    }
+
+    #[test]
+    fn config_from_empty_toml_is_default() {
+        let cfg: Config = toml::from_str("").expect("parse empty TOML");
+        let default = Config::default();
+
+        // Compare field-by-field since Config doesn't derive PartialEq.
+        assert_eq!(cfg.pool.enabled, default.pool.enabled);
+        assert_eq!(cfg.pool.max_per_type, default.pool.max_per_type);
+        assert_eq!(cfg.pool.idle_timeout_secs, default.pool.idle_timeout_secs);
+        assert_eq!(cfg.pool.max_age_secs, default.pool.max_age_secs);
+        assert_eq!(cfg.pool.spawn_delay_ms, default.pool.spawn_delay_ms);
+        assert_eq!(cfg.monitoring.health_check_interval_secs, default.monitoring.health_check_interval_secs);
+        assert_eq!(cfg.monitoring.high_memory_threshold_mb, default.monitoring.high_memory_threshold_mb);
+        assert_eq!(cfg.port.sharewei_port, default.port.sharewei_port);
+        assert_eq!(cfg.cast.default_transport, default.cast.default_transport);
+        assert_eq!(cfg.cast.handshake_timeout_ms, default.cast.handshake_timeout_ms);
+        assert_eq!(cfg.spawn_policy.nice_level, default.spawn_policy.nice_level);
+        assert_eq!(cfg.spawn_policy.max_concurrent_builds, default.spawn_policy.max_concurrent_builds);
+    }
+
+    #[test]
+    fn config_project_map_override() {
+        let toml_str = r#"
+            [projects]
+            my-project = "/home/user/my-project"
+        "#;
+
+        let cfg: Config = toml::from_str(toml_str).expect("parse project override");
+        assert_eq!(cfg.projects.len(), 1);
+        assert_eq!(
+            cfg.projects.get("my-project").map(String::as_str),
+            Some("/home/user/my-project")
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // JSON parsing
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn config_from_json() {
+        let json_str = r#"{
+            "runtime": { "max_memory_mb": 2048 },
+            "port": { "sharewei_port": 9090 },
+            "cast": { "default_transport": "clipboard" }
+        }"#;
+
+        let cfg: Config = serde_json::from_str(json_str).expect("parse JSON");
+        assert_eq!(cfg.runtime.max_memory_mb, Some(2048));
+        assert_eq!(cfg.port.sharewei_port, 9090);
+        assert_eq!(cfg.cast.default_transport, "clipboard");
+        // Untouched sub-configs use defaults.
+        assert!(cfg.pool.enabled);
+        assert_eq!(cfg.pool.max_per_type, 5);
+    }
+
+    // -----------------------------------------------------------------------
+    // Round-trip (serialize -> deserialize)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn config_round_trip_toml() {
+        let original = Config::default();
+        let serialized = toml::to_string(&original).expect("serialize to TOML");
+        let restored: Config = toml::from_str(&serialized).expect("deserialize round-trip");
+
+        assert_eq!(original.projects.len(), restored.projects.len());
+        for (k, v) in &original.projects {
+            assert_eq!(restored.projects.get(k).unwrap(), v);
+        }
+        assert_eq!(original.pool.enabled, restored.pool.enabled);
+        assert_eq!(original.pool.max_per_type, restored.pool.max_per_type);
+        assert_eq!(original.pool.idle_timeout_secs, restored.pool.idle_timeout_secs);
+        assert_eq!(original.monitoring.health_check_interval_secs, restored.monitoring.health_check_interval_secs);
+        assert_eq!(original.monitoring.high_memory_threshold_mb, restored.monitoring.high_memory_threshold_mb);
+        assert_eq!(original.port.sharewei_port, restored.port.sharewei_port);
+        assert_eq!(original.cast.default_transport, restored.cast.default_transport);
+        assert_eq!(original.cast.handshake_timeout_ms, restored.cast.handshake_timeout_ms);
+        assert_eq!(original.spawn_policy.nice_level, restored.spawn_policy.nice_level);
+        assert_eq!(original.spawn_policy.max_concurrent_builds, restored.spawn_policy.max_concurrent_builds);
+    }
+
+    // -----------------------------------------------------------------------
+    // Error handling
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn config_invalid_toml_wrong_type_returns_error() {
+        let bad = r#"
+            [runtime]
+            max_memory_mb = "not a number"
+        "#;
+
+        let result = toml::from_str::<Config>(bad);
+        assert!(result.is_err(), "expected parse error for wrong type");
+    }
+
+    #[test]
+    fn config_malformed_toml_returns_error() {
+        let bad = r#"
+            [unclosed_section
+        "#;
+
+        let result = toml::from_str::<Config>(bad);
+        assert!(result.is_err(), "expected parse error for malformed TOML");
+    }
+
+    #[test]
+    fn config_unknown_fields_are_ignored() {
+        let toml_str = r#"
+            [nonexistent_section]
+            foo = "bar"
+
+            [port]
+            sharewei_port = 5555
+        "#;
+
+        let cfg: Config = toml::from_str(toml_str).expect("unknown fields should be ignored");
+        assert_eq!(cfg.port.sharewei_port, 5555);
+    }
+
+    // -----------------------------------------------------------------------
+    // Sub-config specifics
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn serve_jwt_config_from_toml() {
+        let toml_str = r#"
+            [serve.jwt]
+            issuer = "https://login.microsoftonline.com/tenant/v2.0"
+            audience = "api://my-api"
+            jwks_path = "/etc/jwks.json"
+        "#;
+
+        let cfg: Config = toml::from_str(toml_str).expect("parse JWT config");
+        let jwt = cfg.serve.jwt.expect("jwt should be present");
+        assert_eq!(jwt.issuer, "https://login.microsoftonline.com/tenant/v2.0");
+        assert_eq!(jwt.audience, "api://my-api");
+        assert_eq!(jwt.jwks_path.as_deref(), Some("/etc/jwks.json"));
+    }
+
+    #[test]
+    fn health_checks_from_toml() {
+        let toml_str = r#"
+            [health_checks.sharewei]
+            interval_secs = 15
+            timeout_secs = 3
+            failure_threshold = 5
+            endpoints = ["http://localhost:3100/health"]
+        "#;
+
+        let cfg: Config = toml::from_str(toml_str).expect("parse health check config");
+        let hc = cfg.health_checks.get("sharewei").expect("sharewei health check");
+        assert_eq!(hc.interval_secs, 15);
+        assert_eq!(hc.timeout_secs, 3);
+        assert_eq!(hc.failure_threshold, 5);
+        assert_eq!(hc.endpoints, vec!["http://localhost:3100/health"]);
+    }
+
+    // -----------------------------------------------------------------------
+    // Merge / override behavior
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn config_partial_override_preserves_other_defaults() {
+        let toml_str = r#"
+            [cast]
+            default_transport = "clipboard"
+
+            [notifications]
+            desktop = false
+        "#;
+
+        let cfg: Config = toml::from_str(toml_str).expect("parse partial override");
+
+        // Cast overridden.
+        assert_eq!(cfg.cast.default_transport, "clipboard");
+        // Cast defaults preserved for non-overridden fields.
+        assert_eq!(cfg.cast.handshake_timeout_ms, 250);
+        assert_eq!(cfg.cast.max_retry_attempts, 3);
+
+        // Notifications overridden.
+        assert!(!cfg.notifications.desktop);
+        // Defaults still hold.
+        assert!(cfg.notifications.webhooks.is_empty());
+
+        // Completely untouched sub-configs.
+        assert_eq!(cfg.port.sharewei_port, 3100);
+        assert_eq!(cfg.pool.max_per_type, 5);
+        assert_eq!(cfg.spawn_policy.nice_level, 10);
+    }
+}
