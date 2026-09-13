@@ -20,8 +20,25 @@ use std::os::windows::process::CommandExt;
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
-/// NoFX version fix: MouseButton/MouseButtonState are unused in this build;
-/// keep the import lean (`tray_icon::Icon`, `TrayIcon`, `TrayIconBuilder`).
+/// Gate `creation_flags(0x08000000)` so the crate compiles on Linux CI.
+/// On non-Windows the method doesn't exist; this trait is a no-op pass-through.
+trait CreationFlagsExt {
+    fn creation_flags_win(self, _flags: u32) -> Self;
+}
+
+#[cfg(target_os = "windows")]
+impl CreationFlagsExt for &mut Command {
+    fn creation_flags_win(self, flags: u32) -> Self {
+        self.creation_flags(flags)
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+impl CreationFlagsExt for &mut Command {
+    fn creation_flags_win(self, _flags: u32) -> Self {
+        self
+    }
+}
 
 const IPC_SIDECAR: &str = "sharecli-ipc";
 const IPC_SIDECAR_EXE: &str = "sharecli-ipc.exe";
@@ -156,7 +173,7 @@ fn toast(title: &str, body: &str) {
                 title.replace('\'', "''")
             ),
         ])
-        .creation_flags(0x08000000) // CREATE_NO_WINDOW
+        .creation_flags_win(0x08000000) // CREATE_NO_WINDOW
         .spawn();
 }
 
@@ -233,10 +250,10 @@ fn main() {
             if cmd == id_open {
                 open_dashboard();
             } else if cmd == id_health {
-                let _ = Command::new("sharecli").arg("health").creation_flags(0x08000000).spawn();
+                let _ = Command::new("sharecli").arg("health").creation_flags_win(0x08000000).spawn();
                 toast("sharecli", "health: see dashboard / terminal");
             } else if cmd == id_status {
-                let _ = Command::new("sharecli").arg("status").creation_flags(0x08000000).spawn();
+                let _ = Command::new("sharecli").arg("status").creation_flags_win(0x08000000).spawn();
                 toast("sharecli", "status: see dashboard / terminal");
             } else if cmd == id_quit {
                 if let Some(mut c) = sidecar.take() {

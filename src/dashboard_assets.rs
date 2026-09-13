@@ -73,6 +73,10 @@ fn lookup(relative_path: &str) -> Option<EmbeddedAsset> {
             bytes: include_bytes!("../assets/dashboard/ui/icons/phenotype_icon.png"),
             content_type: "image/png",
         },
+        "dashboard.js" => EmbeddedAsset {
+            bytes: include_bytes!("../dashboard.js"),
+            content_type: "application/javascript",
+        },
         _ => return None,
     })
 }
@@ -105,6 +109,7 @@ mod tests {
         assert!(lookup("empty-states/no-data.svg").is_some());
         assert!(lookup("error-states/disconnect.svg").is_some());
         assert!(lookup("banners/dashboard_1280x320.png").is_some());
+        assert!(lookup("dashboard.js").is_some());
         assert!(lookup("video/brand_intro.mp4").is_none());
     }
 
