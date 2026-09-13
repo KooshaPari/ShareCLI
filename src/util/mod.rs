@@ -23,8 +23,6 @@ pub mod graph;
 pub mod hash_util;
 #[path = "../lazy.rs"]
 pub mod lazy;
-#[path = "../macho_parse.rs"]
-pub mod macho_parse;
 #[path = "../retry.rs"]
 pub mod retry;
 #[path = "../slice_ext.rs"]

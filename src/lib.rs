@@ -68,7 +68,6 @@ pub use util::deque;
 pub use util::graph;
 pub use util::hash_util;
 pub use util::lazy;
-pub use util::macho_parse;
 pub use util::retry;
 pub use util::slice_ext;
 pub use util::uuid;
