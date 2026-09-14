@@ -553,8 +553,20 @@ mod tests {
     #[test]
     fn scan_agents_multiple_known_agents() {
         let src = FakeProcSource::new(vec![
-            ProcSnapshot { pid: 10, ppid: 1, comm: "claude".into(), cmdline: vec!["claude".into()], state: 'S' },
-            ProcSnapshot { pid: 20, ppid: 1, comm: "forge".into(), cmdline: vec!["forge".into(), "conversation".into(), "list".into()], state: 'R' },
+            ProcSnapshot {
+                pid: 10,
+                ppid: 1,
+                comm: "claude".into(),
+                cmdline: vec!["claude".into()],
+                state: 'S',
+            },
+            ProcSnapshot {
+                pid: 20,
+                ppid: 1,
+                comm: "forge".into(),
+                cmdline: vec!["forge".into(), "conversation".into(), "list".into()],
+                state: 'R',
+            },
             ProcSnapshot { pid: 30, ppid: 1, comm: "unknown".into(), cmdline: vec![], state: 'R' },
         ]);
         let agents = scan_agents(&src);
@@ -585,33 +597,49 @@ mod tests {
 
     #[test]
     fn is_under_agent_direct_match() {
-        let src = FakeProcSource::new(vec![
-            ProcSnapshot { pid: 100, ppid: 0, comm: "claude".into(), cmdline: vec!["claude".into()], state: 'R' },
-        ]);
+        let src = FakeProcSource::new(vec![ProcSnapshot {
+            pid: 100,
+            ppid: 0,
+            comm: "claude".into(),
+            cmdline: vec!["claude".into()],
+            state: 'R',
+        }]);
         assert!(is_under_agent(&src, 100));
     }
 
     #[test]
     fn is_under_agent_no_match() {
-        let src = FakeProcSource::new(vec![
-            ProcSnapshot { pid: 100, ppid: 0, comm: "bash".into(), cmdline: vec![], state: 'R' },
-        ]);
+        let src = FakeProcSource::new(vec![ProcSnapshot {
+            pid: 100,
+            ppid: 0,
+            comm: "bash".into(),
+            cmdline: vec![],
+            state: 'R',
+        }]);
         assert!(!is_under_agent(&src, 100));
     }
 
     #[test]
     fn agent_label_for_pid_direct_agent() {
-        let src = FakeProcSource::new(vec![
-            ProcSnapshot { pid: 100, ppid: 0, comm: "claude".into(), cmdline: vec!["claude".into()], state: 'R' },
-        ]);
+        let src = FakeProcSource::new(vec![ProcSnapshot {
+            pid: 100,
+            ppid: 0,
+            comm: "claude".into(),
+            cmdline: vec!["claude".into()],
+            state: 'R',
+        }]);
         assert_eq!(agent_label_for_pid(&src, 100), "claude");
     }
 
     #[test]
     fn agent_label_for_pid_non_agent() {
-        let src = FakeProcSource::new(vec![
-            ProcSnapshot { pid: 100, ppid: 0, comm: "bash".into(), cmdline: vec![], state: 'R' },
-        ]);
+        let src = FakeProcSource::new(vec![ProcSnapshot {
+            pid: 100,
+            ppid: 0,
+            comm: "bash".into(),
+            cmdline: vec![],
+            state: 'R',
+        }]);
         assert_eq!(agent_label_for_pid(&src, 100), "-");
     }
 
@@ -642,11 +670,20 @@ mod tests {
     #[test]
     fn collect_forest_pids_deep_nesting() {
         let forest = AgentTreeNode {
-            pid: 1, ppid: 0, comm: "root".into(), family: Some("claude"),
+            pid: 1,
+            ppid: 0,
+            comm: "root".into(),
+            family: Some("claude"),
             children: vec![AgentTreeNode {
-                pid: 2, ppid: 1, comm: "child".into(), family: None,
+                pid: 2,
+                ppid: 1,
+                comm: "child".into(),
+                family: None,
                 children: vec![AgentTreeNode {
-                    pid: 3, ppid: 2, comm: "grandchild".into(), family: None,
+                    pid: 3,
+                    ppid: 2,
+                    comm: "grandchild".into(),
+                    family: None,
                     children: vec![],
                 }],
             }],
@@ -680,15 +717,25 @@ mod tests {
 
     #[test]
     fn lookup_proc_nonexistent_pid() {
-        let src = FakeProcSource::new(vec![
-            ProcSnapshot { pid: 1, ppid: 0, comm: "a".into(), cmdline: vec![], state: 'R' },
-        ]);
+        let src = FakeProcSource::new(vec![ProcSnapshot {
+            pid: 1,
+            ppid: 0,
+            comm: "a".into(),
+            cmdline: vec![],
+            state: 'R',
+        }]);
         assert!(lookup_proc(&src, 999).is_none());
     }
 
     #[test]
     fn proc_snapshot_clone_and_eq() {
-        let p = ProcSnapshot { pid: 1, ppid: 0, comm: "test".into(), cmdline: vec!["a".into()], state: 'R' };
+        let p = ProcSnapshot {
+            pid: 1,
+            ppid: 0,
+            comm: "test".into(),
+            cmdline: vec!["a".into()],
+            state: 'R',
+        };
         let p2 = p.clone();
         assert_eq!(p, p2);
     }
@@ -703,7 +750,11 @@ mod tests {
     #[test]
     fn agent_tree_node_clone_and_eq() {
         let node = AgentTreeNode {
-            pid: 1, ppid: 0, comm: "root".into(), family: Some("claude"), children: vec![],
+            pid: 1,
+            ppid: 0,
+            comm: "root".into(),
+            family: Some("claude"),
+            children: vec![],
         };
         let cloned = node.clone();
         assert_eq!(node, cloned);

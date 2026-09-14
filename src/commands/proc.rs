@@ -2069,7 +2069,16 @@ mod tests {
 
     #[test]
     fn parse_proc_state_lowercase_normalizes_to_uppercase() {
-        for (input, expected) in [('r', 'R'), ('s', 'S'), ('d', 'D'), ('z', 'Z'), ('k', 'K'), ('w', 'W'), ('p', 'P'), ('i', 'I')] {
+        for (input, expected) in [
+            ('r', 'R'),
+            ('s', 'S'),
+            ('d', 'D'),
+            ('z', 'Z'),
+            ('k', 'K'),
+            ('w', 'W'),
+            ('p', 'P'),
+            ('i', 'I'),
+        ] {
             let result = parse_proc_state(&input.to_string()).expect("valid lowercase MUST parse");
             assert_eq!(result, expected, "lowercase '{input}' must normalize to '{expected}'");
         }
@@ -2267,7 +2276,10 @@ mod tests {
         };
         let csv = render_proc_detail_csv(&detail);
         // fd_count column should be empty when None
-        assert!(csv.contains(",\n") || csv.ends_with(",\n"), "missing fd MUST produce empty field; got: {csv}");
+        assert!(
+            csv.contains(",\n") || csv.ends_with(",\n"),
+            "missing fd MUST produce empty field; got: {csv}"
+        );
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -2312,7 +2324,12 @@ mod tests {
         assert!(csv.starts_with("pid,family,comm,state,mem_rss_bytes,mem_rss,fd_count"));
         // Empty inventory still has header + trailing newline
         let lines: Vec<&str> = csv.lines().collect();
-        assert_eq!(lines.len(), 1, "empty inventory MUST have only header; got {} lines", lines.len());
+        assert_eq!(
+            lines.len(),
+            1,
+            "empty inventory MUST have only header; got {} lines",
+            lines.len()
+        );
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -2326,7 +2343,13 @@ mod tests {
             fixture_row(20, "cursor", "cursor-agent", 2_000_000),
         ];
         let filter = ProcFilter { family: Some("claude".into()), ..Default::default() };
-        let filtered = filter_watched_agents(&inventory, &filter, &HashMap::new(), &HashMap::new(), &HashMap::new());
+        let filtered = filter_watched_agents(
+            &inventory,
+            &filter,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+        );
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].agent.pid, 10);
     }
@@ -2338,7 +2361,13 @@ mod tests {
             fixture_row(20, "claude", "node", 2_000_000),
         ];
         let filter = ProcFilter { comm: Some("node".into()), ..Default::default() };
-        let filtered = filter_watched_agents(&inventory, &filter, &HashMap::new(), &HashMap::new(), &HashMap::new());
+        let filtered = filter_watched_agents(
+            &inventory,
+            &filter,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+        );
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].agent.pid, 20);
     }
@@ -2347,7 +2376,13 @@ mod tests {
     fn filter_watched_agents_empty_filter_returns_all() {
         let inventory = fixture_inventory();
         let filter = ProcFilter::default();
-        let filtered = filter_watched_agents(&inventory, &filter, &HashMap::new(), &HashMap::new(), &HashMap::new());
+        let filtered = filter_watched_agents(
+            &inventory,
+            &filter,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+        );
         assert_eq!(filtered.len(), inventory.len());
     }
 
@@ -2358,8 +2393,18 @@ mod tests {
             fixture_row(20, "claude", "claude", 1500),
             fixture_row(30, "claude", "claude", 2500),
         ];
-        let filter = ProcFilter { min_rss_bytes: Some(1000), max_rss_bytes: Some(2000), ..Default::default() };
-        let filtered = filter_watched_agents(&inventory, &filter, &HashMap::new(), &HashMap::new(), &HashMap::new());
+        let filter = ProcFilter {
+            min_rss_bytes: Some(1000),
+            max_rss_bytes: Some(2000),
+            ..Default::default()
+        };
+        let filtered = filter_watched_agents(
+            &inventory,
+            &filter,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+        );
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].agent.pid, 20);
     }
@@ -2372,7 +2417,13 @@ mod tests {
         ];
         let state_by_pid = HashMap::from([(10, 'R'), (20, 'S')]);
         let filter = ProcFilter { state: Some('R'), ..Default::default() };
-        let filtered = filter_watched_agents(&inventory, &filter, &HashMap::new(), &HashMap::new(), &state_by_pid);
+        let filtered = filter_watched_agents(
+            &inventory,
+            &filter,
+            &HashMap::new(),
+            &HashMap::new(),
+            &state_by_pid,
+        );
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].agent.pid, 10);
     }
@@ -2415,7 +2466,13 @@ mod tests {
             AgentTreeNode { pid: 1, ppid: 1, comm: "alpha".into(), family: None, children: vec![] },
             AgentTreeNode { pid: 2, ppid: 1, comm: "beta".into(), family: None, children: vec![] },
         ];
-        let result = sort_agent_forests(&forests, ProcSort::Name, &HashMap::new(), &HashMap::new(), &HashMap::new());
+        let result = sort_agent_forests(
+            &forests,
+            ProcSort::Name,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+        );
         let comms: Vec<&str> = result.iter().map(|n| n.comm.as_str()).collect();
         assert_eq!(comms, vec!["alpha", "beta", "zsh"]);
     }
@@ -2427,7 +2484,13 @@ mod tests {
             AgentTreeNode { pid: 20, ppid: 1, comm: "b".into(), family: None, children: vec![] },
         ];
         let rss_by_pid = HashMap::from([(10, 500), (20, 1000)]);
-        let result = sort_agent_forests(&forests, ProcSort::Rss, &rss_by_pid, &HashMap::new(), &HashMap::new());
+        let result = sort_agent_forests(
+            &forests,
+            ProcSort::Rss,
+            &rss_by_pid,
+            &HashMap::new(),
+            &HashMap::new(),
+        );
         assert_eq!(result[0].pid, 20, "higher RSS MUST sort first");
         assert_eq!(result[1].pid, 10);
     }
@@ -2508,7 +2571,9 @@ mod tests {
         let fd_by_pid = HashMap::from([(50, 10), (51, 5)]);
         let state_by_pid = HashMap::from([(50, 'R'), (51, 'S')]);
         let csv = render_agent_tree_csv(&[root], &rss_by_pid, &fd_by_pid, &state_by_pid);
-        assert!(csv.starts_with("root_index,depth,pid,ppid,family,comm,state,mem_rss_bytes,mem_rss,fd_count"));
+        assert!(csv.starts_with(
+            "root_index,depth,pid,ppid,family,comm,state,mem_rss_bytes,mem_rss,fd_count"
+        ));
         assert!(csv.contains("0,0,50,1,claude,claude,R,1000000,"));
         assert!(csv.contains("0,1,51,50,,node,S,500000,"));
     }
@@ -2516,9 +2581,16 @@ mod tests {
     #[test]
     fn render_agent_tree_csv_empty_forests() {
         let csv = render_agent_tree_csv(&[], &HashMap::new(), &HashMap::new(), &HashMap::new());
-        assert!(csv.starts_with("root_index,depth,pid,ppid,family,comm,state,mem_rss_bytes,mem_rss,fd_count"));
+        assert!(csv.starts_with(
+            "root_index,depth,pid,ppid,family,comm,state,mem_rss_bytes,mem_rss,fd_count"
+        ));
         let lines: Vec<&str> = csv.lines().collect();
-        assert_eq!(lines.len(), 1, "empty forests MUST have only header; got {} lines", lines.len());
+        assert_eq!(
+            lines.len(),
+            1,
+            "empty forests MUST have only header; got {} lines",
+            lines.len()
+        );
     }
 
     // ──────────────────────────────────────────────────────────────────────

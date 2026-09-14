@@ -536,9 +536,8 @@ mod tests {
     fn with_slot_propagates_error() {
         let dir = tempfile::tempdir().unwrap();
         let q = SlotQueue::new(dir.path(), 2);
-        let result: Result<Option<String>, _> = q.with_slot("err-lane", QueuePriority::Normal, || {
-            anyhow::bail!("intentional error")
-        });
+        let result: Result<Option<String>, _> =
+            q.with_slot("err-lane", QueuePriority::Normal, || anyhow::bail!("intentional error"));
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("intentional error"));
     }
@@ -640,10 +639,7 @@ mod tests {
             h.join().unwrap();
         }
         // Different lanes with max_concurrent=1 per lane should allow parallel execution
-        assert!(
-            peak.load(Ordering::SeqCst) >= 2,
-            "different lanes MUST allow parallel execution"
-        );
+        assert!(peak.load(Ordering::SeqCst) >= 2, "different lanes MUST allow parallel execution");
     }
 
     #[test]
@@ -686,7 +682,12 @@ mod tests {
         // Thread 1 holds the slot
         let t1_root = root.clone();
         let t1 = thread::spawn(move || {
-            let q2 = SlotQueue::with_options(&t1_root, 1, Duration::from_secs(5), Duration::from_millis(5));
+            let q2 = SlotQueue::with_options(
+                &t1_root,
+                1,
+                Duration::from_secs(5),
+                Duration::from_millis(5),
+            );
             q2.with_slot("priority-lane", QueuePriority::Low, || {
                 active_flag.store(true, Ordering::SeqCst);
                 while !release_flag.load(Ordering::SeqCst) {
@@ -704,7 +705,12 @@ mod tests {
         // Thread 2 queues a Critical waiter
         let t2_root = root.clone();
         let t2 = thread::spawn(move || {
-            let q2 = SlotQueue::with_options(&t2_root, 1, Duration::from_secs(5), Duration::from_millis(5));
+            let q2 = SlotQueue::with_options(
+                &t2_root,
+                1,
+                Duration::from_secs(5),
+                Duration::from_millis(5),
+            );
             q2.with_slot("priority-lane", QueuePriority::Critical, || Ok(())).unwrap();
         });
 

@@ -1490,11 +1490,8 @@ mod tests {
     /// SpawnRequest::new wires queue_priority to Normal (default operator path).
     #[test]
     fn spawn_request_new_defaults_to_normal_priority() {
-        let req = SpawnRequest::new(
-            vec!["cargo".into(), "build".into()],
-            PathBuf::from("/repo"),
-            vec![],
-        );
+        let req =
+            SpawnRequest::new(vec!["cargo".into(), "build".into()], PathBuf::from("/repo"), vec![]);
         assert_eq!(req.queue_priority, QueuePriority::Normal);
         assert_eq!(req.argv, vec!["cargo", "build"]);
         assert_eq!(req.cwd, PathBuf::from("/repo"));
@@ -1580,11 +1577,8 @@ mod tests {
     /// CachedResult -> SpawnOutcome conversion preserves data and sets from_cache=true.
     #[test]
     fn cached_result_to_spawn_outcome_preserves_fields() {
-        let cached = CachedResult {
-            exit_code: 42,
-            stdout: b"hello".to_vec(),
-            stderr: b"err".to_vec(),
-        };
+        let cached =
+            CachedResult { exit_code: 42, stdout: b"hello".to_vec(), stderr: b"err".to_vec() };
         let outcome: SpawnOutcome = cached.into();
         assert_eq!(outcome.exit_code, 42);
         assert_eq!(outcome.stdout, b"hello");

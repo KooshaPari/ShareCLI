@@ -69,9 +69,7 @@ impl std::error::Error for TrayError {}
 /// Locate the IPC sidecar executable. Looks next to the current executable
 /// first (where a self-contained install stages it), then on PATH.
 fn find_sidecar() -> Option<std::path::PathBuf> {
-    let exe_dir = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.to_path_buf()));
+    let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf()));
 
     for dir in [exe_dir, std::env::current_dir().ok()].into_iter().flatten() {
         for name in [IPC_SIDECAR_EXE, IPC_SIDECAR] {
@@ -109,10 +107,7 @@ fn which(bin: &str) -> std::io::Result<std::path::PathBuf> {
             }
         }
     }
-    Err(std::io::Error::new(
-        std::io::ErrorKind::NotFound,
-        format!("{bin} not found on PATH"),
-    ))
+    Err(std::io::Error::new(std::io::ErrorKind::NotFound, format!("{bin} not found on PATH")))
 }
 
 /// Spawn the IPC sidecar daemon (the process that actually serves the tray and
@@ -153,12 +148,15 @@ fn build_menu() -> Result<(Menu, Vec<String>), TrayError> {
     menu.append_items(&[&open, &health, &status, &sep, &quit])
         .map_err(|e| TrayError::Menu(e.to_string()))?;
 
-    Ok((menu, vec![
-        open.id().0.clone(),
-        health.id().0.clone(),
-        status.id().0.clone(),
-        quit.id().0.clone(),
-    ]))
+    Ok((
+        menu,
+        vec![
+            open.id().0.clone(),
+            health.id().0.clone(),
+            status.id().0.clone(),
+            quit.id().0.clone(),
+        ],
+    ))
 }
 
 /// Show a one-shot desktop notification via PowerShell (fire-and-forget).
@@ -250,10 +248,12 @@ fn main() {
             if cmd == id_open {
                 open_dashboard();
             } else if cmd == id_health {
-                let _ = Command::new("sharecli").arg("health").creation_flags_win(0x08000000).spawn();
+                let _ =
+                    Command::new("sharecli").arg("health").creation_flags_win(0x08000000).spawn();
                 toast("sharecli", "health: see dashboard / terminal");
             } else if cmd == id_status {
-                let _ = Command::new("sharecli").arg("status").creation_flags_win(0x08000000).spawn();
+                let _ =
+                    Command::new("sharecli").arg("status").creation_flags_win(0x08000000).spawn();
                 toast("sharecli", "status: see dashboard / terminal");
             } else if cmd == id_quit {
                 if let Some(mut c) = sidecar.take() {

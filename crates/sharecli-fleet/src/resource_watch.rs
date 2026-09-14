@@ -524,10 +524,7 @@ mod tests {
     #[test]
     fn test_parse_rss_bytes_error_messages_include_flag() {
         let err = super::parse_rss_bytes("bad", "--my-flag").unwrap_err();
-        assert!(
-            err.to_string().contains("--my-flag"),
-            "error MUST include flag name; got: {err}"
-        );
+        assert!(err.to_string().contains("--my-flag"), "error MUST include flag name; got: {err}");
     }
 
     #[test]
@@ -563,26 +560,16 @@ mod tests {
     #[test]
     fn test_watch_detected_agents_filters_dead() {
         // Use a PID that definitely doesn't exist
-        let agents = vec![DetectedAgent {
-            pid: 2_000_000,
-            family: "test",
-            comm: "nonexistent".into(),
-        }];
+        let agents =
+            vec![DetectedAgent { pid: 2_000_000, family: "test", comm: "nonexistent".into() }];
         let result = super::watch_detected_agents(&agents);
-        assert!(
-            result.is_empty(),
-            "dead PID MUST be filtered out by watch"
-        );
+        assert!(result.is_empty(), "dead PID MUST be filtered out by watch");
     }
 
     #[test]
     fn test_watch_detected_agents_self_pid() {
         let pid = std::process::id();
-        let agents = vec![DetectedAgent {
-            pid,
-            family: "test",
-            comm: "test-process".into(),
-        }];
+        let agents = vec![DetectedAgent { pid, family: "test", comm: "test-process".into() }];
         let result = super::watch_detected_agents(&agents);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].agent.pid, pid);

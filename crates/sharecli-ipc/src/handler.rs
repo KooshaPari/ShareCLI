@@ -307,7 +307,8 @@ fn session_database_path(
         anyhow::ensure!(!path.is_empty(), "SHARECLI_SESSION_DB must not be empty");
         return Ok(std::path::PathBuf::from(path));
     }
-    Ok(data_root.unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
+    Ok(data_root
+        .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
         .join("sharecli")
         .join("sessions.sqlite"))
 }
@@ -361,7 +362,8 @@ impl Handler {
     pub async fn new() -> Result<Self> {
         let pool = Arc::new(ProcessPool::new());
         let config = Arc::new(RwLock::new(Config::load().unwrap_or_default()));
-        let path = session_database_path(std::env::var_os("SHARECLI_SESSION_DB"), dirs::data_local_dir())?;
+        let path =
+            session_database_path(std::env::var_os("SHARECLI_SESSION_DB"), dirs::data_local_dir())?;
         let sessions = Arc::new(SessionStore::open(path)?);
         Ok(Self { pool, config, sessions })
     }
@@ -879,7 +881,8 @@ mod wire_type_tests {
     #[test]
     fn request_defaults_params_to_null_when_missing() {
         let raw = r#"{"id":1,"method":"health.status"}"#;
-        let req: Request = serde_json::from_str(raw).expect("params is optional via serde(default)");
+        let req: Request =
+            serde_json::from_str(raw).expect("params is optional via serde(default)");
         assert_eq!(req.params, Value::Null);
     }
 
@@ -955,7 +958,8 @@ mod wire_type_tests {
     #[test]
     fn process_summary_defaults_none_fields() {
         let raw = r#"{"pid":1,"name":"x","cmd":[],"memory_mb":0,"state":""}"#;
-        let ps: ProcessSummary = serde_json::from_str(raw).expect("defaults must fill missing fields");
+        let ps: ProcessSummary =
+            serde_json::from_str(raw).expect("defaults must fill missing fields");
         assert_eq!(ps.pid, 1);
         assert!(ps.project.is_none());
         assert!(ps.harness.is_none());

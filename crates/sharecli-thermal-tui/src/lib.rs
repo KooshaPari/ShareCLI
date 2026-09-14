@@ -2204,9 +2204,7 @@ mod tests {
 
     #[test]
     fn test_host_agent_lines_compact_with_agents() {
-        let agents = vec![
-            DetectedAgent { pid: 100, family: "claude", comm: "claude".into() },
-        ];
+        let agents = vec![DetectedAgent { pid: 100, family: "claude", comm: "claude".into() }];
         let lines = host_agent_lines(&agents, true);
         let text: String = lines.iter().map(|l| l.to_string()).collect();
         assert!(text.contains("claude:100"));
@@ -2215,11 +2213,7 @@ mod tests {
     #[test]
     fn test_host_agent_lines_truncates_at_four() {
         let agents: Vec<_> = (0..6)
-            .map(|i| DetectedAgent {
-                pid: 100 + i,
-                family: "test",
-                comm: format!("test-{i}"),
-            })
+            .map(|i| DetectedAgent { pid: 100 + i, family: "test", comm: format!("test-{i}") })
             .collect();
         let lines = host_agent_lines(&agents, false);
         let text: String = lines.iter().map(|l| l.to_string()).collect();
@@ -2288,12 +2282,8 @@ mod tests {
 
     #[test]
     fn test_fuse_write_serialize_lines_full() {
-        let meters = WriteSerializeMeters {
-            passthrough_writes: 50,
-            stages: 30,
-            commits: 25,
-            discards: 5,
-        };
+        let meters =
+            WriteSerializeMeters { passthrough_writes: 50, stages: 30, commits: 25, discards: 5 };
         let lines = fuse_write_serialize_lines(meters, false);
         let text: String = lines.iter().map(|l| l.to_string()).collect();
         assert!(text.contains("Passthrough:  50"));
@@ -2304,12 +2294,8 @@ mod tests {
 
     #[test]
     fn test_fuse_write_serialize_lines_compact() {
-        let meters = WriteSerializeMeters {
-            passthrough_writes: 50,
-            stages: 30,
-            commits: 25,
-            discards: 5,
-        };
+        let meters =
+            WriteSerializeMeters { passthrough_writes: 50, stages: 30, commits: 25, discards: 5 };
         let lines = fuse_write_serialize_lines(meters, true);
         let text: String = lines.iter().map(|l| l.to_string()).collect();
         assert!(text.contains("wr:50"));
@@ -2346,7 +2332,12 @@ mod tests {
 
     #[test]
     fn test_mesh_maildir_lines_some_full() {
-        let status = MaildirStatus { path: std::path::PathBuf::from("/tmp/maildir"), ready: 5, in_flight: 2, pending: 3 };
+        let status = MaildirStatus {
+            path: std::path::PathBuf::from("/tmp/maildir"),
+            ready: 5,
+            in_flight: 2,
+            pending: 3,
+        };
         let lines = mesh_maildir_lines(Some(status), false);
         let text: String = lines.iter().map(|l| l.to_string()).collect();
         assert!(text.contains("Mesh ready:     5"));
@@ -2356,7 +2347,12 @@ mod tests {
 
     #[test]
     fn test_mesh_maildir_lines_some_compact() {
-        let status = MaildirStatus { path: std::path::PathBuf::from("/tmp/maildir"), ready: 5, in_flight: 2, pending: 3 };
+        let status = MaildirStatus {
+            path: std::path::PathBuf::from("/tmp/maildir"),
+            ready: 5,
+            in_flight: 2,
+            pending: 3,
+        };
         let lines = mesh_maildir_lines(Some(status), true);
         let text: String = lines.iter().map(|l| l.to_string()).collect();
         assert!(text.contains("mesh r:5 f:2 p:3"));
@@ -2504,12 +2500,10 @@ mod tests {
 
     #[test]
     fn test_agent_lines_with_agents_full() {
-        let agents = vec![
-            DetectedAgentWatch {
-                agent: DetectedAgent { pid: 100, family: "claude", comm: "claude".into() },
-                resource: AgentResourceSample { mem_rss_bytes: 1_000_000, fd_count: Some(10) },
-            },
-        ];
+        let agents = vec![DetectedAgentWatch {
+            agent: DetectedAgent { pid: 100, family: "claude", comm: "claude".into() },
+            resource: AgentResourceSample { mem_rss_bytes: 1_000_000, fd_count: Some(10) },
+        }];
         let state = HashMap::from([(100, 'S')]);
         let lines = agent_lines(&agents, &state, false);
         let text: String = lines.iter().map(|l| l.to_string()).collect();
@@ -2521,12 +2515,10 @@ mod tests {
 
     #[test]
     fn test_agent_lines_with_agents_compact() {
-        let agents = vec![
-            DetectedAgentWatch {
-                agent: DetectedAgent { pid: 100, family: "claude", comm: "claude".into() },
-                resource: AgentResourceSample { mem_rss_bytes: 1_000_000, fd_count: None },
-            },
-        ];
+        let agents = vec![DetectedAgentWatch {
+            agent: DetectedAgent { pid: 100, family: "claude", comm: "claude".into() },
+            resource: AgentResourceSample { mem_rss_bytes: 1_000_000, fd_count: None },
+        }];
         let state = HashMap::new();
         let lines = agent_lines(&agents, &state, true);
         let text: String = lines.iter().map(|l| l.to_string()).collect();
@@ -2537,11 +2529,7 @@ mod tests {
     fn test_agent_lines_truncates_at_max() {
         let agents: Vec<_> = (0..6)
             .map(|i| DetectedAgentWatch {
-                agent: DetectedAgent {
-                    pid: 100 + i,
-                    family: "test",
-                    comm: format!("test-{i}"),
-                },
+                agent: DetectedAgent { pid: 100 + i, family: "test", comm: format!("test-{i}") },
                 resource: AgentResourceSample { mem_rss_bytes: 1000, fd_count: None },
             })
             .collect();

@@ -1364,12 +1364,8 @@ mod tests {
 
     #[test]
     fn write_serialize_meters_format_section() {
-        let m = WriteSerializeMeters {
-            passthrough_writes: 11,
-            stages: 22,
-            commits: 33,
-            discards: 44,
-        };
+        let m =
+            WriteSerializeMeters { passthrough_writes: 11, stages: 22, commits: 33, discards: 44 };
         let s = m.format_status_section();
         assert!(s.contains("=== FUSE Write Serialize ==="));
         assert!(s.contains("Passthrough:  11"));
@@ -1389,18 +1385,12 @@ mod tests {
 
     #[test]
     fn join_rel_nonempty_parent() {
-        assert_eq!(
-            join_rel(Path::new("src"), OsStr::new("main.rs")),
-            PathBuf::from("src/main.rs")
-        );
+        assert_eq!(join_rel(Path::new("src"), OsStr::new("main.rs")), PathBuf::from("src/main.rs"));
     }
 
     #[test]
     fn join_rel_deeply_nested() {
-        assert_eq!(
-            join_rel(Path::new("a/b/c"), OsStr::new("d.txt")),
-            PathBuf::from("a/b/c/d.txt")
-        );
+        assert_eq!(join_rel(Path::new("a/b/c"), OsStr::new("d.txt")), PathBuf::from("a/b/c/d.txt"));
     }
 
     #[test]
@@ -1412,7 +1402,10 @@ mod tests {
     #[test]
     fn abs_under_nonempty_rel() {
         let backing = Path::new("/workspace");
-        assert_eq!(abs_under(backing, Path::new("src/main.rs")), PathBuf::from("/workspace/src/main.rs"));
+        assert_eq!(
+            abs_under(backing, Path::new("src/main.rs")),
+            PathBuf::from("/workspace/src/main.rs")
+        );
     }
 
     #[test]
@@ -1648,10 +1641,7 @@ mod tests {
     #[test]
     fn intercept_fs_with_options_serialize_flag() {
         let dir = tempfile::TempDir::new().unwrap();
-        let opts = InterceptFsOptions {
-            serialize: false,
-            ..InterceptFsOptions::default()
-        };
+        let opts = InterceptFsOptions { serialize: false, ..InterceptFsOptions::default() };
         let fs = InterceptFs::with_options(dir.path(), opts);
         assert!(!fs.serialize_writes());
     }
@@ -1660,10 +1650,8 @@ mod tests {
     #[test]
     fn intercept_fs_empty_session_falls_back_to_default() {
         let dir = tempfile::TempDir::new().unwrap();
-        let opts = InterceptFsOptions {
-            session_id: String::new(),
-            ..InterceptFsOptions::default()
-        };
+        let opts =
+            InterceptFsOptions { session_id: String::new(), ..InterceptFsOptions::default() };
         let fs = InterceptFs::with_options(dir.path(), opts);
         // Empty session_id should fall back to a generated default, not remain empty
         assert!(!fs.session_id().is_empty());

@@ -241,9 +241,8 @@ fn find_sidecar(name: &str) -> Option<String> {
     #[cfg(windows)]
     {
         for cand in &candidates {
-            if let Ok(output) = std::process::Command::new("cmd")
-                .args(["/c", "where", cand])
-                .output()
+            if let Ok(output) =
+                std::process::Command::new("cmd").args(["/c", "where", cand]).output()
             {
                 if output.status.success() {
                     let path = String::from_utf8_lossy(&output.stdout)

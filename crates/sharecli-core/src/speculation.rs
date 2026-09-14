@@ -417,10 +417,7 @@ mod tests {
         let result = speculate_execute(&argv, &cwd, &[]).expect("execute");
         let stdout = String::from_utf8_lossy(&result.stdout).trim().to_string();
         // On macOS, /var may resolve to /private/var via symlink
-        assert!(
-            stdout == "/tmp" || stdout == "/private/tmp",
-            "cwd MUST be /tmp; got: {stdout}"
-        );
+        assert!(stdout == "/tmp" || stdout == "/private/tmp", "cwd MUST be /tmp; got: {stdout}");
     }
 
     #[tokio::test]
@@ -526,7 +523,14 @@ mod tests {
 
     #[test]
     fn speculate_execute_multiple_args() {
-        let argv = vec!["sh".into(), "-c".into(), "echo $1 $2".into(), "sh".into(), "a".into(), "b".into()];
+        let argv = vec![
+            "sh".into(),
+            "-c".into(),
+            "echo $1 $2".into(),
+            "sh".into(),
+            "a".into(),
+            "b".into(),
+        ];
         let cwd = std::path::PathBuf::from("/tmp");
         let result = speculate_execute(&argv, &cwd, &[]).expect("execute");
         let stdout = String::from_utf8_lossy(&result.stdout).trim().to_string();

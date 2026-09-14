@@ -781,13 +781,22 @@ mod tests {
         assert_eq!(cfg.pool.idle_timeout_secs, default.pool.idle_timeout_secs);
         assert_eq!(cfg.pool.max_age_secs, default.pool.max_age_secs);
         assert_eq!(cfg.pool.spawn_delay_ms, default.pool.spawn_delay_ms);
-        assert_eq!(cfg.monitoring.health_check_interval_secs, default.monitoring.health_check_interval_secs);
-        assert_eq!(cfg.monitoring.high_memory_threshold_mb, default.monitoring.high_memory_threshold_mb);
+        assert_eq!(
+            cfg.monitoring.health_check_interval_secs,
+            default.monitoring.health_check_interval_secs
+        );
+        assert_eq!(
+            cfg.monitoring.high_memory_threshold_mb,
+            default.monitoring.high_memory_threshold_mb
+        );
         assert_eq!(cfg.port.sharewei_port, default.port.sharewei_port);
         assert_eq!(cfg.cast.default_transport, default.cast.default_transport);
         assert_eq!(cfg.cast.handshake_timeout_ms, default.cast.handshake_timeout_ms);
         assert_eq!(cfg.spawn_policy.nice_level, default.spawn_policy.nice_level);
-        assert_eq!(cfg.spawn_policy.max_concurrent_builds, default.spawn_policy.max_concurrent_builds);
+        assert_eq!(
+            cfg.spawn_policy.max_concurrent_builds,
+            default.spawn_policy.max_concurrent_builds
+        );
     }
 
     #[test]
@@ -843,13 +852,22 @@ mod tests {
         assert_eq!(original.pool.enabled, restored.pool.enabled);
         assert_eq!(original.pool.max_per_type, restored.pool.max_per_type);
         assert_eq!(original.pool.idle_timeout_secs, restored.pool.idle_timeout_secs);
-        assert_eq!(original.monitoring.health_check_interval_secs, restored.monitoring.health_check_interval_secs);
-        assert_eq!(original.monitoring.high_memory_threshold_mb, restored.monitoring.high_memory_threshold_mb);
+        assert_eq!(
+            original.monitoring.health_check_interval_secs,
+            restored.monitoring.health_check_interval_secs
+        );
+        assert_eq!(
+            original.monitoring.high_memory_threshold_mb,
+            restored.monitoring.high_memory_threshold_mb
+        );
         assert_eq!(original.port.sharewei_port, restored.port.sharewei_port);
         assert_eq!(original.cast.default_transport, restored.cast.default_transport);
         assert_eq!(original.cast.handshake_timeout_ms, restored.cast.handshake_timeout_ms);
         assert_eq!(original.spawn_policy.nice_level, restored.spawn_policy.nice_level);
-        assert_eq!(original.spawn_policy.max_concurrent_builds, restored.spawn_policy.max_concurrent_builds);
+        assert_eq!(
+            original.spawn_policy.max_concurrent_builds,
+            restored.spawn_policy.max_concurrent_builds
+        );
     }
 
     // -----------------------------------------------------------------------
