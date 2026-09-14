@@ -580,4 +580,397 @@ mod tests {
         assert_eq!(status.tagged, "*");
         assert!(status.message.contains("BYE"));
     }
+
+    // -----------------------------------------------------------------------
+    // read_line
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn read_line_returns_line_and_next_offset() {
+        let bytes = b"hello\nworld\n";
+        let (line, end) = read_line(bytes, 0);
+        assert_eq!(line, "hello\n");
+        assert_eq!(end, 6);
+        let (line2, end2) = read_line(bytes, end);
+        assert_eq!(line2, "world\n");
+        assert_eq!(end2, 12);
+    }
+
+    #[test]
+    fn read_line_at_eof_returns_empty() {
+        let bytes = b"abc";
+        let (line, end) = read_line(bytes, 3);
+        assert_eq!(line, "");
+        assert_eq!(end, 3);
+    }
+
+    #[test]
+    fn read_line_single_line_no_newline() {
+        let bytes = b"only";
+        let (line, end) = read_line(bytes, 0);
+        assert_eq!(line, "only");
+        assert_eq!(end, 4);
+    }
+
+    // -----------------------------------------------------------------------
+    // first_word
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn first_word_splits_on_whitespace() {
+        let (word, rest) = first_word("hello world").unwrap();
+        assert_eq!(word, "hello");
+        assert_eq!(rest, " world");
+    }
+
+    #[test]
+    fn first_word_single_word() {
+        let (word, rest) = first_word("hello").unwrap();
+        assert_eq!(word, "hello");
+        assert_eq!(rest, "");
+    }
+
+    #[test]
+    fn first_word_leading_whitespace() {
+        let (word, rest) = first_word("  hello  world").unwrap();
+        assert_eq!(word, "hello");
+        assert_eq!(rest, "  world");
+    }
+
+    #[test]
+    fn first_word_empty_returns_none() {
+        assert!(first_word("").is_none());
+        assert!(first_word("   ").is_none());
+    }
+
+    // -----------------------------------------------------------------------
+    // split_status_word
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn split_status_word_normal() {
+        let (code, msg) = split_status_word("OK ready");
+        assert_eq!(code, "OK");
+        assert_eq!(msg, "ready");
+    }
+
+    #[test]
+    fn split_status_word_empty() {
+        let (code, msg) = split_status_word("");
+        assert_eq!(code, "");
+        assert_eq!(msg, "");
+    }
+
+    #[test]
+    fn split_status_word_single_word() {
+        let (code, msg) = split_status_word("OK");
+        assert_eq!(code, "OK");
+        assert_eq!(msg, "");
+    }
+
+    // -----------------------------------------------------------------------
+    // strip_keyword
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn strip_keyword_match() {
+        let result = strip_keyword("FETCH body", "FETCH");
+        assert_eq!(result, Some(" body"));
+    }
+
+    #[test]
+    fn strip_keyword_exact_match() {
+        let result = strip_keyword("FETCH", "FETCH");
+        assert_eq!(result, Some(""));
+    }
+
+    #[test]
+    fn strip_keyword_no_match() {
+        let result = strip_keyword("ENVELOPE body", "FETCH");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn strip_keyword_prefix_only_match() {
+        // "FETCHING" starts with "FETCH" but is NOT followed by whitespace or end.
+        let result = strip_keyword("FETCHING body", "FETCH");
+        assert_eq!(result, None);
+    }
+
+    // -----------------------------------------------------------------------
+    // read_u32
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn read_u32_valid_number() {
+        let (n, rest) = read_u32("42 rest").unwrap();
+        assert_eq!(n, 42);
+        assert_eq!(rest, " rest");
+    }
+
+    #[test]
+    fn read_u32_no_digits() {
+        assert!(read_u32("abc").is_none());
+    }
+
+    #[test]
+    fn read_u32_empty_string() {
+        assert!(read_u32("").is_none());
+    }
+
+    #[test]
+    fn read_u32_number_at_end() {
+        let (n, rest) = read_u32("12345").unwrap();
+        assert_eq!(n, 12345);
+        assert_eq!(rest, "");
+    }
+
+    // -----------------------------------------------------------------------
+    // token_to_string
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn token_to_string_word() {
+        assert_eq!(token_to_string(&Tok::Word("hello".into())), "hello");
+    }
+
+    #[test]
+    fn token_to_string_quoted_strips_quotes() {
+        assert_eq!(token_to_string(&Tok::Quoted("\"hi there\"".into())), "hi there");
+    }
+
+    #[test]
+    fn token_to_string_literal() {
+        assert_eq!(token_to_string(&Tok::Literal { count: 5, payload: "hello".into() }), "hello");
+    }
+
+    #[test]
+    fn token_to_string_group_returns_empty() {
+        assert_eq!(token_to_string(&Tok::Group(vec![])), "");
+    }
+
+    // -----------------------------------------------------------------------
+    // tokenise edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn tokenise_words_only() {
+        let toks = tokenise("UID 42 FLAGS", "", &mut 0);
+        assert_eq!(toks.len(), 3);
+        assert_eq!(toks[0], Tok::Word("UID".into()));
+        assert_eq!(toks[1], Tok::Word("42".into()));
+        assert_eq!(toks[2], Tok::Word("FLAGS".into()));
+    }
+
+    #[test]
+    fn tokenise_group() {
+        let toks = tokenise("(\\Seen \\Answered)", "", &mut 0);
+        assert_eq!(toks.len(), 1);
+        match &toks[0] {
+            Tok::Group(g) => {
+                assert_eq!(g.len(), 2);
+                assert_eq!(g[0], Tok::Word("\\Seen".into()));
+                assert_eq!(g[1], Tok::Word("\\Answered".into()));
+            }
+            _ => panic!("expected Group"),
+        }
+    }
+
+    #[test]
+    fn tokenise_nested_groups() {
+        let toks = tokenise("((a) (b))", "", &mut 0);
+        assert_eq!(toks.len(), 1);
+        match &toks[0] {
+            Tok::Group(g) => {
+                assert_eq!(g.len(), 2);
+                assert!(matches!(g[0], Tok::Group(_)));
+                assert!(matches!(g[1], Tok::Group(_)));
+            }
+            _ => panic!("expected Group"),
+        }
+    }
+
+    #[test]
+    fn tokenise_quoted_string() {
+        let toks = tokenise("\"hello world\"", "", &mut 0);
+        assert_eq!(toks.len(), 1);
+        assert_eq!(toks[0], Tok::Quoted("\"hello world\"".into()));
+    }
+
+    #[test]
+    fn tokenise_literal_with_payload() {
+        let mut offset = 0;
+        let toks = tokenise("{5}", "hello", &mut offset);
+        assert_eq!(toks.len(), 1);
+        match &toks[0] {
+            Tok::Literal { count, payload } => {
+                assert_eq!(*count, 5);
+                assert_eq!(payload, "hello");
+            }
+            _ => panic!("expected Literal"),
+        }
+    }
+
+    #[test]
+    fn tokenise_literal_truncated_payload() {
+        let mut offset = 0;
+        let toks = tokenise("{10}", "hi", &mut offset);
+        assert_eq!(toks.len(), 1);
+        match &toks[0] {
+            Tok::Literal { count, payload } => {
+                assert_eq!(*count, 10);
+                assert_eq!(payload, "hi"); // only 2 bytes available
+            }
+            _ => panic!("expected Literal"),
+        }
+    }
+
+    #[test]
+    fn tokenise_literal_invalid_count() {
+        let mut offset = 0;
+        let toks = tokenise("{abc}", "", &mut offset);
+        // Invalid count should be treated as a word
+        assert_eq!(toks.len(), 1);
+        assert_eq!(toks[0], Tok::Word("abc}".into()));
+    }
+
+    #[test]
+    fn tokenise_literal_no_closing_brace() {
+        let mut offset = 0;
+        let toks = tokenise("{5", "", &mut offset);
+        assert_eq!(toks.len(), 1);
+        assert_eq!(toks[0], Tok::Word("5".into()));
+    }
+
+    // -----------------------------------------------------------------------
+    // parse edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn parse_empty_input_returns_empty_status() {
+        let (items, status) = parse("").expect("parse");
+        assert!(items.is_empty());
+        assert_eq!(status.tagged, "");
+        assert_eq!(status.message, "");
+    }
+
+    #[test]
+    fn parse_untagged_ok_only() {
+        let input = "* OK [CAPABILITY IMAP4rev1] ready\r\n";
+        let (items, status) = parse(input).expect("parse");
+        assert!(items.is_empty());
+        assert_eq!(status.tagged, "*");
+        assert!(status.message.contains("OK"));
+    }
+
+    #[test]
+    fn parse_untagged_preauth() {
+        let input = "* PREAUTH [CAPABILITY IMAP4rev1] logged in\r\n";
+        let (_, status) = parse(input).expect("parse");
+        assert_eq!(status.tagged, "*");
+        assert!(status.message.contains("PREAUTH"));
+    }
+
+    #[test]
+    fn parse_multiple_fetch_items() {
+        let input = "* 1 FETCH (UID 100 FLAGS (\\Seen))\r\n* 2 FETCH (UID 200 FLAGS (\\Answered))\r\nA1 OK\r\n";
+        let (items, status) = parse(input).expect("parse");
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].uid, Some(100));
+        assert_eq!(items[1].uid, Some(200));
+        assert_eq!(status.tagged, "A1");
+    }
+
+    #[test]
+    fn parse_fetch_with_envelope() {
+        // ENVELOPE with a simple quoted value is extracted; a group value
+        // tokenises as a Group which token_to_string returns "" for.
+        let input = "* 1 FETCH (ENVELOPE \"subj\")\r\nA1 OK\r\n";
+        let (items, _) = parse(input).expect("parse");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].envelope, "subj");
+    }
+
+    #[test]
+    fn parse_fetch_no_uid() {
+        let input = "* 1 FETCH (FLAGS (\\Seen))\r\nA1 OK\r\n";
+        let (items, _) = parse(input).expect("parse");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].uid, None);
+    }
+
+    #[test]
+    fn parse_continuation_request_sets_status() {
+        let input = "+ Ready for data\r\n";
+        let (_, status) = parse(input).expect("parse");
+        assert_eq!(status.tagged, "+");
+    }
+
+    #[test]
+    fn parse_crlf_and_lf_line_endings() {
+        // LF-only should also work
+        let input = "* OK ready\nA1 OK done\n";
+        let (_, status) = parse(input).expect("parse");
+        assert_eq!(status.tagged, "A1");
+    }
+
+    #[test]
+    fn parse_tagged_bad_status() {
+        let input = "A1 BAD command unknown\r\n";
+        let (_, status) = parse(input).expect("parse");
+        assert_eq!(status.tagged, "A1");
+        assert!(status.message.contains("BAD"));
+    }
+
+    #[test]
+    fn parse_fetch_body_header_fields() {
+        // BODY[HEADER.FIELDS (From To)] is tokenised as separate tokens:
+        // Word("BODY[HEADER.FIELDS"), Group(["From", "To"]), Word("]"),
+        // Quoted("\"headers\""). The parser takes toks[i+1] which is the
+        // Group, and token_to_string(Group) returns "". This is a known
+        // parser limitation; we verify the actual behaviour.
+        let input = "* 1 FETCH (BODY[HEADER.FIELDS (From To)] \"headers\")\r\nA1 OK\r\n";
+        let (items, _) = parse(input).expect("parse");
+        assert_eq!(items.len(), 1);
+        // body_text is empty because the parser sees Group as the next token
+        assert_eq!(items[0].body_text, "");
+    }
+
+    #[test]
+    fn parse_fetch_with_literal_body() {
+        let input = "* 1 FETCH (BODY[TEXT] {11}\r\nhello world)\r\nA1 OK\r\n";
+        let (items, _) = parse(input).expect("parse");
+        assert_eq!(items[0].body_text, "hello world");
+    }
+
+    #[test]
+    fn parse_fetch_unclosed_parens_returns_none() {
+        // An unclosed fetch block should just be skipped.
+        let input = "* 1 FETCH (UID 100\r\nA1 OK\r\n";
+        let (items, _) = parse(input).expect("parse");
+        assert!(items.is_empty());
+    }
+
+    #[test]
+    fn parse_fetch_not_a_fetch_block_ignored() {
+        // Non-FETCH untagged lines should be silently ignored.
+        let input = "* LIST () \"/\" \"INBOX\"\r\nA1 OK\r\n";
+        let (items, _) = parse(input).expect("parse");
+        assert!(items.is_empty());
+    }
+
+    #[test]
+    fn parse_status_word_in_continuation() {
+        let input = "+ [CAPABILITY IMAP4rev1 LITERAL+]\r\n";
+        let (_, status) = parse(input).expect("parse");
+        assert_eq!(status.tagged, "+");
+    }
+
+    #[test]
+    fn fetch_flags_single_word() {
+        let input = "* 1 FETCH (FLAGS \\Seen)\r\nA1 OK\r\n";
+        let (items, _) = parse(input).expect("parse");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].flags, vec!["\\Seen"]);
+    }
 }
