@@ -85,6 +85,10 @@ jobs:
         uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
         with:
           version: 0.14.1
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libglib2.0-dev libgtk-3-dev libxdo-dev pkg-config
       - name: Build all targets
         run: cargo check --workspace --all-targets
       - name: Unit tests (nextest, informational)
