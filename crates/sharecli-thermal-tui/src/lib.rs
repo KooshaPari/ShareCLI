@@ -2134,6 +2134,464 @@ mod tests {
         assert!(app.status_panel.is_some(), "poll MUST apply the status snapshot");
     }
 
+    // --- Additional edge-case tests ---
+
+    #[test]
+    fn test_slot_ratio_zero_active_zero_cap() {
+        assert_eq!(slot_ratio(0, 0), 0.0);
+    }
+
+    #[test]
+    fn test_slot_ratio_active_with_zero_cap() {
+        assert_eq!(slot_ratio(5, 0), 0.0);
+    }
+
+    #[test]
+    fn test_slot_ratio_normal() {
+        assert_eq!(slot_ratio(1, 4), 0.25);
+        assert_eq!(slot_ratio(2, 4), 0.5);
+        assert_eq!(slot_ratio(4, 4), 1.0);
+    }
+
+    #[test]
+    fn test_slot_ratio_clamps() {
+        assert_eq!(slot_ratio(100, 4), 1.0, "active > cap MUST clamp to 1.0");
+    }
+
+    #[test]
+    fn test_slot_color_green() {
+        assert_eq!(slot_color(1, 4), Color::Green, "< 50% MUST be green");
+    }
+
+    #[test]
+    fn test_slot_color_yellow() {
+        assert_eq!(slot_color(2, 4), Color::Yellow, "50-90% MUST be yellow");
+        assert_eq!(slot_color(3, 4), Color::Yellow);
+    }
+
+    #[test]
+    fn test_slot_color_red() {
+        assert_eq!(slot_color(4, 4), Color::Red, ">= 90% MUST be red");
+        assert_eq!(slot_color(40, 42), Color::Red);
+    }
+
+    #[test]
+    fn test_host_agent_lines_empty() {
+        let lines = host_agent_lines(&[], false);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("none detected"));
+    }
+
+    #[test]
+    fn test_host_agent_lines_compact_empty() {
+        let lines = host_agent_lines(&[], true);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("none"));
+    }
+
+    #[test]
+    fn test_host_agent_lines_with_agents() {
+        let agents = vec![
+            DetectedAgent { pid: 100, family: "claude", comm: "claude".into() },
+            DetectedAgent { pid: 200, family: "forge", comm: "forge".into() },
+        ];
+        let lines = host_agent_lines(&agents, false);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("claude"));
+        assert!(text.contains("forge"));
+        assert!(text.contains("Host agents:"));
+    }
+
+    #[test]
+    fn test_host_agent_lines_compact_with_agents() {
+        let agents = vec![
+            DetectedAgent { pid: 100, family: "claude", comm: "claude".into() },
+        ];
+        let lines = host_agent_lines(&agents, true);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("claude:100"));
+    }
+
+    #[test]
+    fn test_host_agent_lines_truncates_at_four() {
+        let agents: Vec<_> = (0..6)
+            .map(|i| DetectedAgent {
+                pid: 100 + i,
+                family: "test",
+                comm: format!("test-{i}"),
+            })
+            .collect();
+        let lines = host_agent_lines(&agents, false);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("+2 more"), "MUST truncate at 4 and show overflow count");
+    }
+
+    #[test]
+    fn test_fuse_neg_dentry_lines_full() {
+        let meters = NegDentryMeters { hits: 80, misses: 20 };
+        let lines = fuse_neg_dentry_lines(meters, false);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("Neg hits:     80"));
+        assert!(text.contains("Neg misses:   20"));
+        assert!(text.contains("Hit rate:     80%"));
+    }
+
+    #[test]
+    fn test_fuse_neg_dentry_lines_compact() {
+        let meters = NegDentryMeters { hits: 80, misses: 20 };
+        let lines = fuse_neg_dentry_lines(meters, true);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("neg:80"));
+        assert!(text.contains("miss:20"));
+    }
+
+    #[test]
+    fn test_hypervisor_coalesce_lines_full() {
+        let meters = CoalesceMeters { hits: 90, misses: 10, nocache_runs: 5 };
+        let lines = hypervisor_coalesce_lines(meters, false);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("Coalesce hits:   90"));
+        assert!(text.contains("Coalesce misses: 10"));
+        assert!(text.contains("Nocache runs:    5"));
+        assert!(text.contains("Hit rate:        90%"));
+    }
+
+    #[test]
+    fn test_hypervisor_coalesce_lines_compact() {
+        let meters = CoalesceMeters { hits: 90, misses: 10, nocache_runs: 5 };
+        let lines = hypervisor_coalesce_lines(meters, true);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("coalesce:90"));
+        assert!(text.contains("miss:10"));
+        assert!(text.contains("nocache:5"));
+    }
+
+    #[test]
+    fn test_hypervisor_slot_queue_lines_full() {
+        let meters = SlotQueueMeters { acquires: 100, waits: 5, timeouts: 2 };
+        let lines = hypervisor_slot_queue_lines(meters, false);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("Slot acquires: 100"));
+        assert!(text.contains("Slot waits:    5"));
+        assert!(text.contains("Slot timeouts: 2"));
+    }
+
+    #[test]
+    fn test_hypervisor_slot_queue_lines_compact() {
+        let meters = SlotQueueMeters { acquires: 100, waits: 5, timeouts: 2 };
+        let lines = hypervisor_slot_queue_lines(meters, true);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("slot:100"));
+        assert!(text.contains("wait:5"));
+        assert!(text.contains("to:2"));
+    }
+
+    #[test]
+    fn test_fuse_write_serialize_lines_full() {
+        let meters = WriteSerializeMeters {
+            passthrough_writes: 50,
+            stages: 30,
+            commits: 25,
+            discards: 5,
+        };
+        let lines = fuse_write_serialize_lines(meters, false);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("Passthrough:  50"));
+        assert!(text.contains("Stages:       30"));
+        assert!(text.contains("Commits:      25"));
+        assert!(text.contains("Discards:     5"));
+    }
+
+    #[test]
+    fn test_fuse_write_serialize_lines_compact() {
+        let meters = WriteSerializeMeters {
+            passthrough_writes: 50,
+            stages: 30,
+            commits: 25,
+            discards: 5,
+        };
+        let lines = fuse_write_serialize_lines(meters, true);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("wr:50"));
+        assert!(text.contains("st:30"));
+        assert!(text.contains("cm:25"));
+        assert!(text.contains("ds:5"));
+    }
+
+    #[test]
+    fn test_fuse_coalesce_lines_full_100pct() {
+        let meters = ReadCacheMeters { hits: 100, misses: 0 };
+        let lines = fuse_coalesce_lines(meters, false);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("Cache hits:   100"));
+        assert!(text.contains("Cache misses: 0"));
+        assert!(text.contains("Hit rate:     100%"));
+    }
+
+    #[test]
+    fn test_fuse_coalesce_lines_compact() {
+        let meters = ReadCacheMeters { hits: 75, misses: 25 };
+        let lines = fuse_coalesce_lines(meters, true);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("hits:75"));
+        assert!(text.contains("miss:25"));
+    }
+
+    #[test]
+    fn test_mesh_maildir_lines_none() {
+        let lines = mesh_maildir_lines(None, false);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("unavailable"));
+    }
+
+    #[test]
+    fn test_mesh_maildir_lines_some_full() {
+        let status = MaildirStatus { path: std::path::PathBuf::from("/tmp/maildir"), ready: 5, in_flight: 2, pending: 3 };
+        let lines = mesh_maildir_lines(Some(status), false);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("Mesh ready:     5"));
+        assert!(text.contains("Mesh in-flight: 2"));
+        assert!(text.contains("Mesh pending:   3"));
+    }
+
+    #[test]
+    fn test_mesh_maildir_lines_some_compact() {
+        let status = MaildirStatus { path: std::path::PathBuf::from("/tmp/maildir"), ready: 5, in_flight: 2, pending: 3 };
+        let lines = mesh_maildir_lines(Some(status), true);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("mesh r:5 f:2 p:3"));
+    }
+
+    #[test]
+    fn test_resource_watch_lines_none_full() {
+        let lines = resource_watch_lines(None, false);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("unavailable"));
+    }
+
+    #[test]
+    fn test_resource_watch_lines_none_compact() {
+        let lines = resource_watch_lines(None, true);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("unavailable"));
+    }
+
+    #[test]
+    fn test_resource_watch_lines_some_full() {
+        let sample = ResourceWatchSample {
+            fd_count: 100,
+            net_rx_bytes: 5000,
+            net_tx_bytes: 3000,
+            mem_rss_bytes: 2048,
+            load_1m: 0.5,
+        };
+        let lines = resource_watch_lines(Some(sample), false);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("Open FDs:  100"));
+        assert!(text.contains("RSS:       2048 bytes"));
+        assert!(text.contains("Load (1m): 0.50"));
+    }
+
+    #[test]
+    fn test_resource_watch_lines_some_compact() {
+        let sample = ResourceWatchSample {
+            fd_count: 100,
+            net_rx_bytes: 5000,
+            net_tx_bytes: 3000,
+            mem_rss_bytes: 2048,
+            load_1m: 0.5,
+        };
+        let lines = resource_watch_lines(Some(sample), true);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("FD:100"));
+        assert!(text.contains("RSS:2048"));
+    }
+
+    #[test]
+    fn test_pool_panel_lines_none_full() {
+        let lines = pool_panel_lines(None, false);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("Runtime pool unavailable"));
+    }
+
+    #[test]
+    fn test_pool_panel_lines_none_compact() {
+        let lines = pool_panel_lines(None, true);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("pool unavailable"));
+    }
+
+    #[test]
+    fn test_status_panel_lines_none_full() {
+        let lines = status_panel_lines(None, false);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("Proc scan status unavailable"));
+    }
+
+    #[test]
+    fn test_status_panel_lines_none_compact() {
+        let lines = status_panel_lines(None, true);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("status unavailable"));
+    }
+
+    #[test]
+    fn test_apply_key_action_focus_next() {
+        let mut app = App::new(4);
+        apply_key_action(&mut app, KeyAction::FocusNext);
+        assert_eq!(app.focus, PanelFocus::Pool);
+    }
+
+    #[test]
+    fn test_apply_key_action_focus_prev() {
+        let mut app = App::new(4);
+        apply_key_action(&mut app, KeyAction::FocusPrev);
+        assert_eq!(app.focus, PanelFocus::Agents);
+    }
+
+    #[test]
+    fn test_apply_key_action_focus_panel() {
+        let mut app = App::new(4);
+        apply_key_action(&mut app, KeyAction::FocusPanel(PanelFocus::Status));
+        assert_eq!(app.focus, PanelFocus::Status);
+    }
+
+    #[test]
+    fn test_app_new_defaults() {
+        let app = App::new(8);
+        assert_eq!(app.thermal_level, ThermalLevel::Green);
+        assert_eq!(app.active_slots, 0);
+        assert_eq!(app.slot_cap, 8);
+        assert_eq!(app.poll_count, 0);
+        assert!(!app.show_help_overlay);
+        assert_eq!(app.focus, PanelFocus::Gate);
+    }
+
+    #[test]
+    fn test_app_update() {
+        let mut app = App::new(4);
+        app.update(ThermalLevel::Red, 3);
+        assert_eq!(app.thermal_level, ThermalLevel::Red);
+        assert_eq!(app.active_slots, 3);
+        assert_eq!(app.poll_count, 1);
+    }
+
+    #[test]
+    fn test_panel_focus_from_digit() {
+        assert_eq!(PanelFocus::from_digit('1'), Some(PanelFocus::Gate));
+        assert_eq!(PanelFocus::from_digit('2'), Some(PanelFocus::Pool));
+        assert_eq!(PanelFocus::from_digit('3'), Some(PanelFocus::Status));
+        assert_eq!(PanelFocus::from_digit('4'), Some(PanelFocus::HostWatch));
+        assert_eq!(PanelFocus::from_digit('5'), Some(PanelFocus::Agents));
+        assert_eq!(PanelFocus::from_digit('0'), None);
+        assert_eq!(PanelFocus::from_digit('6'), None);
+        assert_eq!(PanelFocus::from_digit('a'), None);
+    }
+
+    #[test]
+    fn test_agent_lines_empty_full_message() {
+        let lines = agent_lines(&[], &std::collections::HashMap::new(), false);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("No agent processes detected"));
+    }
+
+    #[test]
+    fn test_agent_lines_empty_compact() {
+        let lines = agent_lines(&[], &std::collections::HashMap::new(), true);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("none"));
+    }
+
+    #[test]
+    fn test_agent_lines_with_agents_full() {
+        let agents = vec![
+            DetectedAgentWatch {
+                agent: DetectedAgent { pid: 100, family: "claude", comm: "claude".into() },
+                resource: AgentResourceSample { mem_rss_bytes: 1_000_000, fd_count: Some(10) },
+            },
+        ];
+        let state = HashMap::from([(100, 'S')]);
+        let lines = agent_lines(&agents, &state, false);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("PID 100"));
+        assert!(text.contains("claude"));
+        assert!(text.contains("FD 10"));
+        assert!(text.contains("Agents: 1"));
+    }
+
+    #[test]
+    fn test_agent_lines_with_agents_compact() {
+        let agents = vec![
+            DetectedAgentWatch {
+                agent: DetectedAgent { pid: 100, family: "claude", comm: "claude".into() },
+                resource: AgentResourceSample { mem_rss_bytes: 1_000_000, fd_count: None },
+            },
+        ];
+        let state = HashMap::new();
+        let lines = agent_lines(&agents, &state, true);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("claude:100"));
+    }
+
+    #[test]
+    fn test_agent_lines_truncates_at_max() {
+        let agents: Vec<_> = (0..6)
+            .map(|i| DetectedAgentWatch {
+                agent: DetectedAgent {
+                    pid: 100 + i,
+                    family: "test",
+                    comm: format!("test-{i}"),
+                },
+                resource: AgentResourceSample { mem_rss_bytes: 1000, fd_count: None },
+            })
+            .collect();
+        let state = HashMap::new();
+        let lines = agent_lines(&agents, &state, false);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("+2 more"), "MUST truncate at MAX_AGENT_LINES");
+    }
+
+    #[test]
+    fn test_agent_forest_lines_empty_falls_back() {
+        let lines = agent_forest_lines(&[], &[], &HashMap::new(), false);
+        assert!(lines.iter().map(|l| l.to_string()).collect::<String>().contains("No agent"));
+    }
+
+    #[test]
+    fn test_agent_forest_lines_compact_falls_back_to_agent_lines() {
+        let lines = agent_forest_lines(&[], &[], &HashMap::new(), true);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("none"));
+    }
+
+    #[test]
+    fn test_agent_forest_lines_with_forests() {
+        let forest = AgentTreeNode {
+            pid: 100,
+            ppid: 1,
+            comm: "claude".into(),
+            family: Some("claude"),
+            children: vec![AgentTreeNode {
+                pid: 200,
+                ppid: 100,
+                comm: "bash".into(),
+                family: None,
+                children: vec![],
+            }],
+        };
+        let watched = vec![DetectedAgentWatch {
+            agent: DetectedAgent { pid: 100, family: "claude", comm: "claude".into() },
+            resource: AgentResourceSample { mem_rss_bytes: 500_000, fd_count: None },
+        }];
+        let state = HashMap::from([(100, 'S'), (200, 'R')]);
+        let lines = agent_forest_lines(&[forest], &watched, &state, false);
+        let text: String = lines.iter().map(|l| l.to_string()).collect();
+        assert!(text.contains("Forests: 1"));
+        assert!(text.contains("100"));
+        assert!(text.contains("claude"));
+        assert!(text.contains("200"));
+    }
+
     // --- proptest (C07 L66) ---
     proptest::proptest! {
         #![proptest_config(proptest::test_runner::Config {

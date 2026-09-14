@@ -475,4 +475,258 @@ mod tests {
         );
         assert_eq!(resolve_operator_queue_priority(None), QueuePriority::Normal);
     }
+
+    // --- Additional edge-case tests ---
+
+    #[test]
+    fn priority_parse_case_insensitive() {
+        assert_eq!(QueuePriority::parse("Critical"), QueuePriority::Critical);
+        assert_eq!(QueuePriority::parse("LOW"), QueuePriority::Low);
+        assert_eq!(QueuePriority::parse("Background"), QueuePriority::Background);
+        assert_eq!(QueuePriority::parse("NORMAL"), QueuePriority::Normal);
+        assert_eq!(QueuePriority::parse("  High  "), QueuePriority::High);
+    }
+
+    #[test]
+    fn priority_as_u8() {
+        assert_eq!(QueuePriority::Critical.as_u8(), 0);
+        assert_eq!(QueuePriority::High.as_u8(), 1);
+        assert_eq!(QueuePriority::Normal.as_u8(), 2);
+        assert_eq!(QueuePriority::Low.as_u8(), 3);
+        assert_eq!(QueuePriority::Background.as_u8(), 4);
+    }
+
+    #[test]
+    fn priority_ordering() {
+        assert!(QueuePriority::Critical < QueuePriority::High);
+        assert!(QueuePriority::High < QueuePriority::Normal);
+        assert!(QueuePriority::Normal < QueuePriority::Low);
+        assert!(QueuePriority::Low < QueuePriority::Background);
+    }
+
+    #[test]
+    fn priority_default_is_normal() {
+        assert_eq!(QueuePriority::default(), QueuePriority::Normal);
+    }
+
+    #[test]
+    fn slot_queue_root_and_max_concurrent() {
+        let dir = tempfile::tempdir().unwrap();
+        let q = SlotQueue::new(dir.path(), 3);
+        assert_eq!(q.root(), dir.path());
+        assert_eq!(q.max_concurrent(), 3);
+    }
+
+    #[test]
+    fn slot_queue_max_concurrent_min_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let q = SlotQueue::new(dir.path(), 0);
+        assert_eq!(q.max_concurrent(), 1, "max_concurrent=0 MUST clamp to 1");
+    }
+
+    #[test]
+    fn with_slot_returns_ok_value() {
+        let dir = tempfile::tempdir().unwrap();
+        let q = SlotQueue::new(dir.path(), 2);
+        let result = q.with_slot("test-lane", QueuePriority::Normal, || Ok(42)).unwrap();
+        assert_eq!(result, 42);
+    }
+
+    #[test]
+    fn with_slot_propagates_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let q = SlotQueue::new(dir.path(), 2);
+        let result: Result<Option<String>, _> = q.with_slot("err-lane", QueuePriority::Normal, || {
+            anyhow::bail!("intentional error")
+        });
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("intentional error"));
+    }
+
+    #[test]
+    fn with_slot_creates_root_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let nested = dir.path().join("nested").join("queue");
+        let q = SlotQueue::new(&nested, 1);
+        assert!(!nested.exists(), "root must not exist yet");
+        q.with_slot("lane", QueuePriority::Normal, || Ok(())).unwrap();
+        assert!(nested.exists(), "root MUST be created");
+    }
+
+    #[test]
+    fn with_slot_timeout_when_all_slots_busy() {
+        let dir = tempfile::tempdir().unwrap();
+        let q = SlotQueue::with_options(
+            dir.path(),
+            1,
+            Duration::from_millis(100), // very short timeout
+            Duration::from_millis(10),
+        );
+        let active = Arc::new(AtomicBool::new(false));
+        let active_flag = Arc::clone(&active);
+        let root = dir.path().to_path_buf();
+
+        // Hold the only slot in a background thread
+        let holder = thread::spawn(move || {
+            let q2 = SlotQueue::with_options(
+                &root,
+                1,
+                Duration::from_secs(5),
+                Duration::from_millis(10),
+            );
+            q2.with_slot("timeout-lane", QueuePriority::Normal, || {
+                active_flag.store(true, Ordering::SeqCst);
+                thread::sleep(Duration::from_millis(500));
+                Ok(())
+            })
+            .unwrap();
+        });
+
+        // Wait for holder to acquire
+        while !active.load(Ordering::SeqCst) {
+            thread::sleep(Duration::from_millis(5));
+        }
+
+        // Second attempt should timeout
+        let result = q.with_slot("timeout-lane", QueuePriority::Normal, || Ok(()));
+        assert!(result.is_err());
+        assert!(
+            result.unwrap_err().to_string().contains("queue timeout"),
+            "MUST report queue timeout"
+        );
+
+        holder.join().unwrap();
+    }
+
+    #[test]
+    fn ticket_priority_parses_first_field() {
+        assert_eq!(SlotQueue::ticket_priority("00.123.456.789"), 0);
+        assert_eq!(SlotQueue::ticket_priority("02.123.456.789"), 2);
+        assert_eq!(SlotQueue::ticket_priority("04.123.456.789"), 4);
+        assert_eq!(SlotQueue::ticket_priority("bad-format"), QueuePriority::Normal.as_u8());
+    }
+
+    #[test]
+    fn with_slot_concurrent_different_lanes() {
+        let dir = tempfile::tempdir().unwrap();
+        let active = Arc::new(AtomicU32::new(0));
+        let peak = Arc::new(AtomicU32::new(0));
+        let mut handles = vec![];
+
+        for lane in ["lane-a", "lane-b", "lane-c"] {
+            let root = dir.path().to_path_buf();
+            let active = Arc::clone(&active);
+            let peak = Arc::clone(&peak);
+            let lane = lane.to_string();
+            handles.push(thread::spawn(move || {
+                let q = SlotQueue::with_options(
+                    &root,
+                    1,
+                    Duration::from_secs(5),
+                    Duration::from_millis(10),
+                );
+                q.with_slot(&lane, QueuePriority::Normal, || {
+                    let n = active.fetch_add(1, Ordering::SeqCst) + 1;
+                    peak.fetch_max(n, Ordering::SeqCst);
+                    thread::sleep(Duration::from_millis(30));
+                    active.fetch_sub(1, Ordering::SeqCst);
+                    Ok(())
+                })
+                .unwrap();
+            }));
+        }
+
+        for h in handles {
+            h.join().unwrap();
+        }
+        // Different lanes with max_concurrent=1 per lane should allow parallel execution
+        assert!(
+            peak.load(Ordering::SeqCst) >= 2,
+            "different lanes MUST allow parallel execution"
+        );
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn resolve_operator_queue_priority_empty_env_uses_rule() {
+        unsafe {
+            std::env::set_var(QUEUE_PRIORITY_ENV, "  ");
+        }
+        assert_eq!(
+            resolve_operator_queue_priority(Some("low")),
+            QueuePriority::Low,
+            "empty/whitespace env MUST fall through to rules.conf"
+        );
+        unsafe {
+            std::env::remove_var(QUEUE_PRIORITY_ENV);
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn resolve_operator_queue_priority_no_env_no_rule_is_normal() {
+        unsafe {
+            std::env::remove_var(QUEUE_PRIORITY_ENV);
+        }
+        assert_eq!(resolve_operator_queue_priority(None), QueuePriority::Normal);
+    }
+
+    #[test]
+    fn with_slot_priority_tagged_waiters() {
+        // Verify that tickets are written with priority prefix
+        let dir = tempfile::tempdir().unwrap();
+        let _q = SlotQueue::new(dir.path(), 1);
+        let root = dir.path().to_path_buf();
+
+        let active = Arc::new(AtomicBool::new(false));
+        let active_flag = Arc::clone(&active);
+        let release = Arc::new(AtomicBool::new(false));
+        let release_flag = Arc::clone(&release);
+
+        // Thread 1 holds the slot
+        let t1_root = root.clone();
+        let t1 = thread::spawn(move || {
+            let q2 = SlotQueue::with_options(&t1_root, 1, Duration::from_secs(5), Duration::from_millis(5));
+            q2.with_slot("priority-lane", QueuePriority::Low, || {
+                active_flag.store(true, Ordering::SeqCst);
+                while !release_flag.load(Ordering::SeqCst) {
+                    thread::sleep(Duration::from_millis(5));
+                }
+                Ok(())
+            })
+            .unwrap();
+        });
+
+        while !active.load(Ordering::SeqCst) {
+            thread::sleep(Duration::from_millis(2));
+        }
+
+        // Thread 2 queues a Critical waiter
+        let t2_root = root.clone();
+        let t2 = thread::spawn(move || {
+            let q2 = SlotQueue::with_options(&t2_root, 1, Duration::from_secs(5), Duration::from_millis(5));
+            q2.with_slot("priority-lane", QueuePriority::Critical, || Ok(())).unwrap();
+        });
+
+        // Give time for waiter ticket to be written
+        thread::sleep(Duration::from_millis(50));
+
+        // Verify a waiter file exists with priority prefix
+        let waiting_dir = root.join("priority-lane.waiting");
+        let entries: Vec<_> = fs::read_dir(&waiting_dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().map(|ft| ft.is_file()).unwrap_or(false))
+            .collect();
+        assert!(!entries.is_empty(), "MUST have waiter ticket");
+        let ticket_name = entries[0].file_name().to_string_lossy().to_string();
+        assert!(
+            ticket_name.starts_with('0'),
+            "Critical waiter MUST have priority prefix 0; got: {ticket_name}"
+        );
+
+        release.store(true, Ordering::SeqCst);
+        t1.join().unwrap();
+        t2.join().unwrap();
+    }
 }

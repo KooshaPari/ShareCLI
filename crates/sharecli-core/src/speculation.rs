@@ -358,4 +358,202 @@ mod tests {
         let stdout = String::from_utf8_lossy(&result.stdout);
         assert!(stdout.contains("spec-test"));
     }
+
+    #[test]
+    fn speculate_execute_empty_argv_returns_err() {
+        let cwd = std::path::PathBuf::from("/tmp");
+        let result = speculate_execute(&[], &cwd, &[]);
+        assert!(result.is_err());
+        assert!(
+            result.unwrap_err().to_string().contains("argv is empty"),
+            "error MUST mention empty argv"
+        );
+    }
+
+    #[test]
+    fn speculate_execute_nonexistent_command_returns_error() {
+        let argv = vec!["__nonexistent_binary_12345__".into()];
+        let cwd = std::path::PathBuf::from("/tmp");
+        let result = speculate_execute(&argv, &cwd, &[]);
+        assert!(result.is_err());
+        assert!(
+            result.unwrap_err().to_string().contains("failed to spawn"),
+            "error MUST mention spawn failure"
+        );
+    }
+
+    #[test]
+    fn speculate_execute_captures_stderr() {
+        // `echo` to stderr via sh -c
+        let argv = vec!["sh".into(), "-c".into(), "echo err-msg >&2".into()];
+        let cwd = std::path::PathBuf::from("/tmp");
+        let result = speculate_execute(&argv, &cwd, &[]).expect("execute");
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        assert!(stderr.contains("err-msg"), "stderr MUST be captured");
+    }
+
+    #[test]
+    fn speculate_execute_nonzero_exit_code() {
+        let argv = vec!["sh".into(), "-c".into(), "exit 42".into()];
+        let cwd = std::path::PathBuf::from("/tmp");
+        let result = speculate_execute(&argv, &cwd, &[]).expect("execute");
+        assert_eq!(result.exit_code, 42);
+    }
+
+    #[test]
+    fn speculate_execute_with_env_vars() {
+        let argv = vec!["sh".into(), "-c".into(), "echo $MY_SPEC_VAR".into()];
+        let cwd = std::path::PathBuf::from("/tmp");
+        let env = vec![("MY_SPEC_VAR".into(), "hello_env".into())];
+        let result = speculate_execute(&argv, &cwd, &env).expect("execute");
+        let stdout = String::from_utf8_lossy(&result.stdout);
+        assert!(stdout.contains("hello_env"), "env vars MUST be passed");
+    }
+
+    #[test]
+    fn speculate_execute_with_cwd() {
+        let argv = vec!["pwd".into()];
+        let cwd = std::path::PathBuf::from("/tmp");
+        let result = speculate_execute(&argv, &cwd, &[]).expect("execute");
+        let stdout = String::from_utf8_lossy(&result.stdout).trim().to_string();
+        // On macOS, /var may resolve to /private/var via symlink
+        assert!(
+            stdout == "/tmp" || stdout == "/private/tmp",
+            "cwd MUST be /tmp; got: {stdout}"
+        );
+    }
+
+    #[tokio::test]
+    async fn tracker_len_matches_inserted_keys() {
+        let tracker = SpeculationTracker::new();
+        let cwd = std::path::PathBuf::from("/tmp");
+
+        let key_a = CommandKey("aaa".into());
+        let key_b = CommandKey("bbb".into());
+
+        tracker.record_hit(&key_a, &["echo".into()], &cwd, &[]).await;
+        assert_eq!(tracker.len().await, 1);
+
+        tracker.record_hit(&key_b, &["ls".into()], &cwd, &[]).await;
+        assert_eq!(tracker.len().await, 2);
+
+        // Same key again doesn't increase count of distinct keys
+        tracker.record_hit(&key_a, &["echo".into()], &cwd, &[]).await;
+        assert_eq!(tracker.len().await, 2);
+    }
+
+    #[tokio::test]
+    async fn drain_below_threshold_returns_empty() {
+        let tracker = SpeculationTracker::new();
+        let cwd = std::path::PathBuf::from("/tmp");
+        let key = CommandKey("below-threshold".into());
+
+        // Exactly threshold-1 hits
+        for _ in 0..(SPECULATION_THRESHOLD - 1) {
+            tracker.record_hit(&key, &["cmd".into()], &cwd, &[]).await;
+        }
+        assert!(tracker.drain_candidates().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn drain_returns_highest_frequency_first() {
+        let tracker = SpeculationTracker::new();
+        let cwd = std::path::PathBuf::from("/tmp");
+
+        let key_low = CommandKey("low-freq".into());
+        let key_high = CommandKey("high-freq".into());
+
+        // Low gets exactly threshold hits
+        for _ in 0..SPECULATION_THRESHOLD {
+            tracker.record_hit(&key_low, &["low".into()], &cwd, &[]).await;
+        }
+        // High gets threshold + 2
+        for _ in 0..(SPECULATION_THRESHOLD + 2) {
+            tracker.record_hit(&key_high, &["high".into()], &cwd, &[]).await;
+        }
+
+        let candidates = tracker.drain_candidates().await;
+        assert_eq!(candidates.len(), 2);
+        assert_eq!(candidates[0].key, key_high, "highest frequency MUST come first");
+        assert_eq!(candidates[1].key, key_low);
+    }
+
+    #[tokio::test]
+    async fn drain_preserves_request_details() {
+        let tracker = SpeculationTracker::new();
+        let cwd = std::path::PathBuf::from("/opt/project");
+        let key = CommandKey("detail-test".into());
+        let argv = vec!["cargo".into(), "test".into()];
+        let env = vec![("RUST_LOG".into(), "debug".into())];
+
+        for _ in 0..SPECULATION_THRESHOLD {
+            tracker.record_hit(&key, &argv, &cwd, &env).await;
+        }
+
+        let candidates = tracker.drain_candidates().await;
+        assert_eq!(candidates.len(), 1);
+        let c = &candidates[0];
+        assert_eq!(c.argv, argv);
+        assert_eq!(c.cwd, cwd);
+        assert_eq!(c.env, env);
+    }
+
+    #[tokio::test]
+    async fn drain_does_not_return_candidates_still_below_threshold() {
+        let tracker = SpeculationTracker::new();
+        let cwd = std::path::PathBuf::from("/tmp");
+        let key_ok = CommandKey("ok".into());
+        let key_low = CommandKey("low".into());
+
+        for _ in 0..SPECULATION_THRESHOLD {
+            tracker.record_hit(&key_ok, &["ok".into()], &cwd, &[]).await;
+        }
+        for _ in 0..(SPECULATION_THRESHOLD - 1) {
+            tracker.record_hit(&key_low, &["low".into()], &cwd, &[]).await;
+        }
+
+        let candidates = tracker.drain_candidates().await;
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].key, key_ok);
+    }
+
+    #[tokio::test]
+    async fn tracker_new_is_empty() {
+        let tracker = SpeculationTracker::new();
+        assert!(tracker.is_empty().await);
+        assert_eq!(tracker.len().await, 0);
+    }
+
+    #[test]
+    fn speculate_execute_multiple_args() {
+        let argv = vec!["sh".into(), "-c".into(), "echo $1 $2".into(), "sh".into(), "a".into(), "b".into()];
+        let cwd = std::path::PathBuf::from("/tmp");
+        let result = speculate_execute(&argv, &cwd, &[]).expect("execute");
+        let stdout = String::from_utf8_lossy(&result.stdout).trim().to_string();
+        assert_eq!(stdout, "a b");
+    }
+
+    #[tokio::test]
+    async fn drain_empty_tracker_returns_empty() {
+        let tracker = SpeculationTracker::new();
+        assert!(tracker.drain_candidates().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn drain_twice_returns_only_new_candidates() {
+        let tracker = SpeculationTracker::new();
+        let cwd = std::path::PathBuf::from("/tmp");
+        let key = CommandKey("drain-twice".into());
+
+        for _ in 0..SPECULATION_THRESHOLD {
+            tracker.record_hit(&key, &["cmd".into()], &cwd, &[]).await;
+        }
+
+        let first = tracker.drain_candidates().await;
+        assert_eq!(first.len(), 1);
+
+        // After drain, counter is reset — next drain should be empty
+        let second = tracker.drain_candidates().await;
+        assert!(second.is_empty());
+    }
 }

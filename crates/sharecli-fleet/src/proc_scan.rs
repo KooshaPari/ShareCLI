@@ -493,4 +493,219 @@ mod tests {
         assert_eq!(state_text_for_pid(&map, 300), "R");
         assert_eq!(state_text_for_pid(&HashMap::new(), 300), "-");
     }
+
+    // --- Additional edge-case tests ---
+
+    #[test]
+    fn sysinfo_status_to_char_all_variants() {
+        use sysinfo::ProcessStatus;
+        assert_eq!(sysinfo_status_to_char(ProcessStatus::Run), 'R');
+        assert_eq!(sysinfo_status_to_char(ProcessStatus::Sleep), 'S');
+        assert_eq!(sysinfo_status_to_char(ProcessStatus::UninterruptibleDiskSleep), 'D');
+        assert_eq!(sysinfo_status_to_char(ProcessStatus::Stop), 'T');
+        assert_eq!(sysinfo_status_to_char(ProcessStatus::Zombie), 'Z');
+        assert_eq!(sysinfo_status_to_char(ProcessStatus::Tracing), 't');
+        assert_eq!(sysinfo_status_to_char(ProcessStatus::Dead), 'X');
+        assert_eq!(sysinfo_status_to_char(ProcessStatus::Wakekill), 'K');
+        assert_eq!(sysinfo_status_to_char(ProcessStatus::Waking), 'W');
+        assert_eq!(sysinfo_status_to_char(ProcessStatus::Parked), 'P');
+        assert_eq!(sysinfo_status_to_char(ProcessStatus::Idle), 'I');
+    }
+
+    #[test]
+    fn sysinfo_status_to_char_unknown() {
+        use sysinfo::ProcessStatus;
+        assert_eq!(sysinfo_status_to_char(ProcessStatus::Unknown(99)), '?');
+    }
+
+    #[test]
+    fn state_text_for_pid_unknown_state() {
+        let mut map = HashMap::new();
+        map.insert(100, '?');
+        assert_eq!(state_text_for_pid(&map, 100), "-", "state '?' MUST display as '-'");
+    }
+
+    #[test]
+    fn state_text_for_pid_valid_states() {
+        let mut map = HashMap::new();
+        map.insert(1, 'R');
+        map.insert(2, 'S');
+        map.insert(3, 'D');
+        map.insert(4, 'Z');
+        assert_eq!(state_text_for_pid(&map, 1), "R");
+        assert_eq!(state_text_for_pid(&map, 2), "S");
+        assert_eq!(state_text_for_pid(&map, 3), "D");
+        assert_eq!(state_text_for_pid(&map, 4), "Z");
+    }
+
+    #[test]
+    fn state_text_for_pid_missing_pid() {
+        let map = HashMap::new();
+        assert_eq!(state_text_for_pid(&map, 999), "-");
+    }
+
+    #[test]
+    fn scan_agents_empty_source() {
+        let src = FakeProcSource::new(vec![]);
+        assert!(scan_agents(&src).is_empty());
+    }
+
+    #[test]
+    fn scan_agents_multiple_known_agents() {
+        let src = FakeProcSource::new(vec![
+            ProcSnapshot { pid: 10, ppid: 1, comm: "claude".into(), cmdline: vec!["claude".into()], state: 'S' },
+            ProcSnapshot { pid: 20, ppid: 1, comm: "forge".into(), cmdline: vec!["forge".into(), "conversation".into(), "list".into()], state: 'R' },
+            ProcSnapshot { pid: 30, ppid: 1, comm: "unknown".into(), cmdline: vec![], state: 'R' },
+        ]);
+        let agents = scan_agents(&src);
+        assert_eq!(agents.len(), 2);
+        assert!(agents.iter().any(|a| a.family == "claude"));
+        assert!(agents.iter().any(|a| a.family == "forge"));
+    }
+
+    #[test]
+    fn walk_agent_ancestors_no_match() {
+        let src = FakeProcSource::new(vec![
+            ProcSnapshot { pid: 1, ppid: 0, comm: "init".into(), cmdline: vec![], state: 'R' },
+            ProcSnapshot { pid: 2, ppid: 1, comm: "bash".into(), cmdline: vec![], state: 'R' },
+        ]);
+        assert!(walk_agent_ancestors(&src, 2).is_none());
+    }
+
+    #[test]
+    fn walk_agent_ancestors_cycle_prevention() {
+        // Create a cycle: pid 1 -> ppid 2, pid 2 -> ppid 1
+        let src = FakeProcSource::new(vec![
+            ProcSnapshot { pid: 1, ppid: 2, comm: "a".into(), cmdline: vec![], state: 'R' },
+            ProcSnapshot { pid: 2, ppid: 1, comm: "b".into(), cmdline: vec![], state: 'R' },
+        ]);
+        // Should not hang — cycle detection prevents infinite loop
+        assert!(walk_agent_ancestors(&src, 1).is_none());
+    }
+
+    #[test]
+    fn is_under_agent_direct_match() {
+        let src = FakeProcSource::new(vec![
+            ProcSnapshot { pid: 100, ppid: 0, comm: "claude".into(), cmdline: vec!["claude".into()], state: 'R' },
+        ]);
+        assert!(is_under_agent(&src, 100));
+    }
+
+    #[test]
+    fn is_under_agent_no_match() {
+        let src = FakeProcSource::new(vec![
+            ProcSnapshot { pid: 100, ppid: 0, comm: "bash".into(), cmdline: vec![], state: 'R' },
+        ]);
+        assert!(!is_under_agent(&src, 100));
+    }
+
+    #[test]
+    fn agent_label_for_pid_direct_agent() {
+        let src = FakeProcSource::new(vec![
+            ProcSnapshot { pid: 100, ppid: 0, comm: "claude".into(), cmdline: vec!["claude".into()], state: 'R' },
+        ]);
+        assert_eq!(agent_label_for_pid(&src, 100), "claude");
+    }
+
+    #[test]
+    fn agent_label_for_pid_non_agent() {
+        let src = FakeProcSource::new(vec![
+            ProcSnapshot { pid: 100, ppid: 0, comm: "bash".into(), cmdline: vec![], state: 'R' },
+        ]);
+        assert_eq!(agent_label_for_pid(&src, 100), "-");
+    }
+
+    #[test]
+    fn build_agent_state_map_empty() {
+        let src = FakeProcSource::new(vec![]);
+        let map = build_agent_state_map(&src, &[1, 2, 3]);
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn build_agent_state_map_partial() {
+        let src = FakeProcSource::new(vec![
+            ProcSnapshot { pid: 100, ppid: 0, comm: "a".into(), cmdline: vec![], state: 'S' },
+            ProcSnapshot { pid: 200, ppid: 0, comm: "b".into(), cmdline: vec![], state: 'R' },
+        ]);
+        let map = build_agent_state_map(&src, &[100, 200, 999]);
+        assert_eq!(map.get(&100), Some(&'S'));
+        assert_eq!(map.get(&200), Some(&'R'));
+        assert!(!map.contains_key(&999), "missing PID MUST not be in map");
+    }
+
+    #[test]
+    fn collect_forest_pids_empty() {
+        assert!(collect_forest_pids(&[]).is_empty());
+    }
+
+    #[test]
+    fn collect_forest_pids_deep_nesting() {
+        let forest = AgentTreeNode {
+            pid: 1, ppid: 0, comm: "root".into(), family: Some("claude"),
+            children: vec![AgentTreeNode {
+                pid: 2, ppid: 1, comm: "child".into(), family: None,
+                children: vec![AgentTreeNode {
+                    pid: 3, ppid: 2, comm: "grandchild".into(), family: None,
+                    children: vec![],
+                }],
+            }],
+        };
+        let mut pids = collect_forest_pids(&[forest]);
+        pids.sort();
+        assert_eq!(pids, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn build_agent_forests_empty_source() {
+        let src = FakeProcSource::new(vec![]);
+        assert!(build_agent_forests(&src).is_empty());
+    }
+
+    #[test]
+    fn build_agent_forests_only_non_agents() {
+        let src = FakeProcSource::new(vec![
+            ProcSnapshot { pid: 1, ppid: 0, comm: "bash".into(), cmdline: vec![], state: 'R' },
+            ProcSnapshot { pid: 2, ppid: 1, comm: "vim".into(), cmdline: vec![], state: 'R' },
+        ]);
+        assert!(build_agent_forests(&src).is_empty());
+    }
+
+    #[test]
+    fn build_forest_state_map_empty_forests() {
+        let src = FakeProcSource::new(vec![]);
+        let map = build_forest_state_map(&src, &[]);
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn lookup_proc_nonexistent_pid() {
+        let src = FakeProcSource::new(vec![
+            ProcSnapshot { pid: 1, ppid: 0, comm: "a".into(), cmdline: vec![], state: 'R' },
+        ]);
+        assert!(lookup_proc(&src, 999).is_none());
+    }
+
+    #[test]
+    fn proc_snapshot_clone_and_eq() {
+        let p = ProcSnapshot { pid: 1, ppid: 0, comm: "test".into(), cmdline: vec!["a".into()], state: 'R' };
+        let p2 = p.clone();
+        assert_eq!(p, p2);
+    }
+
+    #[test]
+    fn detected_agent_clone_and_eq() {
+        let a = DetectedAgent { pid: 1, family: "claude", comm: "claude".into() };
+        let b = a.clone();
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn agent_tree_node_clone_and_eq() {
+        let node = AgentTreeNode {
+            pid: 1, ppid: 0, comm: "root".into(), family: Some("claude"), children: vec![],
+        };
+        let cloned = node.clone();
+        assert_eq!(node, cloned);
+    }
 }

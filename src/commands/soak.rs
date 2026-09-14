@@ -544,4 +544,282 @@ mod tests {
         assert!((t.min_uptime_pct - 95.0).abs() < f64::EPSILON);
         assert_eq!(t.max_p99_latency_ms, 2000);
     }
+
+    // --- Additional edge-case tests ---
+
+    #[test]
+    fn percentile_p0() {
+        let data = vec![10, 20, 30, 40, 50];
+        assert_eq!(percentile(&data, 0), 10);
+    }
+
+    #[test]
+    fn percentile_p100() {
+        let data = vec![10, 20, 30, 40, 50];
+        assert_eq!(percentile(&data, 100), 50);
+    }
+
+    #[test]
+    fn percentile_two_elements() {
+        let data = vec![10, 20];
+        // idx = round(0.5 * 1) = 1 → data[1] = 20
+        assert_eq!(percentile(&data, 50), 20);
+    }
+
+    #[test]
+    fn percentile_large_dataset() {
+        let data: Vec<u64> = (1..=1000).collect();
+        assert_eq!(percentile(&data, 50), 501);
+        assert_eq!(percentile(&data, 99), 990);
+        assert_eq!(percentile(&data, 1), 11);
+    }
+
+    #[test]
+    fn days_to_ymd_recent_date() {
+        // 2024-01-15 = 19737 days since epoch
+        let (y, m, d) = days_to_ymd(19737);
+        assert_eq!((y, m, d), (2024, 1, 15));
+    }
+
+    #[test]
+    fn days_to_ymd_leap_year_boundary() {
+        // 2000-03-01 (leap year) = 11017
+        let (y, m, d) = days_to_ymd(11017);
+        assert_eq!((y, m, d), (2000, 3, 1));
+    }
+
+    #[test]
+    fn days_to_ymd_year_2038() {
+        // 2038-01-19 = 24855 (Unix 32-bit overflow date)
+        let (y, m, d) = days_to_ymd(24855);
+        assert_eq!((y, m, d), (2038, 1, 19));
+    }
+
+    #[test]
+    fn days_to_ymd_jan_1_2000() {
+        // Jan 1 2000 = 10957 days since epoch
+        let (y, m, d) = days_to_ymd(10957);
+        assert_eq!((y, m, d), (2000, 1, 1));
+    }
+
+    #[test]
+    fn chrono_timestamp_format() {
+        let ts = chrono_timestamp();
+        assert!(ts.ends_with('Z'), "timestamp MUST end with Z; got: {ts}");
+        assert_eq!(ts.len(), 20, "timestamp MUST be ISO 8601 length; got: {ts}");
+        assert!(ts.contains('T'), "timestamp MUST contain T separator");
+    }
+
+    #[test]
+    fn default_timeout_value() {
+        assert_eq!(default_timeout(), 10);
+    }
+
+    #[test]
+    fn default_report_file_value() {
+        assert_eq!(default_report_file(), "soak-report.json");
+    }
+
+    #[test]
+    fn scenario_defaults() {
+        let s = Scenario {
+            name: "test".into(),
+            command: vec!["echo".into(), "hi".into()],
+            timeout_secs: default_timeout(),
+        };
+        assert_eq!(s.timeout_secs, 10);
+    }
+
+    #[test]
+    fn load_config_valid_yaml() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("soak.yaml");
+        fs::write(
+            &path,
+            r#"
+duration_seconds: 120
+report_file: "custom-report.json"
+thresholds:
+  max_error_rate: 0.10
+  min_uptime_pct: 99.0
+  max_p99_latency_ms: 5000
+scenarios:
+  - name: "test-scenario"
+    command: ["echo", "hello"]
+    timeout_secs: 5
+"#,
+        )
+        .unwrap();
+
+        let config = load_config(&path).unwrap();
+        assert_eq!(config.duration_seconds, 120);
+        assert_eq!(config.report_file, "custom-report.json");
+        assert!((config.thresholds.max_error_rate - 0.10).abs() < f64::EPSILON);
+        assert!((config.thresholds.min_uptime_pct - 99.0).abs() < f64::EPSILON);
+        assert_eq!(config.thresholds.max_p99_latency_ms, 5000);
+        assert_eq!(config.scenarios.len(), 1);
+        assert_eq!(config.scenarios[0].name, "test-scenario");
+        assert_eq!(config.scenarios[0].timeout_secs, 5);
+    }
+
+    #[test]
+    fn load_config_invalid_yaml() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("soak.yaml");
+        fs::write(&path, "not valid: [yaml: {{{{").unwrap();
+        let result = load_config(&path);
+        assert!(result.is_err(), "invalid YAML MUST return error");
+    }
+
+    #[test]
+    fn soak_report_json_roundtrip() {
+        let report = SoakReport {
+            version: "1".into(),
+            sha: "abc123".into(),
+            duration_sec: 300,
+            interval_sec: 30,
+            started_at: "2024-01-01T00:00:00Z".into(),
+            finished_at: "2024-01-01T00:05:00Z".into(),
+            total_requests: 100,
+            errors: 3,
+            error_rate: 0.03,
+            uptime_pct: 97.0,
+            p99_latency_ms: 1500,
+            p50_latency_ms: 200,
+            max_memory_bytes: 1024 * 1024,
+            scenario_results: vec![ScenarioResult {
+                name: "healthz".into(),
+                runs: 50,
+                errors: 1,
+                p50_ms: 180,
+                p99_ms: 1200,
+                max_memory_bytes: 512 * 1024,
+            }],
+            note: String::new(),
+        };
+
+        let json = serde_json::to_string(&report).unwrap();
+        let back: SoakReport = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.total_requests, 100);
+        assert_eq!(back.errors, 3);
+        assert!((back.error_rate - 0.03).abs() < f64::EPSILON);
+        assert_eq!(back.scenario_results.len(), 1);
+        assert_eq!(back.scenario_results[0].name, "healthz");
+    }
+
+    #[test]
+    fn write_report_creates_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("output").join("report.json");
+        let report = SoakReport {
+            version: "1".into(),
+            sha: "test".into(),
+            duration_sec: 60,
+            interval_sec: 10,
+            started_at: "2024-01-01T00:00:00Z".into(),
+            finished_at: "2024-01-01T00:01:00Z".into(),
+            total_requests: 10,
+            errors: 0,
+            error_rate: 0.0,
+            uptime_pct: 100.0,
+            p99_latency_ms: 100,
+            p50_latency_ms: 50,
+            max_memory_bytes: 0,
+            scenario_results: vec![],
+            note: "test report".into(),
+        };
+        write_report(&path, &report).unwrap();
+        assert!(path.exists(), "report file MUST be created");
+
+        let content = fs::read_to_string(&path).unwrap();
+        let parsed: SoakReport = serde_json::from_str(&content).unwrap();
+        assert_eq!(parsed.note, "test report");
+    }
+
+    #[test]
+    fn report_cmd_missing_file_fails() {
+        let result = report_cmd(Path::new("/nonexistent/report.json"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn report_cmd_valid_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("report.json");
+        let report = SoakReport {
+            version: "1".into(),
+            sha: "abc".into(),
+            duration_sec: 120,
+            interval_sec: 15,
+            started_at: "2024-01-01T00:00:00Z".into(),
+            finished_at: "2024-01-01T00:02:00Z".into(),
+            total_requests: 50,
+            errors: 2,
+            error_rate: 0.04,
+            uptime_pct: 96.0,
+            p99_latency_ms: 800,
+            p50_latency_ms: 100,
+            max_memory_bytes: 2048,
+            scenario_results: vec![ScenarioResult {
+                name: "healthz".into(),
+                runs: 25,
+                errors: 1,
+                p50_ms: 90,
+                p99_ms: 700,
+                max_memory_bytes: 1024,
+            }],
+            note: String::new(),
+        };
+        let json = serde_json::to_string(&report).unwrap();
+        fs::write(&path, json).unwrap();
+
+        let result = report_cmd(&path);
+        assert!(result.is_ok(), "valid report MUST parse successfully");
+    }
+
+    #[test]
+    fn get_git_sha_returns_nonempty() {
+        let sha = get_git_sha();
+        assert!(!sha.is_empty(), "git SHA must not be empty (unless not in a git repo)");
+    }
+
+    #[test]
+    fn get_process_memory_bytes_returns_value() {
+        // On macOS this always returns 0 (no procfs), on Linux returns RSS
+        let mem = get_process_memory_bytes();
+        let _ = mem; // just verify it doesn't panic
+    }
+
+    #[test]
+    fn scenario_result_defaults() {
+        let sr = ScenarioResult {
+            name: "test".into(),
+            runs: 0,
+            errors: 0,
+            p50_ms: 0,
+            p99_ms: 0,
+            max_memory_bytes: 0,
+        };
+        assert_eq!(sr.runs, 0);
+        assert_eq!(sr.errors, 0);
+    }
+
+    #[test]
+    fn soake_config_defaults_for_missing_fields() {
+        let yaml = r#"duration_seconds: 60"#;
+        let config: SoakConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.duration_seconds, 60);
+        assert_eq!(config.report_file, "soak-report.json");
+        // Default config provides 3 built-in scenarios
+        assert_eq!(config.scenarios.len(), 3);
+        assert!((config.thresholds.max_error_rate - 0.05).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn percentile_sorted_not_mutated() {
+        let mut data = vec![50, 10, 30, 20, 40];
+        let original = data.clone();
+        let _ = percentile(&data, 50);
+        assert_eq!(data, original, "percentile MUST NOT mutate input");
+    }
 }

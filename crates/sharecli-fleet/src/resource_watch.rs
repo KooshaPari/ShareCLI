@@ -438,4 +438,206 @@ mod tests {
         assert_eq!(super::parse_rss_bytes("1G", "--max-rss").unwrap(), 1_073_741_824);
         assert!(super::parse_rss_bytes("not-a-size", "--max-rss").is_err());
     }
+
+    // --- Additional edge-case tests ---
+
+    #[test]
+    fn test_format_rss_bytes_zero() {
+        assert_eq!(super::format_rss_bytes(0), "0K");
+    }
+
+    #[test]
+    fn test_format_rss_bytes_small() {
+        assert_eq!(super::format_rss_bytes(512), "0K");
+        assert_eq!(super::format_rss_bytes(1024), "1K");
+        assert_eq!(super::format_rss_bytes(5120), "5K");
+    }
+
+    #[test]
+    fn test_format_rss_bytes_mib_boundary() {
+        assert_eq!(super::format_rss_bytes(1_048_575), "1023K");
+        assert_eq!(super::format_rss_bytes(1_048_576), "1M");
+        assert_eq!(super::format_rss_bytes(1_572_864), "2M");
+    }
+
+    #[test]
+    fn test_format_rss_bytes_gib() {
+        assert_eq!(super::format_rss_bytes(2_147_483_648), "2.0G");
+    }
+
+    #[test]
+    fn test_parse_rss_bytes_empty_string() {
+        assert!(super::parse_rss_bytes("", "--flag").is_err());
+    }
+
+    #[test]
+    fn test_parse_rss_bytes_whitespace_only() {
+        assert!(super::parse_rss_bytes("  ", "--flag").is_err());
+    }
+
+    #[test]
+    fn test_parse_rss_bytes_invalid_suffix() {
+        assert!(super::parse_rss_bytes("100T", "--flag").is_err());
+    }
+
+    #[test]
+    fn test_parse_rss_bytes_decimal_g() {
+        let result = super::parse_rss_bytes("1.5G", "--flag").unwrap();
+        assert_eq!(result, (1.5 * 1_073_741_824.0) as u64);
+    }
+
+    #[test]
+    fn test_parse_rss_bytes_decimal_m() {
+        let result = super::parse_rss_bytes("2.5M", "--flag").unwrap();
+        assert_eq!(result, (2.5 * 1_048_576.0) as u64);
+    }
+
+    #[test]
+    fn test_parse_rss_bytes_decimal_k() {
+        let result = super::parse_rss_bytes("1.5K", "--flag").unwrap();
+        assert_eq!(result, (1.5 * 1024.0) as u64);
+    }
+
+    #[test]
+    fn test_parse_rss_bytes_invalid_number_with_suffix() {
+        assert!(super::parse_rss_bytes("abcM", "--flag").is_err());
+    }
+
+    #[test]
+    fn test_parse_rss_bytes_negative() {
+        assert!(super::parse_rss_bytes("-100", "--flag").is_err());
+    }
+
+    #[test]
+    fn test_parse_rss_bytes_gib() {
+        let result = super::parse_rss_bytes("2G", "--flag").unwrap();
+        assert_eq!(result, 2_147_483_648);
+    }
+
+    #[test]
+    fn test_parse_rss_bytes_case_insensitive() {
+        assert_eq!(super::parse_rss_bytes("50m", "--flag").unwrap(), 52_428_800);
+        assert_eq!(super::parse_rss_bytes("1g", "--flag").unwrap(), 1_073_741_824);
+        assert_eq!(super::parse_rss_bytes("100k", "--flag").unwrap(), 102_400);
+    }
+
+    #[test]
+    fn test_parse_rss_bytes_error_messages_include_flag() {
+        let err = super::parse_rss_bytes("bad", "--my-flag").unwrap_err();
+        assert!(
+            err.to_string().contains("--my-flag"),
+            "error MUST include flag name; got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_sum_detected_agent_rss_single() {
+        let agents = vec![DetectedAgentWatch {
+            agent: DetectedAgent { pid: 1, family: "test", comm: "test".into() },
+            resource: AgentResourceSample { mem_rss_bytes: 42_000, fd_count: Some(10) },
+        }];
+        assert_eq!(super::sum_detected_agent_rss_bytes(&agents), 42_000);
+    }
+
+    #[test]
+    fn test_sum_detected_agent_rss_two_agents() {
+        let agents = vec![
+            DetectedAgentWatch {
+                agent: DetectedAgent { pid: 1, family: "a", comm: "a".into() },
+                resource: AgentResourceSample { mem_rss_bytes: 1_000, fd_count: None },
+            },
+            DetectedAgentWatch {
+                agent: DetectedAgent { pid: 2, family: "b", comm: "b".into() },
+                resource: AgentResourceSample { mem_rss_bytes: 2_000, fd_count: None },
+            },
+        ];
+        assert_eq!(super::sum_detected_agent_rss_bytes(&agents), 3_000);
+    }
+
+    #[test]
+    fn test_watch_detected_agents_empty() {
+        let result = super::watch_detected_agents(&[]);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_watch_detected_agents_filters_dead() {
+        // Use a PID that definitely doesn't exist
+        let agents = vec![DetectedAgent {
+            pid: 2_000_000,
+            family: "test",
+            comm: "nonexistent".into(),
+        }];
+        let result = super::watch_detected_agents(&agents);
+        assert!(
+            result.is_empty(),
+            "dead PID MUST be filtered out by watch"
+        );
+    }
+
+    #[test]
+    fn test_watch_detected_agents_self_pid() {
+        let pid = std::process::id();
+        let agents = vec![DetectedAgent {
+            pid,
+            family: "test",
+            comm: "test-process".into(),
+        }];
+        let result = super::watch_detected_agents(&agents);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].agent.pid, pid);
+        assert!(result[0].resource.mem_rss_bytes > 0);
+    }
+
+    #[test]
+    fn test_format_status_section_structure() {
+        let sample = ResourceWatchSample {
+            fd_count: 42,
+            net_rx_bytes: 1000,
+            net_tx_bytes: 2000,
+            mem_rss_bytes: 3000,
+            load_1m: 1.5,
+        };
+        let section = sample.format_status_section();
+        assert!(section.contains("Open FDs:"));
+        assert!(section.contains("42"));
+        assert!(section.contains("RSS:"));
+        assert!(section.contains("3000"));
+        assert!(section.contains("Load (1m):"));
+        assert!(section.contains("1.50"));
+        assert!(section.contains("Net RX:"));
+        assert!(section.contains("1000"));
+        assert!(section.contains("Net TX:"));
+        assert!(section.contains("2000"));
+    }
+
+    #[test]
+    fn test_resource_watch_sample_default() {
+        let sample = ResourceWatchSample::default();
+        assert_eq!(sample.fd_count, 0);
+        assert_eq!(sample.net_rx_bytes, 0);
+        assert_eq!(sample.net_tx_bytes, 0);
+        assert_eq!(sample.mem_rss_bytes, 0);
+        assert_eq!(sample.load_1m, 0.0);
+    }
+
+    #[test]
+    fn test_agent_resource_sample_default() {
+        let sample = AgentResourceSample::default();
+        assert_eq!(sample.mem_rss_bytes, 0);
+        assert!(sample.fd_count.is_none());
+    }
+
+    #[test]
+    fn test_sample_pid_rss_bytes_self() {
+        let pid = std::process::id();
+        let rss = super::sample_pid_rss_bytes(pid).expect("self RSS");
+        assert!(rss > 0, "self PID MUST have non-zero RSS");
+    }
+
+    #[test]
+    fn test_sample_pid_rss_bytes_dead_pid() {
+        let result = super::sample_pid_rss_bytes(2_000_000);
+        assert!(result.is_err(), "dead PID MUST return error");
+    }
 }
