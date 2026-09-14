@@ -1129,4 +1129,313 @@ mod tests {
         assert_eq!(strip_leading_zeros(&[0x00, 0x00, 0x00]), vec![0x00]);
         assert_eq!(strip_leading_zeros(&[]), Vec::<u8>::new());
     }
+
+    // --- oid_to_name coverage ---
+
+    #[test]
+    fn oid_to_name_known_oids() {
+        assert_eq!(oid_to_name("2.5.4.3"), "CN");
+        assert_eq!(oid_to_name("2.5.4.6"), "C");
+        assert_eq!(oid_to_name("2.5.4.7"), "L");
+        assert_eq!(oid_to_name("2.5.4.8"), "ST");
+        assert_eq!(oid_to_name("2.5.4.10"), "O");
+        assert_eq!(oid_to_name("2.5.4.11"), "OU");
+        assert_eq!(oid_to_name("2.5.4.5"), "serialNumber");
+        assert_eq!(oid_to_name("2.5.4.9"), "street");
+        assert_eq!(oid_to_name("2.5.4.17"), "postalCode");
+        assert_eq!(oid_to_name("1.2.840.113549.1.9.1"), "E");
+    }
+
+    #[test]
+    fn oid_to_name_unknown_returns_oid_fallback() {
+        assert_eq!(oid_to_name("9.9.9"), "OID");
+        assert_eq!(oid_to_name(""), "OID");
+    }
+
+    // --- hex_lower coverage ---
+
+    #[test]
+    fn hex_lower_empty() {
+        assert_eq!(hex_lower(b""), "");
+    }
+
+    #[test]
+    fn hex_lower_single_byte() {
+        assert_eq!(hex_lower(&[0x0a]), "0a");
+        assert_eq!(hex_lower(&[0xff]), "ff");
+        assert_eq!(hex_lower(&[0x00]), "00");
+    }
+
+    #[test]
+    fn hex_lower_multi_byte() {
+        assert_eq!(hex_lower(&[0xde, 0xad, 0xbe, 0xef]), "deadbeef");
+    }
+
+    // --- format_oid edge cases ---
+
+    #[test]
+    fn format_oid_empty() {
+        assert_eq!(format_oid(&[]), "");
+    }
+
+    #[test]
+    fn format_oid_single_byte() {
+        // First byte: 0 => 0/40=0, 0%40=0 => "0.0"
+        assert_eq!(format_oid(&[0x00]), "0.0");
+    }
+
+    #[test]
+    fn format_oid_second_arc() {
+        // byte 40 => 40/40=1, 40%40=0 => "1.0"
+        assert_eq!(format_oid(&[40]), "1.0");
+        // byte 80 => 80/40=2, 80%40=0 => "2.0"
+        assert_eq!(format_oid(&[80]), "2.0");
+    }
+
+    // --- compute_key_tag edge cases ---
+
+    #[test]
+    fn compute_key_tag_empty() {
+        assert_eq!(compute_key_tag(b""), 0);
+    }
+
+    #[test]
+    fn compute_key_tag_single_byte() {
+        // 0x01: acc = 0x01 << 8 = 256, folded = 256
+        assert_eq!(compute_key_tag(&[0x01]), 256);
+    }
+
+    #[test]
+    fn compute_key_tag_wraparound() {
+        // Large input that causes accumulator wrap; just verify no panic
+        let rdata = [0xffu8; 64];
+        let _tag = compute_key_tag(&rdata);
+    }
+
+    // --- ParseError Display ---
+
+    #[test]
+    fn parse_error_display_truncated() {
+        assert_eq!(ParseError::Truncated.to_string(), "input truncated");
+    }
+
+    #[test]
+    fn parse_error_display_bad_tag() {
+        let err = ParseError::BadTag(0x99);
+        assert_eq!(err.to_string(), "unexpected tag 0x99");
+    }
+
+    #[test]
+    fn parse_error_display_bad_length() {
+        assert_eq!(ParseError::BadLength.to_string(), "bad length encoding");
+    }
+
+    #[test]
+    fn parse_error_display_invalid_utf8() {
+        assert_eq!(ParseError::InvalidUtf8.to_string(), "invalid utf-8");
+    }
+
+    // --- parse_der error paths ---
+
+    #[test]
+    fn parse_der_bad_outer_tag() {
+        // INTEGER at top level
+        assert!(parse_der(&[0x02, 0x01, 0x01]).is_err());
+    }
+
+    #[test]
+    fn parse_der_truncated_tbs() {
+        // SEQUENCE with tbsCertificate too short
+        assert!(parse_der(&[0x30, 0x03, 0x30, 0x01]).is_err());
+    }
+
+    #[test]
+    fn parse_der_bad_serial_tag() {
+        // Build a minimal cert where serial is not INTEGER (0x02)
+        let cn_oid = [0x55u8, 0x04, 0x03];
+        let build_name = || -> Vec<u8> {
+            let mut atv_inner: Vec<u8> = Vec::new();
+            atv_inner.push(0x06);
+            atv_inner.push(0x03);
+            atv_inner.extend_from_slice(&cn_oid);
+            atv_inner.push(0x0c);
+            atv_inner.push(0x01);
+            atv_inner.push(b'X');
+            let mut atv: Vec<u8> = Vec::new();
+            atv.push(0x30);
+            encode_len(&mut atv, atv_inner.len());
+            atv.extend(atv_inner);
+            let mut set: Vec<u8> = Vec::new();
+            set.push(0x31);
+            encode_len(&mut set, atv.len());
+            set.extend(atv);
+            let mut name: Vec<u8> = Vec::new();
+            name.push(0x30);
+            encode_len(&mut name, set.len());
+            name.extend(set);
+            name
+        };
+        let name = build_name();
+        let mut tbs = Vec::new();
+        // serial as OCTET STRING instead of INTEGER
+        tbs.push(0x04);
+        tbs.push(0x01);
+        tbs.push(0x01);
+        let mut cert = Vec::new();
+        cert.push(0x30);
+        let inner = {
+            let mut v = Vec::new();
+            v.push(0x30);
+            encode_len(&mut v, tbs.len());
+            v.extend(tbs);
+            v
+        };
+        encode_len(&mut cert, inner.len());
+        cert.extend(inner);
+        let err = parse_der(&cert).unwrap_err();
+        assert!(err.contains("serialNumber"), "error should mention serial: {err}");
+    }
+
+    // --- read_spki_algorithm error path ---
+
+    #[test]
+    fn read_spki_algorithm_bad_tag() {
+        // Not a SEQUENCE
+        let result = read_spki_algorithm(&[0x02, 0x01, 0x01]);
+        assert!(result.is_err());
+    }
+
+    // --- read_first_oid error path ---
+
+    #[test]
+    fn read_first_oid_bad_tag() {
+        // Not an OID tag (0x06)
+        let result = read_first_oid(&[0x04, 0x01, 0x00]);
+        assert!(result.is_err());
+    }
+
+    // --- read_time error path ---
+
+    #[test]
+    fn read_time_bad_tag() {
+        // Neither UTCTime (0x17) nor GeneralizedTime (0x18)
+        let result = read_time(0x04, b"test");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn read_time_valid_ucttime() {
+        let result = read_time(0x17, b"240101000000Z");
+        assert_eq!(result.unwrap(), "240101000000Z");
+    }
+
+    #[test]
+    fn read_time_valid_generalizedtime() {
+        let result = read_time(0x18, b"20240101000000Z");
+        assert_eq!(result.unwrap(), "20240101000000Z");
+    }
+
+    // --- read_validity error paths ---
+
+    #[test]
+    fn read_validity_bad_tag() {
+        // Not a SEQUENCE
+        let mut p = Parser::new(&[0x04, 0x00]);
+        let result = read_validity(&mut p);
+        assert!(result.is_err());
+    }
+
+    // --- read_name error paths ---
+
+    #[test]
+    fn read_name_bad_tag_not_sequence() {
+        let mut p = Parser::new(&[0x04, 0x00]);
+        let result = read_name(&mut p);
+        assert!(result.is_err());
+    }
+
+    // --- DistinguishedName raw format ---
+
+    #[test]
+    fn distinguished_name_raw_format() {
+        let cert = minimal_v1_cert();
+        let parsed = parse_der(&cert).unwrap();
+        assert!(parsed.issuer.raw.contains("CN=Test"));
+        assert!(parsed.subject.raw.contains("CN=Test"));
+    }
+
+    // --- Cert struct fields ---
+
+    #[test]
+    fn cert_raw_len_matches_input() {
+        let cert = minimal_v1_cert();
+        let parsed = parse_der(&cert).unwrap();
+        assert_eq!(parsed.raw_len, cert.len());
+    }
+
+    #[test]
+    fn cert_signature_algorithm_is_oid() {
+        let cert = minimal_v1_cert();
+        let parsed = parse_der(&cert).unwrap();
+        assert!(parsed.signature_algorithm.contains('.'), "sig alg should be dotted OID");
+    }
+
+    // --- read_name with PrintableString tag ---
+
+    #[test]
+    fn read_name_with_printable_string() {
+        // Build a cert with PrintableString (0x13) in name
+        let cn_oid = [0x55u8, 0x04, 0x03];
+        let mut atv_inner: Vec<u8> = Vec::new();
+        atv_inner.push(0x06);
+        atv_inner.push(0x03);
+        atv_inner.extend_from_slice(&cn_oid);
+        atv_inner.push(0x13); // PrintableString
+        atv_inner.push(0x03);
+        atv_inner.extend_from_slice(b"ABC");
+        let mut atv: Vec<u8> = Vec::new();
+        atv.push(0x30);
+        encode_len(&mut atv, atv_inner.len());
+        atv.extend(atv_inner);
+        let mut set: Vec<u8> = Vec::new();
+        set.push(0x31);
+        encode_len(&mut set, atv.len());
+        set.extend(atv);
+        let mut name: Vec<u8> = Vec::new();
+        name.push(0x30);
+        encode_len(&mut name, set.len());
+        name.extend(set);
+        let mut p = Parser::new(&name);
+        let dn = read_name(&mut p).unwrap();
+        assert_eq!(dn.parts.get("CN").map(|s| s.as_str()), Some("ABC"));
+    }
+
+    // --- read_name with IA5String tag ---
+
+    #[test]
+    fn read_name_with_ia5string() {
+        let cn_oid = [0x55u8, 0x04, 0x03];
+        let mut atv_inner: Vec<u8> = Vec::new();
+        atv_inner.push(0x06);
+        atv_inner.push(0x03);
+        atv_inner.extend_from_slice(&cn_oid);
+        atv_inner.push(0x16); // IA5String
+        atv_inner.push(0x05);
+        atv_inner.extend_from_slice(b"hello");
+        let mut atv: Vec<u8> = Vec::new();
+        atv.push(0x30);
+        encode_len(&mut atv, atv_inner.len());
+        atv.extend(atv_inner);
+        let mut set: Vec<u8> = Vec::new();
+        set.push(0x31);
+        encode_len(&mut set, atv.len());
+        set.extend(atv);
+        let mut name: Vec<u8> = Vec::new();
+        name.push(0x30);
+        encode_len(&mut name, set.len());
+        name.extend(set);
+        let mut p = Parser::new(&name);
+        let dn = read_name(&mut p).unwrap();
+        assert_eq!(dn.parts.get("CN").map(|s| s.as_str()), Some("hello"));
+    }
 }

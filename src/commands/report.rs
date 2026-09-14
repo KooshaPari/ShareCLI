@@ -552,6 +552,38 @@ mod tests {
         }
     }
 
+    fn make_empty_gate() -> GateStatusSnapshot {
+        gate("GREEN", 0, "OK", "ADMIT")
+    }
+
+    fn make_empty_pool_json() -> PoolJson {
+        PoolJson {
+            node_total: 0,
+            node_idle: 0,
+            bun_total: 0,
+            bun_idle: 0,
+            max_per_type: 0,
+            healthy: true,
+            issues: vec![],
+            gate: make_empty_gate(),
+            host_watch: HostResourceWatchJson::default(),
+            status: None,
+        }
+    }
+
+    fn make_empty_status_json() -> StatusJson {
+        StatusJson {
+            total_processes: 0,
+            agents: vec![],
+            scanned: 0,
+            watched: 0,
+            gate: make_empty_gate(),
+            host_watch: HostResourceWatchJson::default(),
+            pool: None,
+            log_location: None,
+        }
+    }
+
     #[test]
     fn test_build_report_empty() {
         let report = build_report(&[], &gate("GREEN", 0, "OK", "ADMIT"), &SortBy::Memory);
@@ -738,5 +770,203 @@ mod tests {
             csv.contains("consumer,42,cargo,alpha,300"),
             "CSV body MUST include consumer row; got: {csv}"
         );
+    }
+
+    // --- FleetReportJson::from_parts ---
+
+    #[test]
+    fn test_fleet_report_json_from_parts_preserves_fields() {
+        use sharecli_fleet::GateStatusSnapshot;
+
+        let by_project =
+            HashMap::from([("alpha".into(), ProjectBreakdown { count: 1, memory_mb: 100 })]);
+        let report = FleetReport {
+            timestamp: 1_700_000_000,
+            uptime_seconds: 3600,
+            total_processes: 1,
+            total_memory_mb: 100,
+            by_project,
+            top_consumers: vec![TopConsumer {
+                pid: 10,
+                name: "cargo".into(),
+                project: Some("alpha".into()),
+                memory_mb: 100,
+            }],
+            thermal_pressure: "YELLOW".into(),
+            detected_agents: 2,
+            agent_contention: "WARN".into(),
+            gate_decision: "ADMIT".into(),
+        };
+        let gate = GateStatusSnapshot {
+            thermal_pressure: "YELLOW".into(),
+            detected_agents: 2,
+            agent_total_rss_bytes: 200,
+            agent_contention: "WARN".into(),
+            gate_decision: "ADMIT".into(),
+        };
+        let host_watch = HostResourceWatchJson::default();
+        let pool = make_empty_pool_json();
+        let status = make_empty_status_json();
+        let json = FleetReportJson::from_parts(&report, gate, host_watch, pool, status);
+        assert_eq!(json.timestamp, 1_700_000_000);
+        assert_eq!(json.uptime_seconds, 3600);
+        assert_eq!(json.total_processes, 1);
+        assert_eq!(json.total_memory_mb, 100);
+        assert_eq!(json.thermal_pressure, "YELLOW");
+        assert_eq!(json.detected_agents, 2);
+        assert_eq!(json.agent_contention, "WARN");
+        assert_eq!(json.gate_decision, "ADMIT");
+        assert_eq!(json.top_consumers.len(), 1);
+        assert_eq!(json.top_consumers[0].pid, 10);
+    }
+
+    #[test]
+    fn test_fleet_report_json_serializes_with_gate_host_watch_pool_status() {
+        use sharecli_fleet::GateStatusSnapshot;
+
+        let report = FleetReport {
+            timestamp: 1_000_000,
+            uptime_seconds: 0,
+            total_processes: 0,
+            total_memory_mb: 0,
+            by_project: HashMap::new(),
+            top_consumers: vec![],
+            thermal_pressure: "GREEN".into(),
+            detected_agents: 0,
+            agent_contention: "OK".into(),
+            gate_decision: "ADMIT".into(),
+        };
+        let gate = GateStatusSnapshot {
+            thermal_pressure: "GREEN".into(),
+            detected_agents: 0,
+            agent_total_rss_bytes: 0,
+            agent_contention: "OK".into(),
+            gate_decision: "ADMIT".into(),
+        };
+        let json = FleetReportJson::from_parts(
+            &report,
+            gate,
+            HostResourceWatchJson::default(),
+            make_empty_pool_json(),
+            make_empty_status_json(),
+        );
+        let serialized = serde_json::to_string(&json).expect("serialize");
+        assert!(serialized.contains("\"gate\""), "MUST include gate field");
+        assert!(serialized.contains("\"host_watch\""), "MUST include host_watch field");
+        assert!(serialized.contains("\"pool\""), "MUST include pool field");
+        assert!(serialized.contains("\"status\""), "MUST include status field");
+    }
+
+    // --- CSV body edge cases ---
+
+    #[test]
+    fn test_render_report_csv_body_empty_all_sections() {
+        let report = FleetReport {
+            timestamp: 1_700_000_000,
+            uptime_seconds: 0,
+            total_processes: 0,
+            total_memory_mb: 0,
+            by_project: HashMap::new(),
+            top_consumers: vec![],
+            thermal_pressure: "GREEN".into(),
+            detected_agents: 0,
+            agent_contention: "OK".into(),
+            gate_decision: "ADMIT".into(),
+        };
+        let csv = render_report_csv_body(&report);
+        assert!(csv.contains("summary,1700000000,0,0,0,GREEN,0,OK,ADMIT"));
+        // Empty project section should have header but no rows
+        assert!(csv.contains("record,project,count,memory_mb"));
+        // Empty consumer section should have header but no rows
+        assert!(csv.contains("record,pid,name,project,memory_mb"));
+    }
+
+    #[test]
+    fn test_render_report_csv_body_multiple_projects_sorted() {
+        let mut by_project = HashMap::new();
+        by_project.insert("beta".into(), ProjectBreakdown { count: 1, memory_mb: 50 });
+        by_project.insert("alpha".into(), ProjectBreakdown { count: 2, memory_mb: 200 });
+        let report = FleetReport {
+            timestamp: 1,
+            uptime_seconds: 0,
+            total_processes: 3,
+            total_memory_mb: 250,
+            by_project,
+            top_consumers: vec![],
+            thermal_pressure: "GREEN".into(),
+            detected_agents: 0,
+            agent_contention: "OK".into(),
+            gate_decision: "ADMIT".into(),
+        };
+        let csv = render_report_csv_body(&report);
+        let alpha_pos = csv.find("project,alpha").expect("alpha project row");
+        let beta_pos = csv.find("project,beta").expect("beta project row");
+        assert!(alpha_pos < beta_pos, "projects MUST be sorted alphabetically");
+    }
+
+    #[test]
+    fn test_render_report_csv_body_consumer_no_project() {
+        let report = FleetReport {
+            timestamp: 1,
+            uptime_seconds: 0,
+            total_processes: 1,
+            total_memory_mb: 50,
+            by_project: HashMap::new(),
+            top_consumers: vec![TopConsumer {
+                pid: 1,
+                name: "orphan".into(),
+                project: None,
+                memory_mb: 50,
+            }],
+            thermal_pressure: "GREEN".into(),
+            detected_agents: 0,
+            agent_contention: "OK".into(),
+            gate_decision: "ADMIT".into(),
+        };
+        let csv = render_report_csv_body(&report);
+        assert!(csv.contains("consumer,1,orphan,-,50"));
+    }
+
+    // --- REPORT_CSV_WATCH_FRAME_MARKER ---
+
+    #[test]
+    fn test_report_csv_watch_frame_marker_value() {
+        assert_eq!(REPORT_CSV_WATCH_FRAME_MARKER, "# sharecli-report-watch-frame");
+    }
+
+    // --- build_report edge cases ---
+
+    #[test]
+    fn test_build_report_no_processes_no_memory() {
+        let report = build_report(&[], &gate("GREEN", 0, "OK", "ADMIT"), &SortBy::Memory);
+        assert_eq!(report.total_processes, 0);
+        assert_eq!(report.total_memory_mb, 0);
+        assert!(report.top_consumers.is_empty());
+        assert!(report.by_project.is_empty());
+    }
+
+    #[test]
+    fn test_build_report_all_same_project() {
+        let procs = vec![
+            make_proc(1, "a", Some("same"), 100, 0),
+            make_proc(2, "b", Some("same"), 200, 0),
+            make_proc(3, "c", Some("same"), 300, 0),
+        ];
+        let report = build_report(&procs, &gate("GREEN", 0, "OK", "ADMIT"), &SortBy::Memory);
+        assert_eq!(report.by_project.len(), 1);
+        let entry = report.by_project.get("same").unwrap();
+        assert_eq!(entry.count, 3);
+        assert_eq!(entry.memory_mb, 600);
+    }
+
+    #[test]
+    fn test_top_consumers_tied_memory_stable_order() {
+        let procs = vec![
+            make_proc(1, "a", None, 100, 0),
+            make_proc(2, "b", None, 100, 0),
+            make_proc(3, "c", None, 100, 0),
+        ];
+        let report = build_report(&procs, &gate("GREEN", 0, "OK", "ADMIT"), &SortBy::Memory);
+        assert_eq!(report.top_consumers.len(), 3);
     }
 }

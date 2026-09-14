@@ -1121,4 +1121,164 @@ mod tests {
             "dashboard WS MUST serialize gate → host_watch → pool → status → agents → processes (AC-007.70); got: {raw}"
         );
     }
+
+    // --- escape_label_value edge cases ---
+
+    #[test]
+    fn escape_label_value_empty_string() {
+        assert_eq!(escape_label_value(""), "");
+    }
+
+    #[test]
+    fn escape_label_value_no_special_chars() {
+        assert_eq!(escape_label_value("hello world"), "hello world");
+    }
+
+    #[test]
+    fn escape_label_value_newline_escaped() {
+        assert_eq!(escape_label_value("line1\nline2"), "line1\\nline2");
+    }
+
+    #[test]
+    fn escape_label_value_all_special_chars() {
+        // Input has real backslash, double-quote, and newline chars
+        let input = "back\\slash and \"quotes\" and newline\n";
+        let escaped = escape_label_value(input);
+        // backslash \ becomes \\
+        assert!(escaped.contains("\\\\"), "backslash must be escaped to double-backslash");
+        // double-quote " becomes \"
+        assert!(escaped.contains("\\\""), "quotes must be escaped");
+        // newline becomes \n (the two literal chars backslash + n)
+        assert!(escaped.contains("\\n"), "newline must be escaped");
+    }
+
+    // --- render_prometheus_metrics edge cases ---
+
+    #[test]
+    fn prometheus_empty_processes_empty_health() {
+        let out = render_prometheus_metrics(&[], &std::collections::HashMap::new());
+        assert!(out.contains("sharecli_process_memory_mb"), "must have memory metric header");
+        assert!(out.contains("sharecli_process_up"), "must have process_up metric header");
+        assert!(out.contains("sharecli_health_check_consecutive_failures"));
+        assert!(out.contains("sharecli_health_check_status"));
+    }
+
+    #[test]
+    fn prometheus_health_only_no_processes() {
+        let mut hmap = std::collections::HashMap::new();
+        hmap.insert("ghost-svc".to_string(), make_health(true, 0));
+        let out = render_prometheus_metrics(&[], &hmap);
+        // health-only entry should appear in failures and status metrics
+        assert!(out.contains("sharecli_health_check_consecutive_failures{process=\"ghost-svc\"} 0"));
+        assert!(out.contains("sharecli_health_check_status{process=\"ghost-svc\"} 1"));
+    }
+
+    // --- DashboardProcessRow serialization ---
+
+    #[test]
+    fn dashboard_process_row_serialization() {
+        let row = DashboardProcessRow {
+            pid: 42,
+            name: "claude".into(),
+            cmd: vec!["claude".into(), "serve".into()],
+            memory_mb: 256,
+            project: Some("myproject".into()),
+            harness: Some("jcode".into()),
+            start_time: 1_700_000_000,
+        };
+        let json = serde_json::to_string(&row).expect("serialize");
+        assert!(json.contains("\"pid\":42"));
+        assert!(json.contains("\"name\":\"claude\""));
+        assert!(json.contains("\"memory_mb\":256"));
+        assert!(json.contains("\"project\":\"myproject\""));
+        assert!(json.contains("\"harness\":\"jcode\""));
+    }
+
+    #[test]
+    fn dashboard_process_row_none_optional_fields_skipped() {
+        let row = DashboardProcessRow {
+            pid: 1,
+            name: "x".into(),
+            cmd: vec![],
+            memory_mb: 0,
+            project: None,
+            harness: None,
+            start_time: 0,
+        };
+        let json = serde_json::to_string(&row).expect("serialize");
+        assert!(!json.contains("\"project\""), "None project must be skipped");
+        assert!(!json.contains("\"harness\""), "None harness must be skipped");
+    }
+
+    // --- DashboardAgentSummary serialization ---
+
+    #[test]
+    fn dashboard_agent_summary_serialization() {
+        let summary = DashboardAgentSummary {
+            scanned: 10,
+            watched: 5,
+            total_rss_bytes: 1_000_000,
+            families: HashMap::from([("claude".into(), 3), ("cursor".into(), 2)]),
+        };
+        let json = serde_json::to_string(&summary).expect("serialize");
+        assert!(json.contains("\"scanned\":10"));
+        assert!(json.contains("\"watched\":5"));
+        assert!(json.contains("\"total_rss_bytes\":1000000"));
+        assert!(json.contains("\"claude\""));
+        assert!(json.contains("\"cursor\""));
+    }
+
+    // --- DashboardWsSnapshot serialization ---
+
+    #[test]
+    fn dashboard_ws_snapshot_serializes_all_fields() {
+        let gate_snap = GateStatusSnapshot {
+            thermal_pressure: "GREEN".into(),
+            detected_agents: 0,
+            agent_total_rss_bytes: 0,
+            agent_contention: "OK".into(),
+            gate_decision: "ADMIT".into(),
+        };
+        let hw = HostResourceWatchJson::default();
+        let snapshot = DashboardWsSnapshot {
+            gate: gate_snap.clone(),
+            host_watch: hw.clone(),
+            pool: PoolJson {
+                node_total: 0,
+                node_idle: 0,
+                bun_total: 0,
+                bun_idle: 0,
+                max_per_type: 0,
+                healthy: true,
+                issues: vec![],
+                gate: gate_snap.clone(),
+                host_watch: hw.clone(),
+                status: None,
+            },
+            status: StatusJson {
+                total_processes: 0,
+                agents: vec![],
+                scanned: 0,
+                watched: 0,
+                gate: gate_snap,
+                host_watch: hw,
+                pool: None,
+                log_location: None,
+            },
+            agents: DashboardAgentSummary {
+                scanned: 0,
+                watched: 0,
+                total_rss_bytes: 0,
+                families: HashMap::new(),
+            },
+            processes: vec![],
+        };
+        let json = serde_json::to_string(&snapshot).expect("serialize");
+        assert!(json.contains("\"gate\""));
+        assert!(json.contains("\"host_watch\""));
+        assert!(json.contains("\"pool\""));
+        assert!(json.contains("\"status\""));
+        assert!(json.contains("\"agents\""));
+        assert!(json.contains("\"processes\""));
+    }
 }

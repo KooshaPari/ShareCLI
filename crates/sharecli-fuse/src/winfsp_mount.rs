@@ -430,4 +430,46 @@ mod tests {
     fn ac_009_25_winfsp_installed_probe_is_safe() {
         let _ = winfsp_installed();
     }
+
+    #[test]
+    fn io_err_to_ntstatus_not_found() {
+        let err = std::io::Error::new(std::io::ErrorKind::NotFound, "gone");
+        assert_eq!(io_err_to_ntstatus(&err), 0xC000_0034u32 as i32);
+    }
+
+    #[test]
+    fn io_err_to_ntstatus_permission_denied() {
+        let err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "nope");
+        assert_eq!(io_err_to_ntstatus(&err), 0xC000_0022u32 as i32);
+    }
+
+    #[test]
+    fn io_err_to_ntstatus_already_exists() {
+        let err = std::io::Error::new(std::io::ErrorKind::AlreadyExists, "dup");
+        assert_eq!(io_err_to_ntstatus(&err), 0xC000_0035u32 as i32);
+    }
+
+    #[test]
+    fn io_err_to_ntstatus_invalid_input() {
+        let err = std::io::Error::new(std::io::ErrorKind::InvalidInput, "bad");
+        assert_eq!(io_err_to_ntstatus(&err), 0xC000_000Du32 as i32);
+    }
+
+    #[test]
+    fn io_err_to_ntstatus_invalid_data() {
+        let err = std::io::Error::new(std::io::ErrorKind::InvalidData, "corrupt");
+        assert_eq!(io_err_to_ntstatus(&err), 0xC000_000Du32 as i32);
+    }
+
+    #[test]
+    fn io_err_to_ntstatus_other_returns_unsuccessful() {
+        let err = std::io::Error::new(std::io::ErrorKind::ConnectionReset, "reset");
+        assert_eq!(io_err_to_ntstatus(&err), 0xC000_0001u32 as i32);
+    }
+
+    #[test]
+    fn io_err_to_ntstatus_would_block_returns_unsuccessful() {
+        let err = std::io::Error::new(std::io::ErrorKind::WouldBlock, "busy");
+        assert_eq!(io_err_to_ntstatus(&err), 0xC000_0001u32 as i32);
+    }
 }

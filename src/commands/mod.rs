@@ -1726,4 +1726,182 @@ mod project_group_tests {
     fn force_kill_skips_confirmation_when_not_force() {
         assert!(!super::force_kill_requires_confirmation(false, false));
     }
+
+    // --- render_health_csv_body ---
+
+    #[test]
+    fn render_health_csv_body_healthy() {
+        let gate_snap = sharecli_fleet::GateStatusSnapshot {
+            thermal_pressure: "GREEN".into(),
+            detected_agents: 0,
+            agent_total_rss_bytes: 0,
+            agent_contention: "OK".into(),
+            gate_decision: "ADMIT".into(),
+        };
+        let hw = HostResourceWatchJson::default();
+        let pool = PoolJson {
+            node_total: 0,
+            node_idle: 0,
+            bun_total: 0,
+            bun_idle: 0,
+            max_per_type: 0,
+            healthy: true,
+            issues: vec![],
+            gate: gate_snap.clone(),
+            host_watch: hw.clone(),
+            status: None,
+        };
+        let status = StatusJson {
+            total_processes: 0,
+            agents: vec![],
+            scanned: 0,
+            watched: 0,
+            gate: gate_snap.clone(),
+            host_watch: hw.clone(),
+            pool: None,
+            log_location: None,
+        };
+        let health = HealthJson {
+            healthy: true,
+            node_total: 3,
+            node_idle: 1,
+            node_in_use: 2,
+            bun_total: 5,
+            bun_idle: 3,
+            bun_in_use: 2,
+            max_per_type: 5,
+            issues: vec![],
+            gate: gate_snap,
+            host_watch: hw,
+            pool,
+            status,
+        };
+        let csv = render_health_csv_body(&health);
+        assert!(csv.starts_with("record,healthy,node_total,node_idle,node_in_use,bun_total,bun_idle,bun_in_use,max_per_type,issues"));
+        assert!(csv.contains("health,true,3,1,2,5,3,2,5,"));
+    }
+
+    #[test]
+    fn render_health_csv_body_unhealthy_with_issues() {
+        let gate_snap = sharecli_fleet::GateStatusSnapshot {
+            thermal_pressure: "GREEN".into(),
+            detected_agents: 0,
+            agent_total_rss_bytes: 0,
+            agent_contention: "OK".into(),
+            gate_decision: "ADMIT".into(),
+        };
+        let hw = HostResourceWatchJson::default();
+        let health = HealthJson {
+            healthy: false,
+            node_total: 0,
+            node_idle: 0,
+            node_in_use: 0,
+            bun_total: 0,
+            bun_idle: 0,
+            bun_in_use: 0,
+            max_per_type: 5,
+            issues: vec!["port conflict".into(), "OOM".into()],
+            gate: gate_snap.clone(),
+            host_watch: hw.clone(),
+            pool: PoolJson {
+                node_total: 0,
+                node_idle: 0,
+                bun_total: 0,
+                bun_idle: 0,
+                max_per_type: 0,
+                healthy: true,
+                issues: vec![],
+                gate: gate_snap.clone(),
+                host_watch: hw.clone(),
+                status: None,
+            },
+            status: StatusJson {
+                total_processes: 0,
+                agents: vec![],
+                scanned: 0,
+                watched: 0,
+                gate: gate_snap,
+                host_watch: hw,
+                pool: None,
+                log_location: None,
+            },
+        };
+        let csv = render_health_csv_body(&health);
+        assert!(csv.contains("health,false,"));
+        assert!(csv.contains("port conflict;OOM"));
+    }
+
+    // --- render_pool_csv_body ---
+
+    #[test]
+    fn render_pool_csv_body_basic() {
+        let pool = PoolJson {
+            node_total: 4,
+            node_idle: 2,
+            bun_total: 6,
+            bun_idle: 4,
+            max_per_type: 10,
+            healthy: true,
+            issues: vec![],
+            gate: sharecli_fleet::GateStatusSnapshot {
+                thermal_pressure: "GREEN".into(),
+                detected_agents: 0,
+                agent_total_rss_bytes: 0,
+                agent_contention: "OK".into(),
+                gate_decision: "ADMIT".into(),
+            },
+            host_watch: HostResourceWatchJson::default(),
+            status: None,
+        };
+        let csv = render_pool_csv_body(&pool);
+        assert!(csv.starts_with(
+            "record,node_total,node_idle,bun_total,bun_idle,max_per_type,healthy,issues"
+        ));
+        assert!(csv.contains("pool,4,2,6,4,10,true,"));
+    }
+
+    #[test]
+    fn render_pool_csv_body_with_issues() {
+        let pool = PoolJson {
+            node_total: 0,
+            node_idle: 0,
+            bun_total: 0,
+            bun_idle: 0,
+            max_per_type: 5,
+            healthy: false,
+            issues: vec!["stale lock".into()],
+            gate: sharecli_fleet::GateStatusSnapshot {
+                thermal_pressure: "GREEN".into(),
+                detected_agents: 0,
+                agent_total_rss_bytes: 0,
+                agent_contention: "OK".into(),
+                gate_decision: "ADMIT".into(),
+            },
+            host_watch: HostResourceWatchJson::default(),
+            status: None,
+        };
+        let csv = render_pool_csv_body(&pool);
+        assert!(csv.contains("pool,0,0,0,0,5,false,"));
+        assert!(csv.contains("stale lock"));
+    }
+
+    // --- filter_by_project edge cases ---
+
+    #[test]
+    fn filter_by_project_with_multiple_harnesses_same_project() {
+        let procs = vec![
+            make_proc(1, "a", Some("proj"), Some("cargo")),
+            make_proc(2, "b", Some("proj"), Some("node")),
+            make_proc(3, "c", Some("proj"), Some("bun")),
+        ];
+        let result = filter_by_project(&procs, "proj");
+        assert_eq!(result.len(), 3);
+    }
+
+    // --- force_kill_requires_confirmation edge cases ---
+
+    #[test]
+    fn force_kill_both_true_skips_confirmation() {
+        assert!(!super::force_kill_requires_confirmation(true, true));
+    }
 }
