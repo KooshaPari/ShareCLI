@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use crate::detect::match_known_agent;
+use crate::detect::{match_known_agent, match_system_tool};
 
 /// One process row used for tree walks and scans.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -120,6 +120,31 @@ pub fn is_under_agent(source: &dyn ProcSource, pid: u32) -> bool {
 /// Table cell for the `sharecli ps` AGENT column: nearest ancestor family or `"-"`.
 pub fn agent_label_for_pid(source: &dyn ProcSource, pid: u32) -> &'static str {
     walk_agent_ancestors(source, pid).map(|a| a.family).unwrap_or("-")
+}
+
+/// One system-tool instance detected on the host.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SystemToolScan {
+    pub pid: u32,
+    pub tool: &'static str,
+    pub comm: String,
+}
+
+/// Scan every process; return those whose `comm`/cmdline match system-tool patterns.
+pub fn scan_system_tools(source: &dyn ProcSource) -> Vec<SystemToolScan> {
+    let mut out = Vec::new();
+    for p in source.list() {
+        if let Some(tool) = match_system_tool(&p.comm, &p.cmdline) {
+            out.push(SystemToolScan { pid: p.pid, tool, comm: p.comm });
+        }
+    }
+    out.sort_by_key(|a| a.pid);
+    out
+}
+
+/// Live-host convenience for [`scan_system_tools`].
+pub fn scan_host_system_tools() -> Vec<SystemToolScan> {
+    scan_system_tools(&HostProcSource)
 }
 
 /// Live host process source.

@@ -5365,11 +5365,14 @@ version = "0.8.0"
 dependencies = [
  "anyhow",
  "async-nats",
+ "dirs 5.0.1",
  "libc",
  "serde",
  "serde_json",
  "sysinfo",
+ "tempfile",
  "tokio",
+ "toml 1.1.6+spec-1.1.0",
  "tracing",
 ]
 

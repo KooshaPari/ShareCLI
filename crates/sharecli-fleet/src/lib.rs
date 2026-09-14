@@ -25,7 +25,11 @@ pub use coalesce_meters::{
     global_coalesce_meters, record_coalesce_hit_kind, record_coalesce_lookup_hit,
     record_nocache_run, CoalesceHitKind, CoalesceMeters,
 };
-pub use detect::{match_known_agent, KNOWN_AGENT_FAMILIES};
+pub use detect::{
+    clear_runtime_patterns, load_default_runtime_patterns, load_patterns, load_runtime_patterns,
+    match_known_agent, match_system_tool, RuntimePattern, RuntimeSystemTool,
+    KNOWN_AGENT_FAMILIES,
+};
 pub use operator_pool_status::{
     format_pool_operator_line, format_status_operator_line, PoolOperatorPanel, StatusOperatorPanel,
 };
@@ -33,8 +37,9 @@ pub use proc_scan::{
     agent_label_for_pid, build_agent_forests, build_agent_state_map, build_forest_state_map,
     build_host_agent_forests, build_host_agent_state_map, build_host_forest_state_map,
     collect_forest_pids, detect_caller_agent, is_under_agent, lookup_host_proc, lookup_proc,
-    scan_agents, scan_host_agents, state_text_for_pid, walk_agent_ancestors, AgentTreeNode,
-    DetectedAgent, FakeProcSource, HostProcSource, ProcSnapshot, ProcSource,
+    scan_agents, scan_host_agents, scan_host_system_tools, scan_system_tools, state_text_for_pid,
+    walk_agent_ancestors, AgentTreeNode, DetectedAgent, FakeProcSource, HostProcSource,
+    ProcSnapshot, ProcSource, SystemToolScan,
 };
 pub use registry::{DeviceRecord, FleetRegistry, DEFAULT_SUBJECT_PREFIX};
 pub use resource_watch::{

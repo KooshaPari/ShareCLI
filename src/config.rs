@@ -60,6 +60,10 @@ pub struct Config {
 
     /// HTTP serve AuthN / bind policy.
     pub serve: ServeConfig,
+
+    /// Optional override for the agent patterns TOML path.
+    /// Default: `None` (uses `~/.config/sharecli/agent_patterns.toml`).
+    pub agent_patterns_path: Option<PathBuf>,
 }
 
 impl Default for Config {
@@ -79,6 +83,7 @@ impl Default for Config {
             health_checks: HashMap::new(),
             notifications: crate::notifier::NotifierConfig::default(),
             serve: ServeConfig::default(),
+            agent_patterns_path: None,
         }
     }
 }

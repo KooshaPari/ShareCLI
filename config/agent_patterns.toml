@@ -1,0 +1,95 @@
+# Agent detection patterns — hot-reloadable, no recompile needed.
+# Agents (jcode, claude, etc.) can update this file anytime.
+#
+# Shipped default: copied to ~/.config/sharecli/agent_patterns.toml on first run.
+# Override the path in config.toml via `agent_patterns_path`.
+
+[[agents]]
+family = "claude"
+comm_names = ["claude", "claude-code"]
+cmdline_markers = ["claude", "claude-code", ".claude"]
+
+[[agents]]
+family = "jcode"
+comm_names = ["jcode"]
+cmdline_markers = ["jcode", ".jcode", "jcode-cli"]
+
+[[agents]]
+family = "opencode"
+comm_names = ["opencode"]
+cmdline_markers = ["opencode", ".opencode"]
+
+[[agents]]
+family = "forge"
+comm_names = ["forge"]
+cmdline_markers = ["forge", ".forge", "forge conversation"]
+ambiguous = true  # requires cmdline fingerprint
+
+[[agents]]
+family = "codex"
+comm_names = ["codex", "openai-codex"]
+cmdline_markers = ["openai-codex", "@openai/codex", "codex-cli"]
+
+[[agents]]
+family = "gemini"
+comm_names = ["gemini"]
+cmdline_markers = ["gemini", "gemini-cli", "google-gemini"]
+ambiguous = true
+
+[[agents]]
+family = "cursor-agent"
+comm_names = ["cursor-agent"]
+cmdline_markers = ["cursor-agent", ".cursor", "@cursor/agent"]
+
+[[agents]]
+family = "aider"
+comm_names = ["aider"]
+cmdline_markers = ["aider", "aider-chat", ".aider"]
+
+[[agents]]
+family = "amp"
+comm_names = ["amp", "amp-cli"]
+cmdline_markers = ["amp", "amp-code", "sourcegraph/amp", ".amp"]
+
+[[agents]]
+family = "goose"
+comm_names = ["goose"]
+cmdline_markers = ["goose", "block-goose", "goose-agent"]
+ambiguous = true
+
+# System tool detection (not agents, but useful for process classification)
+[[system_tools]]
+name = "rustc"
+comm_names = ["rustc"]
+cmdline_markers = ["rustc", "rustc.exe"]
+
+[[system_tools]]
+name = "cargo"
+comm_names = ["cargo"]
+cmdline_markers = ["cargo", "cargo.exe"]
+ambiguous = true  # "cargo" alone might not be a cargo invocation
+
+[[system_tools]]
+name = "trunk"
+comm_names = ["trunk"]
+cmdline_markers = ["trunk", "trunk-cli"]
+
+[[system_tools]]
+name = "node"
+comm_names = ["node"]
+cmdline_markers = ["node", "node.exe"]
+
+[[system_tools]]
+name = "bun"
+comm_names = ["bun"]
+cmdline_markers = ["bun", "bun.exe"]
+
+[[system_tools]]
+name = "deno"
+comm_names = ["deno"]
+cmdline_markers = ["deno", "deno.exe"]
+
+[[system_tools]]
+name = "python"
+comm_names = ["python", "python3"]
+cmdline_markers = ["python", "python3"]
