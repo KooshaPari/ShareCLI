@@ -74,7 +74,7 @@ fn lookup(relative_path: &str) -> Option<EmbeddedAsset> {
             content_type: "image/png",
         },
         "dashboard.js" => EmbeddedAsset {
-            bytes: include_bytes!("../dashboard.js"),
+            bytes: include_bytes!("dashboard.js"),
             content_type: "application/javascript",
         },
         _ => return None,
