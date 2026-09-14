@@ -22,6 +22,8 @@ struct TrayPopoverView: View {
             actionBar
         }
         .frame(width: 360)
+        .frame(minHeight: 200, idealHeight: 480)
+        .fixedSize(horizontal: true, vertical: false)
         .background(.ultraThinMaterial)
     }
 

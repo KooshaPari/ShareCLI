@@ -16,12 +16,14 @@ import ShareCLICore
 struct DashboardView: View {
     @ObservedObject var state: AppState
     @AppStorage("dashboard.sidebar.selection") private var selectionRaw: String = Section.overview.rawValue
-    @AppStorage("dashboard.sidebar.columnWidth") private var sidebarColumnWidth: Double = 168
+    @AppStorage("dashboard.sidebar.columnWidth") private var sidebarColumnWidth: Double = 200
     @State private var paletteVisible: Bool = false
     @State private var helpVisible: Bool = false
     @State private var prefsVisible: Bool = false
     @State private var updaterVisible: Bool = false
     @AppStorage(UpdateChannel.storageKey) private var channelRaw: String = UpdateChannel.default.rawValue
+    @State private var windowWidth: CGFloat = 900
+    @State private var hoveredSection: Section?
     private var channel: UpdateChannel { UpdateChannel(rawValue: channelRaw) ?? .default }
 
     private var selection: Binding<Section> {
@@ -30,6 +32,9 @@ struct DashboardView: View {
             set: { selectionRaw = $0.rawValue }
         )
     }
+
+    /// Sidebar is icon-only when window is narrow (< 800 pt).
+    private var isCompactSidebar: Bool { windowWidth < 800 }
 
     enum Section: String, CaseIterable, Identifiable {
         case overview = "Overview"
@@ -66,8 +71,17 @@ struct DashboardView: View {
             detail
                 .frame(minWidth: 600)
         }
-        .navigationSplitViewColumnWidth(min: 140, ideal: sidebarColumnWidth)
+        .navigationSplitViewColumnWidth(
+            min: isCompactSidebar ? 48 : 160,
+            ideal: isCompactSidebar ? 48 : sidebarColumnWidth
+        )
         .frame(minWidth: 900, minHeight: 560)
+        .background(
+            GeometryReader { geo in
+                Color.clear.onAppear { windowWidth = geo.size.width }
+                    .onChange(of: geo.size.width) { _, newWidth in windowWidth = newWidth }
+            }
+        )
         .background(WindowAccessor { window in
             attachShortcutMonitor(window: window)
         })
@@ -99,21 +113,9 @@ struct DashboardView: View {
     @ViewBuilder
     private var sidebar: some View {
         List(Section.allCases, selection: selection) { sec in
-            Label {
-                HStack {
-                    Text(sec.rawValue)
-                    Spacer()
-                    if sec.shortcutIndex > 0 {
-                        Text("⌘\(sec.shortcutIndex)")
-                            .font(.caption2.monospaced())
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-            } icon: {
-                Image(systemName: sec.icon)
-            }
-            .help(sectionSummary(sec))
+            sidebarRow(sec)
         }
+        .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             MiniCompositeHealthCard(
                 fleet: state.fleetHistory.last,
@@ -122,6 +124,46 @@ struct DashboardView: View {
             .padding(.horizontal, 8)
             .padding(.bottom, 8)
         }
+    }
+
+    @ViewBuilder
+    private func sidebarRow(_ sec: Section) -> some View {
+        let isSelected = selection.wrappedValue == sec
+        let isHovered = hoveredSection == sec
+
+        HStack(spacing: 8) {
+            Image(systemName: sec.icon)
+                .font(.system(size: 14))
+                .frame(width: 18)
+            if !isCompactSidebar {
+                Text(sec.rawValue)
+                    .font(.system(size: 13))
+                    .lineLimit(1)
+                Spacer()
+                if sec.shortcutIndex > 0 {
+                    Text("⌘\(sec.shortcutIndex)")
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isSelected ? Color.accentColor.opacity(0.15)
+                      : isHovered ? Color.primary.opacity(0.06)
+                      : Color.clear)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            hoveredSection = hovering ? sec : nil
+        }
+        .onTapGesture {
+            selection.wrappedValue = sec
+        }
+        .help(isCompactSidebar ? "\(sec.rawValue) (⌘\(sec.shortcutIndex))" : sectionSummary(sec))
     }
 
     @ViewBuilder

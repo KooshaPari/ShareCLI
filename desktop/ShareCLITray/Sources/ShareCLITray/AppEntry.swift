@@ -24,8 +24,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
     private var dashboardWindow: NSWindow?
+    private var eventMonitor: Any?
 
-    @MainActor private let state = AppState()
+    @MainActor private let state = AppState.shared
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Hide from Dock — pure tray app
@@ -41,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupPopover()
         // Right-click → NSMenu (left-click keeps the popover)
         TrayMenuController.installContextMenu(for: statusItem)
+        MenuAction.shared.attachPopover(popover)
     }
 
     // MARK: - Status item
@@ -95,8 +97,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setupPopover() {
         popover = NSPopover()
-        popover.contentSize = NSSize(width: 360, height: 480)
-        popover.behavior = .transient
+        let maxHeight = min(480, Int((NSScreen.main?.visibleFrame.height ?? 480) * 0.8))
+        popover.contentSize = NSSize(width: 360, height: maxHeight)
+        popover.behavior = .applicationDefined
+        popover.animates = true
         popover.contentViewController = NSHostingController(
             rootView: TrayPopoverView(state: state, onOpenDashboard: { [weak self] in
                 self?.openDashboard()
@@ -107,10 +111,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func togglePopover() {
         guard let btn = statusItem.button else { return }
         if popover.isShown {
-            popover.performClose(nil)
+            closePopover()
         } else {
             popover.show(relativeTo: btn.bounds, of: btn, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
+            startMonitoringClicksOutside()
+        }
+    }
+
+    private func closePopover() {
+        popover.performClose(nil)
+        stopMonitoringClicksOutside()
+    }
+
+    /// With .applicationDefined behavior we must manually dismiss the popover
+    /// when the user clicks anywhere outside it.
+    private func startMonitoringClicksOutside() {
+        stopMonitoringClicksOutside()
+        eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self else { return }
+            // If the click is outside the popover window, close it.
+            if let popoverWindow = self.popover.contentViewController?.view.window,
+               !popoverWindow.frame.contains(NSEvent.mouseLocation) {
+                self.closePopover()
+            }
+        }
+    }
+
+    private func stopMonitoringClicksOutside() {
+        if let monitor = eventMonitor {
+            NSEvent.removeMonitor(monitor)
+            eventMonitor = nil
         }
     }
 
