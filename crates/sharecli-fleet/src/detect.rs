@@ -134,9 +134,9 @@ pub struct RuntimeSystemTool {
 // ---------------------------------------------------------------------------
 
 thread_local! {
-    static RUNTIME_PATTERNS: RefCell<Vec<RuntimePattern>> = RefCell::new(Vec::new());
-    static SYSTEM_TOOL_PATTERNS: RefCell<Vec<RuntimeSystemTool>> = RefCell::new(Vec::new());
-    static PATTERNS_LOADED: RefCell<bool> = RefCell::new(false);
+    static RUNTIME_PATTERNS: RefCell<Vec<RuntimePattern>> = const { RefCell::new(Vec::new()) };
+    static SYSTEM_TOOL_PATTERNS: RefCell<Vec<RuntimeSystemTool>> = const { RefCell::new(Vec::new()) };
+    static PATTERNS_LOADED: RefCell<bool> = const { RefCell::new(false) };
 }
 
 // ---------------------------------------------------------------------------
