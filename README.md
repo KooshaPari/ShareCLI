@@ -47,6 +47,11 @@ that hypervisor stack.
 Install `sharecli` with one of the following methods:
 
 ```bash
+# macOS / Linux (curl + sh)
+curl -fsSL https://raw.githubusercontent.com/KooshaPari/sharecli/main/install.sh | sh
+```
+
+```bash
 # Install from source via crates.io
 cargo install sharecli
 
