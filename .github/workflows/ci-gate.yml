@@ -29,6 +29,9 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
+permissions:
+  statuses: write
+
 jobs:
   ci-lint:
     name: ci / lint

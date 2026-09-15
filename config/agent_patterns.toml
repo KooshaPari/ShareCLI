@@ -23,7 +23,7 @@ cmdline_markers = ["opencode", ".opencode"]
 family = "forge"
 comm_names = ["forge"]
 cmdline_markers = ["forge", ".forge", "forge conversation"]
-ambiguous = true  # requires cmdline fingerprint
+ambiguous = true                                            # requires cmdline fingerprint
 
 [[agents]]
 family = "codex"
@@ -67,7 +67,7 @@ cmdline_markers = ["rustc", "rustc.exe"]
 name = "cargo"
 comm_names = ["cargo"]
 cmdline_markers = ["cargo", "cargo.exe"]
-ambiguous = true  # "cargo" alone might not be a cargo invocation
+ambiguous = true                         # "cargo" alone might not be a cargo invocation
 
 [[system_tools]]
 name = "trunk"
