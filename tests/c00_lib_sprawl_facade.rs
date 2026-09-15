@@ -39,6 +39,7 @@ const ROOT_PUB_MOD_ALLOWLIST: &[&str] = &[
     "proc_table",
     "progress",
     "proptest_util",
+    "pyroscope_stub",
     "runtime",
     "scheduler",
     "serve_auth",
