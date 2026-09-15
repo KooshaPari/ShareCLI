@@ -36,3 +36,4 @@ echo "==> Verifying new .p12"
 openssl pkcs12 -in "$OUTPUT_P12" -passin pass:"$NEW_PASS" -clcerts -nokeys > /dev/null
 
 echo "==> Done. Output: $OUTPUT_P12"
+
