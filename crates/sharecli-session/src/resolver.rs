@@ -131,4 +131,132 @@ mod tests {
         assert!(result.session.is_none());
         assert_eq!(result.confidence, ResolutionConfidence::Unavailable);
     }
+
+    // --- Additional coverage tests ---
+
+    #[test]
+    fn adapter_session_id_is_exact() {
+        let result = resolve("codex", "/tmp", &[], None, Some("adapter-id"));
+        assert_eq!(result.confidence, ResolutionConfidence::Exact);
+        assert_eq!(result.source, EvidenceSource::Adapter);
+        let session = result.session.unwrap();
+        assert_eq!(session.session_id, "adapter-id");
+    }
+
+    #[test]
+    fn adapter_takes_precedence_over_state() {
+        let result =
+            resolve("codex", "/tmp", &[], Some("state-id"), Some("adapter-id"));
+        assert_eq!(result.source, EvidenceSource::Adapter);
+        assert_eq!(result.session.unwrap().session_id, "adapter-id");
+    }
+
+    #[test]
+    fn empty_adapter_id_falls_through_to_state() {
+        let result =
+            resolve("codex", "/tmp", &[], Some("state-id"), Some(""));
+        assert_eq!(result.source, EvidenceSource::StateFile);
+    }
+
+    #[test]
+    fn forge_harness_resolves() {
+        let result = resolve(
+            "forge",
+            "/tmp",
+            &["forge".into(), "--conversation-id".into(), "fg-1".into()],
+            None,
+            None,
+        );
+        assert_eq!(result.confidence, ResolutionConfidence::Exact);
+        let session = result.session.unwrap();
+        assert_eq!(session.harness, "forge");
+        assert_eq!(session.resume.argv[1], "--conversation-id");
+    }
+
+    #[test]
+    fn opencode_harness_resolves_from_argv() {
+        let result = resolve(
+            "opencode",
+            "/tmp",
+            &["opencode".into(), "--session".into(), "oc-1".into()],
+            None,
+            None,
+        );
+        assert_eq!(result.confidence, ResolutionConfidence::Exact);
+        assert_eq!(result.session.unwrap().harness, "opencode");
+    }
+
+    #[test]
+    fn kilo_harness_resolves_from_argv() {
+        let result = resolve(
+            "kilo",
+            "/tmp",
+            &["kilo".into(), "--session".into(), "kl-1".into()],
+            None,
+            None,
+        );
+        assert_eq!(result.confidence, ResolutionConfidence::Exact);
+        assert_eq!(result.session.unwrap().harness, "kilo");
+    }
+
+    #[test]
+    fn cursor_harness_resolves_from_argv() {
+        let result = resolve(
+            "cursor",
+            "/tmp",
+            &["cursor-agent".into(), "--resume".into(), "cr-1".into()],
+            None,
+            None,
+        );
+        assert_eq!(result.confidence, ResolutionConfidence::Exact);
+        assert_eq!(result.session.unwrap().harness, "cursor-agent");
+    }
+
+    #[test]
+    fn cursor_agent_harness_resolves() {
+        let result = resolve(
+            "cursor-agent",
+            "/tmp",
+            &["cursor-agent".into(), "--resume".into(), "ca-1".into()],
+            None,
+            None,
+        );
+        assert_eq!(result.confidence, ResolutionConfidence::Exact);
+    }
+
+    #[test]
+    fn unknown_harness_returns_unavailable() {
+        let result = resolve("unknown-tool", "/tmp", &[], None, None);
+        assert!(result.session.is_none());
+        assert_eq!(result.confidence, ResolutionConfidence::Unavailable);
+        assert_eq!(result.source, EvidenceSource::Unavailable);
+    }
+
+    #[test]
+    fn state_id_corroborated_by_argv() {
+        let argv = vec!["codex".into(), "resume".into(), "xyz".into()];
+        let result = resolve("codex", "/tmp", &argv, Some("xyz"), None);
+        assert_eq!(result.confidence, ResolutionConfidence::Corroborated);
+        assert_eq!(result.source, EvidenceSource::StateFile);
+    }
+
+    #[test]
+    fn state_id_without_argv_match_is_exact() {
+        let result =
+            resolve("codex", "/tmp", &["codex".into(), "other".into()], Some("sid"), None);
+        assert_eq!(result.confidence, ResolutionConfidence::Exact);
+        assert_eq!(result.source, EvidenceSource::StateFile);
+    }
+
+    #[test]
+    fn evidence_source_variants() {
+        let a = EvidenceSource::Adapter;
+        let b = EvidenceSource::StateFile;
+        let c = EvidenceSource::Argv;
+        let d = EvidenceSource::Unavailable;
+        assert_ne!(a, b);
+        assert_ne!(b, c);
+        assert_ne!(c, d);
+        assert_ne!(a, d);
+    }
 }

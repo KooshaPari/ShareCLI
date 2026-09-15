@@ -42,6 +42,122 @@ mod tests {
         assert_eq!(session.confidence, ResolutionConfidence::Exact);
         assert_eq!(session.state, SessionState::Active);
     }
+
+    // --- Additional coverage tests ---
+
+    #[test]
+    fn auto_resumable_exact_with_nonempty_session_id_and_argv() {
+        let session = AgentSession::codex("id", "/tmp");
+        assert!(session.auto_resumable());
+    }
+
+    #[test]
+    fn auto_resumable_corroborated() {
+        let mut session = AgentSession::codex("id", "/tmp");
+        session.confidence = ResolutionConfidence::Corroborated;
+        assert!(session.auto_resumable());
+    }
+
+    #[test]
+    fn auto_resumable_heuristic_is_not() {
+        let mut session = AgentSession::codex("id", "/tmp");
+        session.confidence = ResolutionConfidence::Heuristic;
+        assert!(!session.auto_resumable());
+    }
+
+    #[test]
+    fn auto_resumable_unavailable_is_not() {
+        let mut session = AgentSession::codex("id", "/tmp");
+        session.confidence = ResolutionConfidence::Unavailable;
+        assert!(!session.auto_resumable());
+    }
+
+    #[test]
+    fn auto_resumable_empty_session_id_is_not() {
+        let mut session = AgentSession::codex("id", "/tmp");
+        session.resume.session_id = String::new();
+        assert!(!session.auto_resumable());
+    }
+
+    #[test]
+    fn auto_resumable_empty_argv_is_not() {
+        let mut session = AgentSession::codex("id", "/tmp");
+        session.resume.argv.clear();
+        assert!(!session.auto_resumable());
+    }
+
+    #[test]
+    fn agent_session_new_format() {
+        let session = AgentSession::new("claude", "abc", "/tmp/project");
+        assert_eq!(session.id, "claude:abc");
+        assert_eq!(session.harness, "claude");
+        assert_eq!(session.session_id, "abc");
+        assert_eq!(session.cwd, std::path::PathBuf::from("/tmp/project"));
+        assert_eq!(session.resume.harness, "claude");
+        assert_eq!(session.resume.session_id, "abc");
+        assert_eq!(
+            session.resume.cwd,
+            std::path::PathBuf::from("/tmp/project")
+        );
+        assert_eq!(
+            session.resume.argv,
+            vec!["claude", "resume", "abc"]
+        );
+    }
+
+    #[test]
+    fn session_state_eq() {
+        assert_eq!(SessionState::Pending, SessionState::Pending);
+        assert_ne!(SessionState::Pending, SessionState::Active);
+        assert_ne!(SessionState::Active, SessionState::Exited);
+        assert_ne!(SessionState::Exited, SessionState::Unknown);
+    }
+
+    #[test]
+    fn resolution_confidence_eq() {
+        assert_eq!(
+            ResolutionConfidence::Exact,
+            ResolutionConfidence::Exact
+        );
+        assert_ne!(
+            ResolutionConfidence::Exact,
+            ResolutionConfidence::Corroborated
+        );
+        assert_ne!(
+            ResolutionConfidence::Corroborated,
+            ResolutionConfidence::Heuristic
+        );
+        assert_ne!(
+            ResolutionConfidence::Heuristic,
+            ResolutionConfidence::Unavailable
+        );
+    }
+
+    #[test]
+    fn surface_record_clone_eq() {
+        let record = SurfaceRecord {
+            id: "s1".into(),
+            terminal: "ghostty".into(),
+            title: Some("main".into()),
+            cwd: std::path::PathBuf::from("/tmp"),
+            process: None,
+        };
+        let cloned = record.clone();
+        assert_eq!(record, cloned);
+    }
+
+    #[test]
+    fn process_evidence_clone_eq() {
+        let ev = ProcessEvidence {
+            pid: Some(1234),
+            tty: Some("ttys001".into()),
+            cwd: std::path::PathBuf::from("/tmp"),
+            argv: vec!["bash".into()],
+            started_at: Some("2026-01-01".into()),
+        };
+        let cloned = ev.clone();
+        assert_eq!(ev, cloned);
+    }
 }
 
 use std::collections::BTreeMap;

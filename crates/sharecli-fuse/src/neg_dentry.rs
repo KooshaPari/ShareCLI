@@ -187,4 +187,58 @@ mod tests {
         assert!(section.contains("Neg hits:"));
         assert!(section.contains("Hit rate:     66%"));
     }
+
+    // --- Additional coverage tests ---
+
+    #[test]
+    fn neg_dentry_default_ttl() {
+        let mut cache = NegativeDentryCache::new();
+        let rel = PathBuf::from("tmp.txt");
+        cache.remember_miss(rel.clone());
+        assert!(cache.is_negative(&rel));
+    }
+
+    #[test]
+    fn neg_dentry_multiple_entries() {
+        let mut cache = NegativeDentryCache::new();
+        cache.remember_miss(PathBuf::from("a.txt"));
+        cache.remember_miss(PathBuf::from("b.txt"));
+        cache.remember_miss(PathBuf::from("c.txt"));
+        assert!(cache.is_negative(&PathBuf::from("a.txt")));
+        assert!(cache.is_negative(&PathBuf::from("b.txt")));
+        assert!(cache.is_negative(&PathBuf::from("c.txt")));
+    }
+
+    #[test]
+    fn neg_dentry_meters_zero() {
+        let m = NegDentryMeters { hits: 0, misses: 0 };
+        let s = m.format_status_section();
+        assert!(s.contains("Neg hits:     0"));
+        assert!(s.contains("Neg misses:   0"));
+        assert!(s.contains("0%"));
+    }
+
+    #[test]
+    fn neg_dentry_invalidate_removes() {
+        let mut cache = NegativeDentryCache::new();
+        let rel = PathBuf::from("invalidate_me.txt");
+        cache.remember_miss(rel.clone());
+        assert!(cache.is_negative(&rel));
+        cache.invalidate(&rel);
+        assert!(!cache.is_negative(&rel));
+    }
+
+    #[test]
+    fn neg_dentry_meters_100_percent() {
+        let m = NegDentryMeters { hits: 5, misses: 0 };
+        let s = m.format_status_section();
+        assert!(s.contains("100%"));
+    }
+
+    #[test]
+    fn neg_dentry_meters_zero_percent() {
+        let m = NegDentryMeters { hits: 0, misses: 10 };
+        let s = m.format_status_section();
+        assert!(s.contains("0%"));
+    }
 }

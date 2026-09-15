@@ -259,4 +259,106 @@ mod tests {
         .unwrap();
         assert!(hit);
     }
+
+    // --- Additional coverage tests ---
+
+    #[test]
+    fn agent_cow_store_root_accessor() {
+        let dir = tempdir().unwrap();
+        let cow = AgentCowStore::new(dir.path().join("cow"), "default", true);
+        assert_eq!(cow.cow_root(), dir.path().join("cow"));
+    }
+
+    #[test]
+    fn agent_cow_default_agent_accessor() {
+        let dir = tempdir().unwrap();
+        let cow = AgentCowStore::new(dir.path().join("cow"), "my-agent", true);
+        assert_eq!(cow.default_agent(), "my-agent");
+    }
+
+    #[test]
+    fn agent_cow_serialize_accessor() {
+        let dir = tempdir().unwrap();
+        let cow_t = AgentCowStore::new(dir.path().join("a"), "x", true);
+        assert!(cow_t.serialize());
+        let cow_f = AgentCowStore::new(dir.path().join("b"), "y", false);
+        assert!(!cow_f.serialize());
+    }
+
+    #[test]
+    fn agent_cow_with_locked_path_enabled() {
+        let dir = tempdir().unwrap();
+        let cow = AgentCowStore::new(dir.path().join("cow"), "a", true);
+        let result = cow
+            .with_locked_path(None, Path::new("/test"), || 42)
+            .unwrap();
+        assert_eq!(result, 42);
+    }
+
+    #[test]
+    fn agent_cow_pending_for_agent_empty() {
+        let dir = tempdir().unwrap();
+        let cow = AgentCowStore::new(dir.path().join("cow"), "default", true);
+        assert!(cow.pending_for_agent(None).unwrap().is_empty());
+    }
+
+    #[test]
+    fn agent_cow_commit_all_for_agent() {
+        let dir = tempdir().unwrap();
+        let a = dir.path().join("a.txt");
+        let b = dir.path().join("b.txt");
+        fs::write(&a, b"a").unwrap();
+        fs::write(&b, b"b").unwrap();
+        let cow = AgentCowStore::new(dir.path().join("cow"), "default", true);
+        cow.stage_bytes(Some("x"), &a, b"a1").unwrap();
+        cow.stage_bytes(Some("x"), &b, b"b1").unwrap();
+        let mut committed = cow.commit_all_for_agent(Some("x")).unwrap();
+        committed.sort();
+        assert_eq!(committed.len(), 2);
+        assert_eq!(fs::read(&a).unwrap(), b"a1");
+        assert_eq!(fs::read(&b).unwrap(), b"b1");
+    }
+
+    #[test]
+    fn agent_cow_discard_all_for_agent() {
+        let dir = tempdir().unwrap();
+        let a = dir.path().join("file.txt");
+        fs::write(&a, b"keep").unwrap();
+        let cow = AgentCowStore::new(dir.path().join("cow"), "default", true);
+        cow.stage_bytes(None, &a, b"discard").unwrap();
+        let discarded = cow.discard_all_for_agent(None).unwrap();
+        assert_eq!(discarded.len(), 1);
+        assert_eq!(fs::read(&a).unwrap(), b"keep");
+    }
+
+    #[test]
+    fn agent_cow_list_agent_pending_sorted() {
+        let dir = tempdir().unwrap();
+        let a = dir.path().join("f.txt");
+        fs::write(&a, b"x").unwrap();
+        let cow = AgentCowStore::new(dir.path().join("cow"), "default", true);
+        cow.stage_bytes(Some("z-agent"), &a, b"v").unwrap();
+        cow.stage_bytes(Some("a-agent"), &a, b"v").unwrap();
+        let list = cow.list_agent_pending().unwrap();
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].agent, "a-agent");
+        assert_eq!(list[1].agent, "z-agent");
+    }
+
+    #[test]
+    fn agent_cow_default_agent_sanitize() {
+        let dir = tempdir().unwrap();
+        let cow = AgentCowStore::new(dir.path().join("cow"), "a/b c", true);
+        assert_eq!(cow.default_agent(), "a_b_c");
+    }
+
+    #[test]
+    fn agent_cow_stage_creates_agent_dir() {
+        let dir = tempdir().unwrap();
+        let backing = dir.path().join("f.txt");
+        fs::write(&backing, b"x").unwrap();
+        let cow = AgentCowStore::new(dir.path().join("cow"), "default", true);
+        cow.stage_bytes(Some("brand-new"), &backing, b"y").unwrap();
+        assert!(dir.path().join("cow").join("brand-new").exists());
+    }
 }

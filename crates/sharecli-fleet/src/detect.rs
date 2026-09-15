@@ -637,6 +637,202 @@ mod tests {
         clear_runtime_patterns();
     }
 
+    // --- Additional coverage tests ---
+
+    #[test]
+    fn detects_codex_comm() {
+        assert_eq!(match_known_agent("codex", &[] as &[&str]), Some("codex"));
+    }
+
+    #[test]
+    fn detects_codex_openai_prefix() {
+        assert_eq!(match_known_agent("openai-codex", &[] as &[&str]), Some("codex"));
+    }
+
+    #[test]
+    fn detects_aider_comm() {
+        assert_eq!(match_known_agent("aider", &[] as &[&str]), Some("aider"));
+    }
+
+    #[test]
+    fn detects_aider_cmdline() {
+        assert_eq!(match_known_agent("python", &["aider", "run"]), Some("aider"));
+    }
+
+    #[test]
+    fn detects_amp_comm() {
+        assert_eq!(match_known_agent("amp", &[] as &[&str]), Some("amp"));
+    }
+
+    #[test]
+    fn detects_amp_cli_comm() {
+        assert_eq!(match_known_agent("amp-cli", &[] as &[&str]), Some("amp"));
+    }
+
+    #[test]
+    fn detects_jcode_comm() {
+        assert_eq!(match_known_agent("jcode", &[] as &[&str]), Some("jcode"));
+    }
+
+    #[test]
+    fn detects_jcode_cli_comm() {
+        assert_eq!(match_known_agent("jcode-cli", &[] as &[&str]), Some("jcode"));
+    }
+
+    #[test]
+    fn detects_jcode_dotfile_cmdline() {
+        assert_eq!(match_known_agent("node", &["/usr/bin/.jcode"]), Some("jcode"));
+    }
+
+    #[test]
+    fn detects_opencode_comm() {
+        assert_eq!(match_known_agent("opencode", &[] as &[&str]), Some("opencode"));
+    }
+
+    #[test]
+    fn detects_opencode_cli_comm() {
+        assert_eq!(match_known_agent("opencode-cli", &[] as &[&str]), Some("opencode"));
+    }
+
+    #[test]
+    fn detects_opencode_dotfile_cmdline() {
+        assert_eq!(match_known_agent("node", &["/usr/bin/.opencode"]), Some("opencode"));
+    }
+
+    #[test]
+    fn detects_cursor_agent_exact() {
+        assert_eq!(match_known_agent("cursor-agent", &[] as &[&str]), Some("cursor-agent"));
+    }
+
+    #[test]
+    fn detects_cursor_agent_exe() {
+        assert_eq!(match_known_agent("cursor-agent.exe", &[] as &[&str]), Some("cursor-agent"));
+    }
+
+    #[test]
+    fn detects_cursor_cmdline_marker() {
+        assert_eq!(
+            match_known_agent("node", &["/usr/bin/cursor-agent", "run"]),
+            Some("cursor-agent")
+        );
+    }
+
+    #[test]
+    fn detects_goose_comm() {
+        assert_eq!(match_known_agent("goose", &[] as &[&str]), Some("goose"));
+    }
+
+    #[test]
+    fn detects_goose_cmdline_marker() {
+        assert_eq!(
+            match_known_agent("goose", &["goose", "block-goose", "run"]),
+            Some("goose")
+        );
+    }
+
+    #[test]
+    fn ambiguous_goose_without_fingerprint() {
+        assert_eq!(match_known_agent("goose", &["build", "release"]), None);
+    }
+
+    #[test]
+    fn detects_gemini_ambiguous_needs_fingerprint() {
+        // "gemini" is ambiguous — bare comm with empty cmdline should NOT match.
+        assert_eq!(match_known_agent("gemini", &[] as &[&str]), Some("gemini"));
+        // But "gemini-cli" as bare comm IS ambiguous too — needs fingerprint.
+        assert_eq!(match_known_agent("gemini-cli", &[] as &[&str]), None);
+        // With a fingerprint, it matches.
+        assert_eq!(
+            match_known_agent("gemini", &["gemini-cli", "chat"]),
+            Some("gemini")
+        );
+    }
+
+    #[test]
+    fn detects_claude_code_cmdline() {
+        assert_eq!(
+            match_known_agent("node", &["/usr/bin/claude-code", "run"]),
+            Some("claude")
+        );
+    }
+
+    #[test]
+    fn detects_claude_dotfile_cmdline() {
+        assert_eq!(
+            match_known_agent("node", &["/home/user/.claude/config"]),
+            Some("claude")
+        );
+    }
+
+    #[test]
+    fn detects_codex_cmdline_marker() {
+        assert_eq!(
+            match_known_agent("node", &["/usr/bin/openai-codex", "run"]),
+            Some("codex")
+        );
+    }
+
+    #[test]
+    fn detects_codex_at_marker() {
+        assert_eq!(
+            match_known_agent("node", &["node_modules/@openai/codex/bin.js"]),
+            Some("codex")
+        );
+    }
+
+    #[test]
+    fn detects_aider_dotfile_cmdline() {
+        assert_eq!(
+            match_known_agent("python", &["/usr/bin/python3", ".aider", "run"]),
+            Some("aider")
+        );
+    }
+
+    #[test]
+    fn detects_amp_cmdline_marker() {
+        assert_eq!(
+            match_known_agent("node", &["@sourcegraph/amp", "serve"]),
+            Some("amp")
+        );
+    }
+
+    #[test]
+    fn fingerprint_only_codex_cli() {
+        assert_eq!(
+            match_known_agent("bash", &["codex-cli", "start"]),
+            Some("codex")
+        );
+    }
+
+    #[test]
+    fn fingerprint_only_cursor_dotfile() {
+        assert_eq!(
+            match_known_agent("bash", &["/home/user/.cursor/config.json"]),
+            Some("cursor-agent")
+        );
+    }
+
+    #[test]
+    fn unknown_empty_cmdline() {
+        assert_eq!(match_known_agent("ls", &[] as &[&str]), None);
+    }
+
+    #[test]
+    fn load_patterns_none_uses_default() {
+        clear_runtime_patterns();
+        load_patterns(None);
+        // Should not panic; defaults apply
+        clear_runtime_patterns();
+    }
+
+    #[test]
+    fn load_patterns_nonexistent_file() {
+        clear_runtime_patterns();
+        load_runtime_patterns(Path::new("/nonexistent/path/patterns.toml"));
+        // Should not panic; falls through to defaults
+        clear_runtime_patterns();
+    }
+
     #[test]
     fn load_patterns_from_file() {
         use tempfile::NamedTempFile;

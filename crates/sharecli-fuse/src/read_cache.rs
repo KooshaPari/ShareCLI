@@ -211,4 +211,43 @@ mod tests {
             "status section MUST be operator-readable; got {section}"
         );
     }
+
+    // --- Additional coverage tests ---
+
+    #[test]
+    fn read_cache_multiple_different_files() {
+        let mut cache = ReadContentCache::new();
+        let tmp1 = NamedTempFile::new().unwrap();
+        let tmp2 = NamedTempFile::new().unwrap();
+        let p1 = tmp1.path().to_path_buf();
+        let p2 = tmp2.path().to_path_buf();
+        let _ = cache.read_coalesced(&p1).unwrap();
+        let _ = cache.read_coalesced(&p2).unwrap();
+        assert_eq!(cache.meters().misses, 2);
+        assert_eq!(cache.meters().hits, 0);
+    }
+
+    #[test]
+    fn read_cache_meters_zero_defaults() {
+        let cache = ReadContentCache::new();
+        let m = cache.meters();
+        assert_eq!(m.hits, 0);
+        assert_eq!(m.misses, 0);
+        let s = m.format_status_section();
+        assert!(s.contains("0%"));
+    }
+
+    #[test]
+    fn read_cache_hit_after_miss() {
+        let mut cache = ReadContentCache::new();
+        let tmp = NamedTempFile::new().unwrap();
+        std::fs::write(tmp.path(), b"hello world").unwrap();
+        let path = tmp.path().to_path_buf();
+        let first = cache.read_coalesced(&path).unwrap();
+        assert!(!first.is_empty());
+        let second = cache.read_coalesced(&path).unwrap();
+        assert_eq!(first, second);
+        assert_eq!(cache.meters().hits, 1);
+        assert_eq!(cache.meters().misses, 1);
+    }
 }

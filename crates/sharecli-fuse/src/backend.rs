@@ -405,4 +405,60 @@ mod tests {
         // Exact match: String::new() / "xyzzy" mutants both differ.
         assert_eq!(runtime_diagnostics(), "macFUSE diagnostics unavailable on this platform");
     }
+
+    // --- Additional coverage tests ---
+
+    #[test]
+    fn fuse_capabilities_default_values() {
+        let caps = FuseCapabilities::default();
+        assert!(!caps.kernel_loaded);
+        assert!(!caps.fskit_approved);
+    }
+
+    #[test]
+    fn fuse_backend_selection_clone_eq() {
+        let sel = FuseBackendSelection {
+            backend: FuseBackend::Kernel,
+            diagnostic: None,
+        };
+        let cloned = sel.clone();
+        assert_eq!(sel, cloned);
+    }
+
+    #[test]
+    fn select_backend_for_mount_with_neither_available() {
+        let caps = FuseCapabilities { kernel_loaded: false, fskit_approved: false };
+        let sel = select_backend_for_mount_with(caps, Path::new("/Volumes/test"));
+        assert_eq!(sel.backend, FuseBackend::Unavailable);
+        assert_eq!(sel.diagnostic, Some(FuseBackendDiagnostic::NoVerifiedBackend));
+    }
+
+    #[test]
+    fn select_backend_for_mount_with_unavailable_fskit_not_checked_for_volumes() {
+        // When neither is available, the mountpoint path is irrelevant.
+        let caps = FuseCapabilities { kernel_loaded: false, fskit_approved: false };
+        let sel = select_backend_for_mount_with(caps, Path::new("/other/path"));
+        assert_eq!(sel.backend, FuseBackend::Unavailable);
+    }
+
+    #[test]
+    fn fuse_runtime_evidence_field_access() {
+        let ev = FuseRuntimeEvidence {
+            platform: "macos",
+            mountpoint: PathBuf::from("/Volumes/test"),
+            kernel_loaded: true,
+            fskit_framework: false,
+            fskit_approved: false,
+            selection: FuseBackendSelection {
+                backend: FuseBackend::Kernel,
+                diagnostic: None,
+            },
+            non_fuse_fallback: true,
+        };
+        assert_eq!(ev.platform, "macos");
+        assert!(ev.kernel_loaded);
+        assert!(!ev.fskit_framework);
+        assert!(!ev.fskit_approved);
+        assert!(ev.non_fuse_fallback);
+    }
 }

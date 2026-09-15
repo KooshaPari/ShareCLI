@@ -130,4 +130,79 @@ mod tests {
     fn executor_clamps_parallelism_to_one() {
         assert_eq!(RecoveryExecutor::new(0).max_parallel, 1);
     }
+
+    // --- Additional coverage tests ---
+
+    #[test]
+    fn validate_recipe_rejects_empty_argv() {
+        let recipe = ResumeRecipe {
+            harness: "codex".into(),
+            session_id: "x".into(),
+            cwd: std::path::PathBuf::from("/tmp"),
+            argv: vec![],
+        };
+        assert!(validate_recipe(&recipe).is_err());
+    }
+
+    #[test]
+    fn validate_recipe_rejects_null_in_argv() {
+        let recipe = ResumeRecipe {
+            harness: "codex".into(),
+            session_id: "x".into(),
+            cwd: std::path::PathBuf::from("/tmp"),
+            argv: vec!["codex".into(), "resume\0id".into()],
+        };
+        assert!(validate_recipe(&recipe).is_err());
+    }
+
+    #[test]
+    fn validate_recipe_accepts_valid_recipe() {
+        let recipe = ResumeRecipe {
+            harness: "codex".into(),
+            session_id: "x".into(),
+            cwd: std::path::PathBuf::from("/tmp"),
+            argv: vec!["codex".into(), "resume".into(), "x".into()],
+        };
+        assert!(validate_recipe(&recipe).is_ok());
+    }
+
+    #[test]
+    fn dry_run_mixed_sessions() {
+        let mut auto = AgentSession::codex("id1", "/tmp");
+        auto.confidence = ResolutionConfidence::Exact;
+        let mut ambiguous = AgentSession::codex("id2", "/tmp");
+        ambiguous.confidence = ResolutionConfidence::Heuristic;
+        let executor = RecoveryExecutor::new(2);
+        let results = executor.dry_run(&[auto, ambiguous]);
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].outcome, RecoveryOutcome::DryRun);
+        assert_eq!(results[1].outcome, RecoveryOutcome::SkippedAmbiguous);
+    }
+
+    #[test]
+    fn recovery_outcome_variants() {
+        let r = RecoveryOutcome::Resumed;
+        assert_eq!(r, RecoveryOutcome::Resumed);
+        assert_ne!(r, RecoveryOutcome::DryRun);
+        assert_ne!(r, RecoveryOutcome::SkippedAmbiguous);
+        assert_ne!(r, RecoveryOutcome::UnsupportedSurface);
+        let failed = RecoveryOutcome::LaunchFailed("test".into());
+        assert_ne!(failed, RecoveryOutcome::Resumed);
+    }
+
+    #[test]
+    fn recovery_result_eq() {
+        let a = RecoveryResult { session_id: "x".into(), outcome: RecoveryOutcome::Resumed };
+        let b = RecoveryResult { session_id: "x".into(), outcome: RecoveryOutcome::Resumed };
+        assert_eq!(a, b);
+        let c = RecoveryResult { session_id: "y".into(), outcome: RecoveryOutcome::DryRun };
+        assert_ne!(a, c);
+    }
+
+    #[test]
+    fn executor_parallelism_clamped_at_one() {
+        assert_eq!(RecoveryExecutor::new(1).max_parallel, 1);
+        assert_eq!(RecoveryExecutor::new(5).max_parallel, 5);
+        assert_eq!(RecoveryExecutor::new(100).max_parallel, 100);
+    }
 }

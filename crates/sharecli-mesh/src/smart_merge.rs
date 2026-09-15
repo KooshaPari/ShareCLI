@@ -312,4 +312,81 @@ mod tests {
             "expected conflict markers or both sides, got {text:?}"
         );
     }
+
+    // --- Additional coverage tests ---
+
+    #[test]
+    fn merge_result_clean_constructor() {
+        let r = MergeResult::clean("ok", true);
+        assert!(r.success);
+        assert!(r.conflicts.is_empty());
+        assert_eq!(r.output, "ok");
+        assert!(r.used_mergiraf);
+    }
+
+    #[test]
+    fn merge_result_conflicted_constructor() {
+        let r = MergeResult::conflicted("conflict", false);
+        assert!(!r.success);
+        assert!(r.conflicts.is_empty());
+        assert_eq!(r.output, "conflict");
+        assert!(!r.used_mergiraf);
+    }
+
+    #[test]
+    fn smart_merger_default_values() {
+        let m = SmartMerger::new();
+        assert!(m.fallback_to_git);
+        assert!(m.mergiraf_binary.is_none());
+    }
+
+    #[test]
+    fn smart_merger_with_mergiraf_binary_path() {
+        let m = SmartMerger::new().with_mergiraf_binary("/usr/bin/mergiraf");
+        assert_eq!(m.mergiraf_path(), Some(PathBuf::from("/usr/bin/mergiraf")));
+    }
+
+    #[test]
+    fn smart_merger_mergiraf_path_none_when_not_set() {
+        let m = SmartMerger::new();
+        // When not set, mergiraf_path() checks PATH (which may or may not have it)
+        // Just verify it doesn't panic
+        let _ = m.mergiraf_path();
+    }
+
+    #[test]
+    fn smart_merger_without_git_fallback() {
+        let m = SmartMerger::new().without_git_fallback();
+        assert!(!m.fallback_to_git);
+    }
+
+    #[test]
+    fn smart_merger_clone_eq() {
+        let m = SmartMerger::new()
+            .with_mergiraf_binary("/usr/bin/m")
+            .without_git_fallback();
+        let cloned = m.clone();
+        assert_eq!(m.mergiraf_binary, cloned.mergiraf_binary);
+        assert_eq!(m.fallback_to_git, cloned.fallback_to_git);
+    }
+
+    #[test]
+    fn merge_result_clone_eq() {
+        let r = MergeResult::clean("out", false);
+        let cloned = r.clone();
+        assert_eq!(r, cloned);
+    }
+
+    #[test]
+    fn no_fallback_no_mergiraf_returns_error() {
+        let m = SmartMerger::new().without_git_fallback();
+        let base = std::env::temp_dir().join("mb.txt");
+        let ours = std::env::temp_dir().join("mo.txt");
+        let theirs = std::env::temp_dir().join("mt.txt");
+        let output = std::env::temp_dir().join("mo2.txt");
+        let result = m.merge(&base, &ours, &theirs, &output);
+        assert!(!result.success);
+        assert!(!result.used_mergiraf);
+        assert!(result.output.contains("mergiraf unavailable"));
+    }
 }

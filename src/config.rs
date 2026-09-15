@@ -984,4 +984,127 @@ mod tests {
         assert_eq!(cfg.pool.max_per_type, 5);
         assert_eq!(cfg.spawn_policy.nice_level, 10);
     }
+
+    // -----------------------------------------------------------------------
+    // Additional coverage tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn serve_jwt_config_defaults() {
+        let jwt = ServeJwtConfig::default();
+        assert!(jwt.issuer.is_empty());
+        assert!(jwt.audience.is_empty());
+        assert!(jwt.jwks_path.is_none());
+        assert!(jwt.jwks.is_none());
+    }
+
+    #[test]
+    fn config_from_toml_with_agent_patterns_path() {
+        let toml_str = r#"
+            agent_patterns_path = "/custom/patterns.toml"
+        "#;
+        let cfg: Config = toml::from_str(toml_str).expect("parse");
+        assert_eq!(
+            cfg.agent_patterns_path.as_ref().map(|p| p.to_string_lossy().into_owned()).as_deref(),
+            Some("/custom/patterns.toml")
+        );
+    }
+
+    #[test]
+    fn default_projects_values() {
+        let projects = Config::default().projects;
+        assert_eq!(projects.len(), 5);
+        assert!(projects.contains_key("helios-cli"));
+        assert!(projects.contains_key("portage"));
+        assert!(projects.contains_key("agentapi"));
+        assert!(projects.contains_key("cliproxy"));
+        assert!(projects.contains_key("colab"));
+    }
+
+    #[test]
+    fn default_harness_configs_values() {
+        let defaults = Config::default().defaults;
+        assert_eq!(defaults.len(), 4);
+        let claude = defaults.get("claude").unwrap();
+        assert!(claude.enabled);
+        assert_eq!(claude.max_instances, 11);
+        assert_eq!(claude.memory_limit_mb, 512);
+        let forge = defaults.get("forge").unwrap();
+        assert_eq!(forge.max_instances, 20);
+        let node = defaults.get("node").unwrap();
+        assert_eq!(node.max_instances, 30);
+        let bun = defaults.get("bun").unwrap();
+        assert_eq!(bun.memory_limit_mb, 384);
+    }
+
+    #[test]
+    fn config_health_checks_empty_by_default() {
+        let cfg = Config::default();
+        assert!(cfg.health_checks.is_empty());
+    }
+
+    #[test]
+    fn config_serve_jwt_inline_jwks() {
+        let toml_str = r#"
+            [serve.jwt]
+            issuer = "https://issuer.example.com"
+            audience = "my-audience"
+            jwks = "{\"keys\":[]}"
+        "#;
+        let cfg: Config = toml::from_str(toml_str).expect("parse inline jwks");
+        let jwt = cfg.serve.jwt.unwrap();
+        assert_eq!(jwt.issuer, "https://issuer.example.com");
+        assert_eq!(jwt.audience, "my-audience");
+        assert!(jwt.jwks.is_some());
+        assert!(jwt.jwks_path.is_none());
+    }
+
+    #[test]
+    fn config_serve_rate_limit_from_toml() {
+        let toml_str = r#"
+            [serve]
+            rate_limit_max = 200
+            rate_limit_window_secs = 120
+        "#;
+        let cfg: Config = toml::from_str(toml_str).expect("parse");
+        assert_eq!(cfg.serve.rate_limit_max, Some(200));
+        assert_eq!(cfg.serve.rate_limit_window_secs, Some(120));
+    }
+
+    #[test]
+    fn config_json_round_trip() {
+        let original = Config::default();
+        let serialized = serde_json::to_string(&original).expect("serialize JSON");
+        let restored: Config = serde_json::from_str(&serialized).expect("deserialize JSON");
+        assert_eq!(original.port.sharewei_port, restored.port.sharewei_port);
+        assert_eq!(original.cast.default_transport, restored.cast.default_transport);
+        assert_eq!(original.pool.enabled, restored.pool.enabled);
+        assert_eq!(original.spawn_policy.nice_level, restored.spawn_policy.nice_level);
+    }
+
+    #[test]
+    fn config_override_multiple_subsections() {
+        let toml_str = r#"
+            [runtime]
+            max_memory_mb = 16384
+
+            [monitoring]
+            health_check_interval_secs = 10
+            idle_threshold_secs = 30
+            high_memory_threshold_mb = 4096
+            idle_process_threshold = 10
+            per_process_warn_memory_bytes = 2147483648
+
+            [spawn]
+            default_harness = "codex"
+            prune_idle_seconds = 300
+        "#;
+        let cfg: Config = toml::from_str(toml_str).expect("parse multi-override");
+        assert_eq!(cfg.runtime.max_memory_mb, Some(16384));
+        assert_eq!(cfg.monitoring.health_check_interval_secs, 10);
+        assert_eq!(cfg.monitoring.idle_threshold_secs, 30);
+        assert_eq!(cfg.spawn.default_harness, "codex");
+        assert_eq!(cfg.port.sharewei_port, 3100);
+        assert_eq!(cfg.cast.default_transport, "wezterm");
+    }
 }
