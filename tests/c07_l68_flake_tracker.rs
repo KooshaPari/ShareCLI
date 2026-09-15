@@ -16,7 +16,7 @@
 use std::env;
 use std::fs;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn workspace_root() -> PathBuf {
@@ -38,9 +38,9 @@ fn python_bin() -> Option<String> {
 
 fn run_tracker(
     py: &str,
-    junit_path: &PathBuf,
-    out_path: &PathBuf,
-    baseline_path: Option<&PathBuf>,
+    junit_path: &Path,
+    out_path: &Path,
+    baseline_path: Option<&Path>,
     args: &[&str],
 ) -> std::process::Output {
     let root = workspace_root();
@@ -62,7 +62,7 @@ fn run_tracker(
     cmd.output().expect("failed to spawn python")
 }
 
-fn write_junit_flake(path: &PathBuf) {
+fn write_junit_flake(path: &Path) {
     // 2 cases total: one pure-flake (1 pass + 1 fail across 2 runs), one stable.
     let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <testsuites>
@@ -79,7 +79,7 @@ fn write_junit_flake(path: &PathBuf) {
     f.write_all(xml.as_bytes()).unwrap();
 }
 
-fn write_junit_regression(path: &PathBuf) {
+fn write_junit_regression(path: &Path) {
     let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <testsuites>
   <testsuite name="t1" tests="1" failures="1" errors="0" skipped="0">
@@ -93,7 +93,7 @@ fn write_junit_regression(path: &PathBuf) {
     f.write_all(xml.as_bytes()).unwrap();
 }
 
-fn write_baseline_with_flake(path: &PathBuf) {
+fn write_baseline_with_flake(path: &Path) {
     let json = r#"{
   "version": 1,
   "flaky_cases": [
@@ -105,7 +105,7 @@ fn write_baseline_with_flake(path: &PathBuf) {
     f.write_all(json.as_bytes()).unwrap();
 }
 
-fn read_report(path: &PathBuf) -> serde_json::Value {
+fn read_report(path: &Path) -> serde_json::Value {
     let s = fs::read_to_string(path).unwrap();
     serde_json::from_str(&s).expect("report is not valid JSON")
 }

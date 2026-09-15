@@ -23,7 +23,7 @@ const TRACE_FLAGS: &str = "01";
 
 /// Return true when `ch` is an ASCII hexadecimal digit.
 fn is_hex_digit(ch: char) -> bool {
-    matches!(ch, '0'..='9' | 'a'..='f' | 'A'..='F')
+    ch.is_ascii_hexdigit()
 }
 
 /// Validate a segment is exactly `expected_len` hex characters.
