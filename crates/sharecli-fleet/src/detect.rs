@@ -23,8 +23,16 @@ use serde::Deserialize;
 /// This is the compile-time canonical list. Runtime-configurable patterns in
 /// `agent_patterns.toml` extend this at startup without recompilation.
 pub const KNOWN_AGENT_FAMILIES: &[&str] = &[
-    "claude", "codex", "gemini", "cursor-agent", "aider", "amp", "goose",
-    "forge", "jcode", "opencode",
+    "claude",
+    "codex",
+    "gemini",
+    "cursor-agent",
+    "aider",
+    "amp",
+    "goose",
+    "forge",
+    "jcode",
+    "opencode",
 ];
 
 /// Families whose short `comm` names collide with non-agent tooling — require cmdline fingerprints.
@@ -384,9 +392,7 @@ fn match_token(token: &str) -> Option<&'static str> {
     // --- Runtime patterns (loaded from agent_patterns.toml) ---
     RUNTIME_PATTERNS.with(|patterns| {
         for pat in patterns.borrow().iter() {
-            if pat.family == token
-                || pat.comm_names.iter().any(|name| token == name.as_str())
-            {
+            if pat.family == token || pat.comm_names.iter().any(|name| token == name.as_str()) {
                 return Some(pat.family_str());
             }
         }
@@ -523,10 +529,7 @@ mod tests {
             "#,
         );
 
-        assert_eq!(
-            match_known_agent("mca", &["mca", "run"]),
-            Some("my-custom-agent")
-        );
+        assert_eq!(match_known_agent("mca", &["mca", "run"]), Some("my-custom-agent"));
         // Also matches via cmdline marker.
         assert_eq!(
             match_known_agent("node", &["/usr/bin/my-custom-agent", "start"]),
@@ -613,10 +616,7 @@ mod tests {
         // Ambiguous with empty cmdline: bare-name hit.
         assert_eq!(match_system_tool("cargo", &[] as &[&str]), Some("cargo"));
         // Ambiguous with marker in cmdline.
-        assert_eq!(
-            match_system_tool("bash", &["cargo", "build"]),
-            Some("cargo")
-        );
+        assert_eq!(match_system_tool("bash", &["cargo", "build"]), Some("cargo"));
 
         clear_runtime_patterns();
     }
@@ -724,10 +724,7 @@ mod tests {
 
     #[test]
     fn detects_goose_cmdline_marker() {
-        assert_eq!(
-            match_known_agent("goose", &["goose", "block-goose", "run"]),
-            Some("goose")
-        );
+        assert_eq!(match_known_agent("goose", &["goose", "block-goose", "run"]), Some("goose"));
     }
 
     #[test]
@@ -742,34 +739,22 @@ mod tests {
         // But "gemini-cli" as bare comm IS ambiguous too — needs fingerprint.
         assert_eq!(match_known_agent("gemini-cli", &[] as &[&str]), None);
         // With a fingerprint, it matches.
-        assert_eq!(
-            match_known_agent("gemini", &["gemini-cli", "chat"]),
-            Some("gemini")
-        );
+        assert_eq!(match_known_agent("gemini", &["gemini-cli", "chat"]), Some("gemini"));
     }
 
     #[test]
     fn detects_claude_code_cmdline() {
-        assert_eq!(
-            match_known_agent("node", &["/usr/bin/claude-code", "run"]),
-            Some("claude")
-        );
+        assert_eq!(match_known_agent("node", &["/usr/bin/claude-code", "run"]), Some("claude"));
     }
 
     #[test]
     fn detects_claude_dotfile_cmdline() {
-        assert_eq!(
-            match_known_agent("node", &["/home/user/.claude/config"]),
-            Some("claude")
-        );
+        assert_eq!(match_known_agent("node", &["/home/user/.claude/config"]), Some("claude"));
     }
 
     #[test]
     fn detects_codex_cmdline_marker() {
-        assert_eq!(
-            match_known_agent("node", &["/usr/bin/openai-codex", "run"]),
-            Some("codex")
-        );
+        assert_eq!(match_known_agent("node", &["/usr/bin/openai-codex", "run"]), Some("codex"));
     }
 
     #[test]
@@ -790,18 +775,12 @@ mod tests {
 
     #[test]
     fn detects_amp_cmdline_marker() {
-        assert_eq!(
-            match_known_agent("node", &["@sourcegraph/amp", "serve"]),
-            Some("amp")
-        );
+        assert_eq!(match_known_agent("node", &["@sourcegraph/amp", "serve"]), Some("amp"));
     }
 
     #[test]
     fn fingerprint_only_codex_cli() {
-        assert_eq!(
-            match_known_agent("bash", &["codex-cli", "start"]),
-            Some("codex")
-        );
+        assert_eq!(match_known_agent("bash", &["codex-cli", "start"]), Some("codex"));
     }
 
     #[test]
@@ -855,10 +834,7 @@ mod tests {
         clear_runtime_patterns();
         load_runtime_patterns(tmp.path());
 
-        assert_eq!(
-            match_known_agent("ta", &["ta", "run"]),
-            Some("test-agent")
-        );
+        assert_eq!(match_known_agent("ta", &["ta", "run"]), Some("test-agent"));
         assert_eq!(match_system_tool("tt", &[] as &[&str]), Some("test-tool"));
 
         clear_runtime_patterns();

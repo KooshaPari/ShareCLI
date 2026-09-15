@@ -27,8 +27,7 @@ pub use coalesce_meters::{
 };
 pub use detect::{
     clear_runtime_patterns, load_default_runtime_patterns, load_patterns, load_runtime_patterns,
-    match_known_agent, match_system_tool, RuntimePattern, RuntimeSystemTool,
-    KNOWN_AGENT_FAMILIES,
+    match_known_agent, match_system_tool, RuntimePattern, RuntimeSystemTool, KNOWN_AGENT_FAMILIES,
 };
 pub use operator_pool_status::{
     format_pool_operator_line, format_status_operator_line, PoolOperatorPanel, StatusOperatorPanel,

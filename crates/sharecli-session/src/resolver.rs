@@ -145,16 +145,14 @@ mod tests {
 
     #[test]
     fn adapter_takes_precedence_over_state() {
-        let result =
-            resolve("codex", "/tmp", &[], Some("state-id"), Some("adapter-id"));
+        let result = resolve("codex", "/tmp", &[], Some("state-id"), Some("adapter-id"));
         assert_eq!(result.source, EvidenceSource::Adapter);
         assert_eq!(result.session.unwrap().session_id, "adapter-id");
     }
 
     #[test]
     fn empty_adapter_id_falls_through_to_state() {
-        let result =
-            resolve("codex", "/tmp", &[], Some("state-id"), Some(""));
+        let result = resolve("codex", "/tmp", &[], Some("state-id"), Some(""));
         assert_eq!(result.source, EvidenceSource::StateFile);
     }
 
@@ -242,8 +240,7 @@ mod tests {
 
     #[test]
     fn state_id_without_argv_match_is_exact() {
-        let result =
-            resolve("codex", "/tmp", &["codex".into(), "other".into()], Some("sid"), None);
+        let result = resolve("codex", "/tmp", &["codex".into(), "other".into()], Some("sid"), None);
         assert_eq!(result.confidence, ResolutionConfidence::Exact);
         assert_eq!(result.source, EvidenceSource::StateFile);
     }

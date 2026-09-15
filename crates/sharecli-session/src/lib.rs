@@ -95,14 +95,8 @@ mod tests {
         assert_eq!(session.cwd, std::path::PathBuf::from("/tmp/project"));
         assert_eq!(session.resume.harness, "claude");
         assert_eq!(session.resume.session_id, "abc");
-        assert_eq!(
-            session.resume.cwd,
-            std::path::PathBuf::from("/tmp/project")
-        );
-        assert_eq!(
-            session.resume.argv,
-            vec!["claude", "resume", "abc"]
-        );
+        assert_eq!(session.resume.cwd, std::path::PathBuf::from("/tmp/project"));
+        assert_eq!(session.resume.argv, vec!["claude", "resume", "abc"]);
     }
 
     #[test]
@@ -115,22 +109,10 @@ mod tests {
 
     #[test]
     fn resolution_confidence_eq() {
-        assert_eq!(
-            ResolutionConfidence::Exact,
-            ResolutionConfidence::Exact
-        );
-        assert_ne!(
-            ResolutionConfidence::Exact,
-            ResolutionConfidence::Corroborated
-        );
-        assert_ne!(
-            ResolutionConfidence::Corroborated,
-            ResolutionConfidence::Heuristic
-        );
-        assert_ne!(
-            ResolutionConfidence::Heuristic,
-            ResolutionConfidence::Unavailable
-        );
+        assert_eq!(ResolutionConfidence::Exact, ResolutionConfidence::Exact);
+        assert_ne!(ResolutionConfidence::Exact, ResolutionConfidence::Corroborated);
+        assert_ne!(ResolutionConfidence::Corroborated, ResolutionConfidence::Heuristic);
+        assert_ne!(ResolutionConfidence::Heuristic, ResolutionConfidence::Unavailable);
     }
 
     #[test]

@@ -362,9 +362,7 @@ mod tests {
 
     #[test]
     fn smart_merger_clone_eq() {
-        let m = SmartMerger::new()
-            .with_mergiraf_binary("/usr/bin/m")
-            .without_git_fallback();
+        let m = SmartMerger::new().with_mergiraf_binary("/usr/bin/m").without_git_fallback();
         let cloned = m.clone();
         assert_eq!(m.mergiraf_binary, cloned.mergiraf_binary);
         assert_eq!(m.fallback_to_git, cloned.fallback_to_git);

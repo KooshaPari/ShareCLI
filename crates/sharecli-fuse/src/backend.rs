@@ -417,10 +417,7 @@ mod tests {
 
     #[test]
     fn fuse_backend_selection_clone_eq() {
-        let sel = FuseBackendSelection {
-            backend: FuseBackend::Kernel,
-            diagnostic: None,
-        };
+        let sel = FuseBackendSelection { backend: FuseBackend::Kernel, diagnostic: None };
         let cloned = sel.clone();
         assert_eq!(sel, cloned);
     }
@@ -449,10 +446,7 @@ mod tests {
             kernel_loaded: true,
             fskit_framework: false,
             fskit_approved: false,
-            selection: FuseBackendSelection {
-                backend: FuseBackend::Kernel,
-                diagnostic: None,
-            },
+            selection: FuseBackendSelection { backend: FuseBackend::Kernel, diagnostic: None },
             non_fuse_fallback: true,
         };
         assert_eq!(ev.platform, "macos");

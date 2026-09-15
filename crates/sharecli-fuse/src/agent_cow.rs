@@ -289,9 +289,7 @@ mod tests {
     fn agent_cow_with_locked_path_enabled() {
         let dir = tempdir().unwrap();
         let cow = AgentCowStore::new(dir.path().join("cow"), "a", true);
-        let result = cow
-            .with_locked_path(None, Path::new("/test"), || 42)
-            .unwrap();
+        let result = cow.with_locked_path(None, Path::new("/test"), || 42).unwrap();
         assert_eq!(result, 42);
     }
 
