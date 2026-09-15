@@ -57,7 +57,7 @@ jobs:
       - name: Build sharecli
         run: cargo build --locked --release -p sharecli
       - name: Install Playwright Chromium
-        run: npx --yes playwright@1.62.1 install --with-deps chromium
+        run: npx --yes playwright install --with-deps chromium
       - name: Run keyboard Tab-cycle
         # No SHARECLI_VISUAL_FIXTURE here: the fixture's WebSocket mock never
         # dispatches a message, so the dashboard label never reaches exactly
