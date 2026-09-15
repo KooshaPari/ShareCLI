@@ -74,7 +74,7 @@ jobs:
             -H "Authorization: token $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${{ github.repository }}/statuses/${{ github.sha }}" \
-            -d "{\"state\":\"$STATE\",\"context\":\"ci / lint\",\"description\":\"${{ job.status }}\"}"
+            -d "{\"state\":\"$STATE\",\"context\":\"ci / lint\",\"description\":\"${{ job.status }}\"}" \
             || echo "::warning::failed to post legacy commit-status for ci / lint"
 
   ci-test:
@@ -110,5 +110,5 @@ jobs:
             -H "Authorization: token $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${{ github.repository }}/statuses/${{ github.sha }}" \
-            -d "{\"state\":\"$STATE\",\"context\":\"ci / test\",\"description\":\"${{ job.status }}\"}"
+            -d "{\"state\":\"$STATE\",\"context\":\"ci / test\",\"description\":\"${{ job.status }}\"}" \
             || echo "::warning::failed to post legacy commit-status for ci / test"
