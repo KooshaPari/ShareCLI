@@ -1554,33 +1554,20 @@ fn cli_version() -> Result<()> {
     let panel = tokens.panel.ansi_fg();
     let reset = "\x1b[0m";
 
+    // ── ASCII art sourced from assets/brand/ ──────────────────────────────
+    let splash_large = include_str!("../assets/brand/sharecli-ascii.txt");
+    let splash_small = include_str!("../assets/brand/sharecli-ascii-small.txt");
+
     if is_no_color() {
-        let splash = r#"
-   _______ _    _ ______ _____  _____ _____  ______
-  / ______| || ||  ____|  __ \|_   _|  __ \|  ____|
- | (___ | || || |__  | |__) | | | | |  | | |__
-  \___ \| ||__||  __| |  _  /  | | | |  | |  __|
-  ____) |__   || |____| | \ \_ | |_| |__| | |____
- |_____/   |_||______|_|  \__\|______\____/|______|
-"#;
-        println!("{splash}");
+        println!("{splash_large}");
         println!("sharecli {version}");
-        println!("shared CLI process manager");
-        println!("Backbone-2 family (ASCII palette disabled)");
-        println!("(NO_COLOR set — ASCII palette disabled)");
+        println!("multi-agent process manager");
+        println!("(NO_COLOR set — ANSI palette disabled)");
     } else {
-        let splash = r#"
-   _______ _    _ ______ _____  _____ _____  ______
-  / ______| || ||  ____|  __ \|_   _|  __ \|  ____|
- | (___ | || || |__  | |__) | | | | |  | | |__
-  \___ \| ||__||  __| |  _  /  | | | |  | |  __|
-  ____) |__   || |____| | \ \_ | |_| |__| | |____
- |_____/   |_||______|_|  \__\|______\____/|______|
-"#;
-        println!("{pulse}{splash}{reset}");
+        println!("{pulse}{splash_large}{reset}");
         println!("{amber}sharecli {version}{reset}");
-        println!("{panel}shared CLI process manager for multi-project agent orchestration{reset}");
-        println!("{panel}Backbone-2 family · pulse-green/amber/panel{reset}");
+        println!("{panel}multi-agent process manager{reset}");
+        println!("{panel}{splash_small}{reset}");
     }
 
     Ok(())

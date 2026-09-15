@@ -14,6 +14,8 @@ A hexagonal chevron stack — pulse-green `#3fb950` strokes on graphite `#0a0d12
 |------|---------|
 | `sharecli-icon.svg` | Source of truth — static, hand-coded vector |
 | `sharecli-icon-animated.svg` | L101 motion variant — SMIL pulse + counter-rotating chevron (no JavaScript) |
+| `sharecli-ascii.txt` | Large ASCII art logo for CLI `version` / splash screens (figlet `standard` font, 35w × 6h) |
+| `sharecli-ascii-small.txt` | Compact 3-line version for inline use (figlet `calvin_s` font, 22w × 4h) |
 
 ## Regenerating
 
