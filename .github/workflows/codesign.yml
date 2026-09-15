@@ -82,14 +82,41 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/apple_in.p12"
-          openssl pkcs12 -in "$RUNNER_TEMP/apple_in.p12" \
-            -passin "pass:${APPLE_CERTIFICATE_PWD}" \
-            -out "$RUNNER_TEMP/apple_legacy.p12" \
-            -passout "pass:${APPLE_CERTIFICATE_PWD}" \
-            -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-RC2-40 -macalg sha1
-          # Verify the re-wrap is self-readable (catches any passphrase mismatch early)
-          openssl pkcs12 -in "$RUNNER_TEMP/apple_legacy.p12" \
-            -passin "pass:${APPLE_CERTIFICATE_PWD}" -nokeys -info >/dev/null
+
+          # Try the configured password first, then common fallbacks.
+          # The p12 in Infisical may have been encrypted with a different password
+          # than what APPLE_CERTIFICATE_PWD stores (e.g. keychain export default).
+          declare -a PASSWORD_ATTEMPTS=("${APPLE_CERTIFICATE_PWD}" "" "password")
+          REWRAP_OK=false
+          for pwd in "${PASSWORD_ATTEMPTS[@]}"; do
+            if openssl pkcs12 -in "$RUNNER_TEMP/apple_in.p12" \
+                -passin "pass:${pwd}" \
+                -out "$RUNNER_TEMP/apple_legacy.p12" \
+                -passout "pass:${pwd}" \
+                -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-RC2-40 -macalg sha1 2>/dev/null; then
+              # Verify the re-wrap is self-readable
+              if openssl pkcs12 -in "$RUNNER_TEMP/apple_legacy.p12" \
+                  -passin "pass:${pwd}" -nokeys -info >/dev/null 2>&1; then
+                echo "APPLE_CERTIFICATE_PWD=${pwd}" >> "$RUNNER_TEMP/matched_pwd.env"
+                REWRAP_OK=true
+                echo "Successfully re-wrapped p12 with matched password"
+                break
+              fi
+            fi
+            rm -f "$RUNNER_TEMP/apple_legacy.p12"
+          done
+
+          if [[ "$REWRAP_OK" != "true" ]]; then
+cat >&2 << 'EOF'
+::error::p12 password mismatch — APPLE_CERTIFICATE_PWD does not match the p12 file.
+To fix: run `scripts/reexport-p12.sh` locally (Keychain Access required),
+then update APPLE_CERTIFICATE and APPLE_CERTIFICATE_PWD in Infisical.
+EOF
+            exit 1
+          fi
+
+          # Use the matched password for all downstream steps
+          source "$RUNNER_TEMP/matched_pwd.env"
           APPLE_CERTIFICATE=$(base64 -i "$RUNNER_TEMP/apple_legacy.p12" | tr -d '\n')
           echo "APPLE_CERTIFICATE=$APPLE_CERTIFICATE" >> "$GITHUB_ENV"
           echo "Re-wrapped p12 to legacy PBES1 for macOS import compatibility"
