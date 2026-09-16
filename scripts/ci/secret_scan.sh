@@ -7,13 +7,13 @@ cd "$ROOT"
 
 run_gitleaks() {
   if command -v gitleaks >/dev/null 2>&1; then
-    gitleaks detect --source . --verbose --redact --config gitleaks.toml
+    gitleaks detect --source . --verbose --redact --config .gitleaks.toml
     return
   fi
   if command -v docker >/dev/null 2>&1; then
     docker run --rm -v "$ROOT:/repo" -w /repo \
       ghcr.io/gitleaks/gitleaks:v8.22.1 \
-      detect --source . --verbose --redact --config gitleaks.toml
+      detect --source . --verbose --redact --config .gitleaks.toml
     return
   fi
   echo "gitleaks not found (install via brew or use docker)" >&2

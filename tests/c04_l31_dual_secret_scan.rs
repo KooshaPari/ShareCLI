@@ -37,7 +37,7 @@ fn fr003_security_yml_dual_secret_scanners() {
         run_gitleaks.contains("--proto '=https'"),
         "Run Gitleaks must enforce HTTPS-only downloads"
     );
-    for flag in ["--redact", "--verbose", "--exit-code=2", "--config gitleaks.toml"] {
+    for flag in ["--redact", "--verbose", "--exit-code=2", "--config .gitleaks.toml"] {
         assert!(run_gitleaks.contains(flag), "Run Gitleaks must pass {flag}");
     }
     assert!(
@@ -66,7 +66,7 @@ fn fr003_pre_commit_secret_hooks_present() {
 
     assert!(pre_commit.contains("gitleaks"), "pre-commit must include gitleaks hook");
     assert!(pre_commit.contains("trufflehog"), "pre-commit must include trufflehog hook");
-    assert!(pre_commit.contains("gitleaks.toml"), "gitleaks hook must reference gitleaks.toml");
+    assert!(pre_commit.contains(".gitleaks.toml"), "gitleaks hook must reference .gitleaks.toml");
 }
 
 /// FR-003 / C04 L31 — trufflehog exclusions + local scan script exist.

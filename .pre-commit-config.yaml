@@ -83,8 +83,8 @@ repos:
     rev: v8.28.1
     hooks:
       - id: gitleaks
-        # Drive gitleaks from the committed gitleaks.toml allowlist/rules (C04 L31).
-        args: ["--config", "gitleaks.toml"]
+        # Drive gitleaks from the committed .gitleaks.toml allowlist/rules (C04 L31).
+        args: ["--config", ".gitleaks.toml"]
 
   # TruffleHog (C04 L31): verified-only filesystem scan via the repo's local
   # parity script so CI (security.yml) and pre-commit stay in lockstep.
