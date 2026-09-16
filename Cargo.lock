@@ -4587,7 +4587,7 @@ dependencies = [
 [[package]]
 name = "runtime-process"
 version = "0.3.10"
-source = "git+https://github.com/KooshaPari/substrate#79c4ae28536baf1b42a298087d72ee048113a54d"
+source = "git+https://github.com/KooshaPari/substrate#70b97bf7d0af3623353c34bfdbf581f6da39b462"
 dependencies = [
  "async-trait",
  "command-group",
@@ -5466,7 +5466,7 @@ dependencies = [
 [[package]]
 name = "substrate"
 version = "0.3.10"
-source = "git+https://github.com/KooshaPari/substrate#79c4ae28536baf1b42a298087d72ee048113a54d"
+source = "git+https://github.com/KooshaPari/substrate#70b97bf7d0af3623353c34bfdbf581f6da39b462"
 dependencies = [
  "substrate-core",
 ]
@@ -5474,7 +5474,7 @@ dependencies = [
 [[package]]
 name = "substrate-core"
 version = "0.3.10"
-source = "git+https://github.com/KooshaPari/substrate#79c4ae28536baf1b42a298087d72ee048113a54d"
+source = "git+https://github.com/KooshaPari/substrate#70b97bf7d0af3623353c34bfdbf581f6da39b462"
 dependencies = [
  "async-trait",
  "serde",
