@@ -242,17 +242,6 @@ fn fr003_report_json_snapshot() {
     assert!(stdout.contains('{'));
 }
 
-/// FR-003 / C01 — `util crc` executes checksum path.
-#[test]
-fn fr003_util_crc_checksum() {
-    let bin = env!("CARGO_BIN_EXE_sharecli");
-    let output =
-        Command::new(bin).args(["util", "crc", "sharecli"]).output().expect("run util crc");
-    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(!stdout.trim().is_empty());
-}
-
 /// FR-003 / C01 — `optimize` dry-run path prints guidance without --apply.
 #[test]
 fn fr003_optimize_dry_run() {

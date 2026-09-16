@@ -105,20 +105,15 @@ fn fr003_root_pub_mods_are_product_plus_util_only() {
 }
 
 #[test]
-fn fr003_util_facade_exposes_parity_sample() {
-    // Compile-time + runtime smoke: Tier C reachable via util path.
-    let _ = sharecli::util::toml_lite::parse("a = 1");
-    let _ = sharecli::util::bloom::BloomFilter::new(64, 3);
-    let _ = sharecli::util::levenshtein::distance("a", "b");
-}
-
-#[test]
 fn fr003_legacy_root_parity_path_is_gone() {
-    // Phase 1: Tier C is util-namespaced only (no root `pub mod toml_lite`).
-    // Fuzz + callers use `sharecli::util::toml_lite` (see fuzz/fuzz_targets/toml_lite.rs).
+    // Phase 1: Tier C modules (toml_lite, bloom, levenshtein) were removed in bloat cleanup.
+    // Verify they're not present as root pub mods.
     let src = fs::read_to_string(lib_rs()).expect("read src/lib.rs");
-    assert!(
-        !src.lines().any(|l| l.trim() == "pub mod toml_lite;"),
-        "toml_lite must not be a root pub mod after Phase 1"
-    );
+    for name in &["toml_lite", "bloom", "levenshtein"] {
+        let expected = format!("pub mod {};", name);
+        assert!(
+            !src.lines().any(|l| l.trim() == expected),
+            "{name} must not be a root pub mod after bloat removal"
+        );
+    }
 }
