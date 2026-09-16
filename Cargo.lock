@@ -3647,7 +3647,7 @@ dependencies = [
 [[package]]
 name = "phenotype-crypto"
 version = "0.2.0"
-source = "git+https://github.com/KooshaPari/PhenoShared#d3118fa334fc2b8802db84d3eef54dc427217125"
+source = "git+https://github.com/KooshaPari/PhenoInfra.git?rev=dd040ed1#dd040ed1bb293e3c843245448a9a173f5dff3470"
 dependencies = [
  "aes-gcm",
  "blake3",
@@ -3664,9 +3664,8 @@ dependencies = [
 [[package]]
 name = "phenotype-health"
 version = "0.2.0"
-source = "git+https://github.com/KooshaPari/PhenoShared#d3118fa334fc2b8802db84d3eef54dc427217125"
+source = "git+https://github.com/KooshaPari/PhenoInfra.git?rev=dd040ed1#dd040ed1bb293e3c843245448a9a173f5dff3470"
 dependencies = [
- "chrono",
  "serde",
  "thiserror 2.0.20",
  "tokio",
@@ -3674,8 +3673,8 @@ dependencies = [
 
 [[package]]
 name = "phenotype-observability"
-version = "0.3.10"
-source = "git+https://github.com/KooshaPari/PhenoShared#d3118fa334fc2b8802db84d3eef54dc427217125"
+version = "0.2.0"
+source = "git+https://github.com/KooshaPari/PhenoInfra.git?rev=dd040ed1#dd040ed1bb293e3c843245448a9a173f5dff3470"
 dependencies = [
  "chrono",
  "serde",
@@ -3686,12 +3685,11 @@ dependencies = [
 
 [[package]]
 name = "phenotype-state-machine"
-version = "0.3.10"
-source = "git+https://github.com/KooshaPari/PhenoShared#d3118fa334fc2b8802db84d3eef54dc427217125"
+version = "0.2.0"
+source = "git+https://github.com/KooshaPari/PhenoInfra.git?rev=dd040ed1#dd040ed1bb293e3c843245448a9a173f5dff3470"
 dependencies = [
  "serde",
  "serde_json",
- "thiserror 2.0.20",
 ]
 
 [[package]]
