@@ -70,7 +70,8 @@ fn fr004_a11y_keyboard_npm_script_registered() {
 #[test]
 fn fr004_axe_dashboard_still_passes() {
     // Skip gracefully when npm is not installed (CI Ubuntu runners may not have it).
-    let npm_available = Command::new("npm").arg("--version").output().map(|o| o.status.success()).unwrap_or(false);
+    let npm_available =
+        Command::new("npm").arg("--version").output().map(|o| o.status.success()).unwrap_or(false);
     if !npm_available {
         eprintln!("skipping fr004_axe_dashboard_still_passes: npm not installed");
         return;

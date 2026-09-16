@@ -1172,13 +1172,12 @@ async fn run() -> Result<()> {
             commands::undo::run(*limit, *json, *restore, id.clone())?
         }
         Commands::Soak { duration, interval, config, output } => {
-            let report = commands::soak::run(
-                *duration,
-                *interval,
-                config,
-                output.as_deref(),
-            )?;
-            println!("soak: {} scenarios, {:.1}% errors", report.scenario_results.len(), report.error_rate * 100.0);
+            let report = commands::soak::run(*duration, *interval, config, output.as_deref())?;
+            println!(
+                "soak: {} scenarios, {:.1}% errors",
+                report.scenario_results.len(),
+                report.error_rate * 100.0
+            );
         }
         Commands::Upgrade { channel } => {
             commands::upgrade::check(channel.as_deref())?;

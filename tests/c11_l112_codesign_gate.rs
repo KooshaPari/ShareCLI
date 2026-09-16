@@ -71,19 +71,13 @@ fn notarytool_binary_available() {
 #[test]
 fn stapler_binary_available() {
     // xcrun stapler only exists on macOS; skip gracefully on Linux CI.
-    let status = Command::new("xcrun")
-        .args(["stapler", "--help"])
-        .output()
-        .map(|o| o.status);
+    let status = Command::new("xcrun").args(["stapler", "--help"]).output().map(|o| o.status);
     let success = status.as_ref().map(|s| s.success()).unwrap_or(false);
     if !success && !cfg!(target_os = "macos") {
         eprintln!("skipping stapler_binary_available: not macOS");
         return;
     }
-    assert!(
-        success,
-        "`xcrun stapler --help` must succeed on macOS — stapler missing"
-    );
+    assert!(success, "`xcrun stapler --help` must succeed on macOS — stapler missing");
 }
 
 /// Verify the hard-gate workflow exists and references the required steps.
