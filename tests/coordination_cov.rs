@@ -146,7 +146,7 @@ fn fr003_priority_task_queue_ordering_and_lifecycle() {
     assert!(!low.id.is_empty());
     assert!(!normal.id.is_empty());
     assert!(!high.id.is_empty());
-    let _ = PathBuf::from(path);
+    let _ = path;
 }
 
 /// FR-003 — AgentCallPolicy PauseCode matrix and grep->rg normalization.

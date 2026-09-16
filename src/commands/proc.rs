@@ -2086,8 +2086,8 @@ mod tests {
 
     #[test]
     fn parse_proc_state_lowercase_t_and_x_preserved() {
-        assert_eq!(parse_proc_state("t".into()).unwrap(), 't');
-        assert_eq!(parse_proc_state("x".into()).unwrap(), 'x');
+        assert_eq!(parse_proc_state("t").unwrap(), 't');
+        assert_eq!(parse_proc_state("x").unwrap(), 'x');
     }
 
     #[test]

@@ -1275,7 +1275,7 @@ mod tests {
             name.extend(set);
             name
         };
-        let name = build_name();
+        let _name = build_name();
         let mut tbs = Vec::new();
         // serial as OCTET STRING instead of INTEGER
         tbs.push(0x04);

@@ -462,8 +462,27 @@ enum Commands {
         json: bool,
     },
 
-    /// Undo / restore model (C09 L81.9): inspect or replay the
-
+    /// Run the harbor soak harness -- long-running CLI stability evaluation
+    Soak {
+        /// Total soak duration in seconds
+        #[arg(long)]
+        duration: Option<u64>,
+        /// Interval between scenario rounds in seconds
+        #[arg(long)]
+        interval: Option<u64>,
+        /// Path to soak.yaml configuration
+        #[arg(long, default_value = "soak.yaml")]
+        config: std::path::PathBuf,
+        /// Path to write the JSON report
+        #[arg(long)]
+        output: Option<std::path::PathBuf>,
+    },
+    /// Check for or apply an upstream release upgrade
+    Upgrade {
+        /// Upgrade channel (stable / beta / nightly)
+        #[arg(long)]
+        channel: Option<String>,
+    },
     /// Print the sharecli version
     Version,
     /// Print uninstall guidance and optionally purge local config/state
@@ -1151,6 +1170,17 @@ async fn run() -> Result<()> {
         Commands::List { json } => cli_list(*json)?,
         Commands::Undo { limit, json, restore, id } => {
             commands::undo::run(*limit, *json, *restore, id.clone())?
+        }
+        Commands::Soak { duration, interval, config, output } => {
+            let report = commands::soak::run(*duration, *interval, config, output.as_deref())?;
+            println!(
+                "soak: {} scenarios, {:.1}% errors",
+                report.scenario_results.len(),
+                report.error_rate * 100.0
+            );
+        }
+        Commands::Upgrade { channel } => {
+            commands::upgrade::check(channel.as_deref())?;
         }
         Commands::Version => cli_version()?,
         Commands::Uninstall { purge_data, dry_run } => {

@@ -1242,7 +1242,7 @@ mod tests {
         let hw = HostResourceWatchJson::default();
         let snapshot = DashboardWsSnapshot {
             gate: gate_snap.clone(),
-            host_watch: hw.clone(),
+            host_watch: hw,
             pool: PoolJson {
                 node_total: 0,
                 node_idle: 0,
@@ -1252,7 +1252,7 @@ mod tests {
                 healthy: true,
                 issues: vec![],
                 gate: gate_snap.clone(),
-                host_watch: hw.clone(),
+                host_watch: hw,
                 status: None,
             },
             status: StatusJson {

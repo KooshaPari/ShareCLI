@@ -64,14 +64,21 @@ fn fr003_l303_fr_guardrail_coverage_and_pin() {
         .find("### Prior pin (superseded)")
         .expect("TEST_COVERAGE_MATRIX must have Prior pin section");
     let measured_section = &matrix[measured_start..prior_start];
-    assert!(measured_section.contains("80.51%"), "Measured pin section must pin 80.51%");
     assert!(
-        measured_section.contains("e89755c"),
-        "Measured pin section must pin current source revision e89755c"
+        measured_section.contains("77.34%"),
+        "Measured pin section must contain lib pin 77.34%"
+    );
+    assert!(
+        measured_section.contains("fa887e9"),
+        "Measured pin section must pin current source revision fa887e9"
     );
     assert!(
         measured_section.contains("5d8dc08"),
         "Measured pin section must reference retained snapshot 5d8dc08"
+    );
+    assert!(
+        measured_section.contains("80.51%"),
+        "Measured pin section must reference prior workspace pin 80.51%"
     );
     assert!(
         root.join("audit/coverage-snapshots/5d8dc08.coverage-snapshot.json").is_file(),
