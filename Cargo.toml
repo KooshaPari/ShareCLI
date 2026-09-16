@@ -39,6 +39,12 @@ tracing-subscriber = { version = "0.3", features = [
 ] }
 tracing-appender = "0.2"
 
+# --- Phenotype shared infrakit crates (from PhenoInfra) ---
+phenotype-crypto = { git = "https://github.com/KooshaPari/PhenoInfra.git", rev = "e001322" }
+phenotype-health = { git = "https://github.com/KooshaPari/PhenoInfra.git", rev = "e001322" }
+phenotype-observability = { git = "https://github.com/KooshaPari/PhenoInfra.git", rev = "e001322" }
+phenotype-state-machine = { git = "https://github.com/KooshaPari/PhenoInfra.git", rev = "e001322" }
+
 # Config
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
