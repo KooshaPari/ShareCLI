@@ -269,7 +269,7 @@ fn c11_cosign_hard_script_present() {
         "hard gate script must invoke cosign verify-attestation"
     );
     assert!(
-        script.contains("rekor.transparency"),
+        script.contains("Rekor transparency"),
         "hard gate script must reference Rekor transparency log verification"
     );
 }
