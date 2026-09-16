@@ -1748,7 +1748,7 @@ mod project_group_tests {
             healthy: true,
             issues: vec![],
             gate: gate_snap.clone(),
-            host_watch: hw.clone(),
+            host_watch: hw,
             status: None,
         };
         let status = StatusJson {
@@ -1757,7 +1757,7 @@ mod project_group_tests {
             scanned: 0,
             watched: 0,
             gate: gate_snap.clone(),
-            host_watch: hw.clone(),
+            host_watch: hw,
             pool: None,
             log_location: None,
         };
@@ -1802,7 +1802,7 @@ mod project_group_tests {
             max_per_type: 5,
             issues: vec!["port conflict".into(), "OOM".into()],
             gate: gate_snap.clone(),
-            host_watch: hw.clone(),
+            host_watch: hw,
             pool: PoolJson {
                 node_total: 0,
                 node_idle: 0,
@@ -1812,7 +1812,7 @@ mod project_group_tests {
                 healthy: true,
                 issues: vec![],
                 gate: gate_snap.clone(),
-                host_watch: hw.clone(),
+                host_watch: hw,
                 status: None,
             },
             status: StatusJson {

@@ -90,7 +90,7 @@ async fn c07_config_watcher_hot_reload_propagates() {
     // Write initial config.
     {
         let mut f = std::fs::File::create(&config_path).expect("create config");
-        write!(f, "# initial config\n").expect("write initial");
+        writeln!(f, "# initial config").expect("write initial");
     }
 
     let initial = Config::default();
@@ -108,7 +108,7 @@ async fn c07_config_watcher_hot_reload_propagates() {
             .truncate(true)
             .open(&config_path)
             .expect("open config for write");
-        write!(f, "# hot-reloaded config\n").expect("write hot-reload");
+        writeln!(f, "# hot-reloaded config").expect("write hot-reload");
     }
 
     // Wait for the watcher to pick up the change (debounce is 200ms).
@@ -145,7 +145,7 @@ async fn c07_config_watcher_survives_invalid_toml() {
 
     {
         let mut f = std::fs::File::create(&config_path).expect("create config");
-        write!(f, "# valid\n").expect("write valid");
+        writeln!(f, "# valid").expect("write valid");
     }
 
     let initial = Config::default();

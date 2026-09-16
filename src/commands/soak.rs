@@ -817,7 +817,7 @@ scenarios:
 
     #[test]
     fn percentile_sorted_not_mutated() {
-        let mut data = vec![50, 10, 30, 20, 40];
+        let data = vec![50, 10, 30, 20, 40];
         let original = data.clone();
         let _ = percentile(&data, 50);
         assert_eq!(data, original, "percentile MUST NOT mutate input");
