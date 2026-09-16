@@ -1,16 +1,6 @@
 version: 2
 # C04 L37 — daily ecosystems + grouped patch/actions PRs (review still required)
 updates:
-  - package-ecosystem: gomod
-    directory: /
-    schedule: { interval: daily }
-    open-pull-requests-limit: 5
-
-  - package-ecosystem: pip
-    directory: /
-    schedule: { interval: daily }
-    open-pull-requests-limit: 5
-
   - package-ecosystem: npm
     directory: /
     schedule: { interval: daily }
