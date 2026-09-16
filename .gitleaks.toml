@@ -12,6 +12,7 @@ paths = [
   "^\\.env\\.local\\.example$",
   "^docs/.*$",
   "^.*\\.md$",
+  "^gitleaks\\.toml$",
   "^test.*$",
   "^.*_test\\.py$",
   "^.*_test\\.go$",

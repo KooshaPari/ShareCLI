@@ -487,9 +487,9 @@ dependencies = [
 
 [[package]]
 name = "cfg-if"
-version = "1.0.4"
+version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
+checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 
 [[package]]
 name = "cfg_aliases"
@@ -2854,7 +2854,7 @@ dependencies = [
 [[package]]
 name = "phenotype-crypto"
 version = "0.2.0"
-source = "git+https://github.com/KooshaPari/PhenoInfra.git?rev=e001322#e00132217792aecfcfeeca2c758494040494fba8"
+source = "git+https://github.com/KooshaPari/PhenoShared#d3118fa334fc2b8802db84d3eef54dc427217125"
 dependencies = [
  "aes-gcm",
  "blake3",
@@ -2871,8 +2871,9 @@ dependencies = [
 [[package]]
 name = "phenotype-health"
 version = "0.2.0"
-source = "git+https://github.com/KooshaPari/PhenoInfra.git?rev=e001322#e00132217792aecfcfeeca2c758494040494fba8"
+source = "git+https://github.com/KooshaPari/PhenoShared#d3118fa334fc2b8802db84d3eef54dc427217125"
 dependencies = [
+ "chrono",
  "serde",
  "thiserror 2.0.20",
  "tokio",
@@ -2880,8 +2881,8 @@ dependencies = [
 
 [[package]]
 name = "phenotype-observability"
-version = "0.2.0"
-source = "git+https://github.com/KooshaPari/PhenoInfra.git?rev=e001322#e00132217792aecfcfeeca2c758494040494fba8"
+version = "0.3.10"
+source = "git+https://github.com/KooshaPari/PhenoShared#d3118fa334fc2b8802db84d3eef54dc427217125"
 dependencies = [
  "chrono",
  "serde",
@@ -2892,11 +2893,12 @@ dependencies = [
 
 [[package]]
 name = "phenotype-state-machine"
-version = "0.2.0"
-source = "git+https://github.com/KooshaPari/PhenoInfra.git?rev=e001322#e00132217792aecfcfeeca2c758494040494fba8"
+version = "0.3.10"
+source = "git+https://github.com/KooshaPari/PhenoShared#d3118fa334fc2b8802db84d3eef54dc427217125"
 dependencies = [
  "serde",
  "serde_json",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
