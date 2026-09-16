@@ -16,24 +16,18 @@ use sharecli_thermal_tui as thermal_tui;
 
 use crate::error::SharecliError;
 
-mod apfs_uuid;
 mod audit_log;
-mod base85;
 mod cast;
 mod commands;
 mod config;
 mod config_validator;
 mod config_watcher;
-mod crc64;
-mod csv_writer;
 mod dashboard_assets;
 mod error;
 mod error_envelope;
 mod hash_util;
 mod health_check;
 mod http_red;
-mod jsonschema_subset;
-mod md_table;
 mod metrics;
 mod monitoring;
 mod notifier;
@@ -42,23 +36,17 @@ mod paths;
 mod pprof_http;
 mod proc_compose;
 mod progress;
+mod rate_limiter;
 #[cfg(test)]
 mod proptest_util;
-mod radix_trie;
-mod rate_limiter;
 mod runtime;
 mod serve_auth;
 mod serve_lock;
 mod serve_rate_limit;
 mod shutdown;
-mod skiplist;
 mod spawn_policy;
 mod theme;
 mod tray_http;
-mod util_cmd;
-mod xml_escape;
-mod xxhash3;
-mod xxtea;
 
 use commands::{
     cast as cast_cmd, check_limits, config as config_cmd, fuse as fuse_cmd, health,
@@ -449,11 +437,6 @@ enum Commands {
         install: bool,
     },
 
-    /// Exercise the bundled utility modules (base85, csv, crc, hash, json, sha, uuid, xml, markdown, trie/skiplist)
-    Util {
-        #[command(subcommand)]
-        cmd: util_cmd::UtilCmd,
-    },
 
     /// Enumerate available CLI surfaces (cast modules + utility modules)
     List {
@@ -1166,7 +1149,6 @@ async fn run() -> Result<()> {
             clap_complete::generate(*shell, &mut cmd, "sharecli", &mut std::io::stdout());
         }
         Commands::Man { install } => cli_man(*install)?,
-        Commands::Util { cmd } => cmd.run()?,
         Commands::List { json } => cli_list(*json)?,
         Commands::Undo { limit, json, restore, id } => {
             commands::undo::run(*limit, *json, *restore, id.clone())?
@@ -1490,7 +1472,7 @@ fn cli_man(install: bool) -> Result<()> {
 ///
 /// Backbone-2 family: pulse-green (#3fb950) for headers, amber (#d29922) for
 /// accent markers. No external deps; pure introspection of the typed subcommand
-/// tree + `util_cmd::UtilCmd` variant list.
+
 fn cli_list(as_json: bool) -> Result<()> {
     let cast_modules: &[(&str, &str)] = &[
         ("register", "Register a pane: `cast register <name> <address>`"),

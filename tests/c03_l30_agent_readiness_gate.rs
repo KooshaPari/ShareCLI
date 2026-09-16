@@ -61,7 +61,7 @@ fn fr003_l303_fr_guardrail_coverage_and_pin() {
         .find("## Measured coverage pin")
         .expect("TEST_COVERAGE_MATRIX must have Measured coverage pin section");
     let prior_start = matrix
-        .find("### Prior pin (superseded)")
+        .find("### Prior pin")
         .expect("TEST_COVERAGE_MATRIX must have Prior pin section");
     let measured_section = &matrix[measured_start..prior_start];
     assert!(
