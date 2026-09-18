@@ -47,5 +47,14 @@ let package = Package(
             dependencies: [],
             path: "Sources/ShareCLICore"
         ),
+
+        // Headless tests for the IPC client and config boundary. These do not
+        // need the GUI or Sparkle. The config round-trip cases talk to a real
+        // sharecli-ipc over SHARECLI_TEST_IPC_SOCK and skip when it is unset.
+        .testTarget(
+            name: "ShareCLICoreTests",
+            dependencies: ["ShareCLICore"],
+            path: "Tests/ShareCLICoreTests"
+        ),
     ]
 )

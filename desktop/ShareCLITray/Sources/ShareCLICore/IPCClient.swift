@@ -600,6 +600,16 @@ public actor IPCClient {
                     }
 
                     let decoded = try JSONDecoder().decode(IPCResponse<T>.self, from: response)
+
+                    // The daemon reports refusals (for example a rejected
+                    // config patch) in `error` with a null result. Surface it
+                    // as a thrown error, otherwise callers treat the refusal as
+                    // success and the tray shows a false "Applied" toast for a
+                    // write that never happened.
+                    if let message = decoded.error {
+                        throw IPCError.server(message)
+                    }
+
                     continuation.resume(returning: decoded)
                 } catch {
                     continuation.resume(throwing: error)
@@ -649,6 +659,8 @@ public enum IPCError: LocalizedError {
     case writeFailed
     case readFailed
     case nilResult(String)
+    /// The daemon answered with a populated `error` field.
+    case server(String)
 
     public var errorDescription: String? {
         switch self {
@@ -657,6 +669,7 @@ public enum IPCError: LocalizedError {
         case .writeFailed: return "Socket write failed"
         case .readFailed: return "Socket read failed"
         case .nilResult(let m): return "Nil result from \(m)"
+        case .server(let m): return m
         }
     }
 }
