@@ -392,6 +392,7 @@ impl Config {
     /// Initialize default configuration file
     pub fn init() -> Result<()> {
         let config_path = Self::config_path()?;
+        Self::guard_test_write(&config_path)?;
 
         if let Some(parent) = config_path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -407,6 +408,7 @@ impl Config {
     /// Save configuration
     pub fn save(&self) -> Result<()> {
         let config_path = Self::config_path()?;
+        Self::guard_test_write(&config_path)?;
 
         if let Some(parent) = config_path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -418,8 +420,65 @@ impl Config {
         Ok(())
     }
 
-    /// Get config file path
+    /// Refuse to write the operator's live config from a test binary.
+    ///
+    /// Detection must not rely on `CARGO_TARGET_TMPDIR`: it was measured as
+    /// unset for this toolchain's integration tests, so a guard keyed on it is
+    /// inert. The reliable signal is the executable's own location — cargo
+    /// runs every test binary out of `target/<profile>/deps/`, while a real
+    /// `cargo run` or an installed binary does not live there.
+    ///
+    /// Without this guard any test that exercises `config set`, `project add`,
+    /// or a handler `config.set` re-serialises the developer's real
+    /// `~/Library/Application Support/sharecli/config.toml`. Tests that need to
+    /// write must set `SHARECLI_CONFIG_PATH` to an isolated file.
+    fn guard_test_write(path: &std::path::Path) -> Result<()> {
+        if std::env::var_os("SHARECLI_CONFIG_PATH").is_some() {
+            return Ok(());
+        }
+        if Self::running_as_test_binary() {
+            anyhow::bail!(
+                "refusing to write the live config ({}) from a test binary; set SHARECLI_CONFIG_PATH to an isolated path",
+                path.display()
+            );
+        }
+        Ok(())
+    }
+
+    /// True when the current executable looks like a cargo test binary.
+    fn running_as_test_binary() -> bool {
+        if std::env::var_os("CARGO_TARGET_TMPDIR").is_some() {
+            return true;
+        }
+        let Ok(exe) = std::env::current_exe() else {
+            return false;
+        };
+        // target/<profile>/deps/<crate>-<hash>
+        let in_deps = exe
+            .parent()
+            .and_then(|p| p.file_name())
+            .map(|n| n == "deps")
+            .unwrap_or(false);
+        if in_deps {
+            return true;
+        }
+        // Some harnesses run from target/<profile>/deps/<subdir>/<name>.
+        exe.components().any(|c| c.as_os_str() == "deps")
+    }
+
+    /// Get config file path.
+    ///
+    /// `SHARECLI_CONFIG_PATH` wins when set to a non-empty value. `save()`
+    /// writes wherever this points, so without the override any test that
+    /// exercises a config write rewrites the operator's live
+    /// `~/Library/Application Support/sharecli/config.toml`. Tests set this to
+    /// a temp path; it is also useful for side-by-side installs.
     fn config_path() -> Result<PathBuf> {
+        if let Some(explicit) = std::env::var_os("SHARECLI_CONFIG_PATH") {
+            if !explicit.is_empty() {
+                return Ok(PathBuf::from(explicit));
+            }
+        }
         let base =
             dirs::config_dir().ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?;
         Ok(base.join("sharecli").join("config.toml"))

@@ -15,6 +15,12 @@ struct HandlerFixture {
 impl HandlerFixture {
     fn new() -> Self {
         let directory = tempfile::tempdir().expect("isolated handler directory");
+        // config.set persists via Config::save(), which writes to the
+        // operator's live config path unless overridden. Redirect it into this
+        // fixture's temp directory so running the suite can never store a
+        // default-derived config over a real one. The dispatch assertions read
+        // the handler's in-memory config, so they are unaffected.
+        std::env::set_var("SHARECLI_CONFIG_PATH", directory.path().join("config.toml"));
         let store = SessionStore::open(directory.path().join("sessions.sqlite"))
             .expect("isolated handler store");
         Self { handler: Handler::with_session_store(store), _directory: directory }

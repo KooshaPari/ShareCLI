@@ -9,10 +9,17 @@
 //! write into the operator's real config directory; those flows are covered
 //! by `tests/fr002_*.rs` / `tests/fr003_*.rs` under tempfile.
 
+use std::path::Path;
 use std::process::Command;
 
 fn bin() -> Command {
     Command::new(env!("CARGO_BIN_EXE_sharecli"))
+}
+
+fn bin_with_config(config_path: &Path) -> Command {
+    let mut command = bin();
+    command.env("SHARECLI_CONFIG_PATH", config_path);
+    command
 }
 
 fn stdout(out: &std::process::Output) -> String {
@@ -34,6 +41,9 @@ fn stderr(out: &std::process::Output) -> String {
 /// | 5. Verify | `status` + `health` | FR-004 |
 #[test]
 fn quick_start_journey_maps_steps_to_frs() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let config_path = tmp.path().join("sharecli").join("config.toml");
+
     // Step 1 — NFR-001: binary under test runs and identifies as sharecli.
     let ver = bin().arg("-V").output().expect("spawn sharecli -V");
     assert!(ver.status.success(), "-V MUST exit 0; stderr: {}", stderr(&ver));
@@ -44,7 +54,10 @@ fn quick_start_journey_maps_steps_to_frs() {
     );
 
     // Step 2 — FR-002: config surface exposes init/validate; validate reports projects.
-    let cfg_help = bin().args(["config", "--help"]).output().expect("config --help");
+    let cfg_help = bin_with_config(&config_path)
+        .args(["config", "--help"])
+        .output()
+        .expect("config --help");
     assert!(cfg_help.status.success(), "stderr: {}", stderr(&cfg_help));
     let cfg_help_out = stdout(&cfg_help).to_lowercase();
     assert!(
@@ -52,7 +65,10 @@ fn quick_start_journey_maps_steps_to_frs() {
         "FR-002 journey MUST advertise init+validate; got: {cfg_help_out}"
     );
 
-    let validate = bin().args(["config", "validate"]).output().expect("config validate");
+    let validate = bin_with_config(&config_path)
+        .args(["config", "validate"])
+        .output()
+        .expect("config validate");
     assert!(
         validate.status.success(),
         "config validate MUST exit 0; stderr: {}",
@@ -69,7 +85,10 @@ fn quick_start_journey_maps_steps_to_frs() {
     );
 
     // Step 3 — FR-003: project surface exposes add/list; list is readable.
-    let proj_help = bin().args(["project", "--help"]).output().expect("project --help");
+    let proj_help = bin_with_config(&config_path)
+        .args(["project", "--help"])
+        .output()
+        .expect("project --help");
     assert!(proj_help.status.success(), "stderr: {}", stderr(&proj_help));
     let proj_help_out = stdout(&proj_help).to_lowercase();
     assert!(
@@ -77,7 +96,10 @@ fn quick_start_journey_maps_steps_to_frs() {
         "FR-003 journey MUST advertise add+list; got: {proj_help_out}"
     );
 
-    let list = bin().args(["project", "list"]).output().expect("project list");
+    let list = bin_with_config(&config_path)
+        .args(["project", "list"])
+        .output()
+        .expect("project list");
     assert!(list.status.success(), "project list MUST exit 0; stderr: {}", stderr(&list));
     let list_out = stdout(&list);
     assert!(

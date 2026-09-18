@@ -187,9 +187,11 @@ fn fr003_config_load_init_save_roundtrip() {
 
     let prev_xdg = std::env::var_os("XDG_CONFIG_HOME");
     let prev_app = std::env::var_os("APPDATA");
+    let prev_config_path = std::env::var_os("SHARECLI_CONFIG_PATH");
     unsafe {
         std::env::set_var("XDG_CONFIG_HOME", &config_home);
         std::env::set_var("APPDATA", &config_home);
+        std::env::set_var("SHARECLI_CONFIG_PATH", config_home.join("sharecli").join("config.toml"));
     }
 
     let missing = Config::load().expect("load missing file");
@@ -217,6 +219,10 @@ fn fr003_config_load_init_save_roundtrip() {
     match prev_app {
         Some(v) => unsafe { std::env::set_var("APPDATA", v) },
         None => unsafe { std::env::remove_var("APPDATA") },
+    }
+    match prev_config_path {
+        Some(v) => unsafe { std::env::set_var("SHARECLI_CONFIG_PATH", v) },
+        None => unsafe { std::env::remove_var("SHARECLI_CONFIG_PATH") },
     }
 }
 
