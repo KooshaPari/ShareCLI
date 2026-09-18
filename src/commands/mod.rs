@@ -1,6 +1,7 @@
 //! CLI commands for sharecli
 
 pub mod cast;
+pub mod config_edit;
 pub mod fuse;
 pub mod history;
 pub mod mesh;
@@ -1011,15 +1012,35 @@ pub fn config(cfg_cmd: &ConfigCmd) -> Result<()> {
             let serialized = toml::to_string_pretty(&cfg)?;
             println!("{}", serialized);
         }
-        ConfigCmd::Get { key: _ } => {
+        ConfigCmd::Get { key } => {
             let cfg = Config::load()?;
-            println!("Projects:");
-            for (name, path) in &cfg.projects {
-                println!("  {} = {}", name, path);
+            let root = serde_json::to_value(&cfg)?;
+            let parts = config_edit::split_path(key)?;
+            match config_edit::lookup(&root, &parts) {
+                Some(value) => println!("{}", config_edit::render(value)),
+                None => anyhow::bail!("unknown configuration key: {key}"),
             }
         }
-        ConfigCmd::Set { .. } => {
-            println!("Set not implemented yet.");
+        ConfigCmd::Set { key, value } => {
+            let cfg = Config::load()?;
+            let mut root = serde_json::to_value(&cfg)?;
+            let parts = config_edit::split_path(key)?;
+
+            let existing = config_edit::lookup(&root, &parts).cloned();
+            let new = config_edit::coerce(existing.as_ref(), value);
+            let rendered = config_edit::render(&new);
+            config_edit::assign(&mut root, &parts, new)?;
+
+            let candidate: Config = serde_json::from_value(root)?;
+
+            // Never persist a configuration the startup gate would reject.
+            let errors = crate::config_validator::validate_config(&candidate);
+            if !errors.is_empty() {
+                crate::config_validator::report_and_exit(&errors);
+            }
+
+            candidate.save()?;
+            println!("{key} = {rendered}");
         }
     }
     Ok(())
