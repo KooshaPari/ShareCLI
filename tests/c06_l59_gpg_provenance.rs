@@ -170,6 +170,22 @@ fn fr003_c06_l59_verify_commit_passes_on_signed_commit() {
 
     // Additionally, validate the runbook-recommended `git config` settings
     // exist on the *outer* repo (the config we used to verify above).
+    //
+    // Only meaningful when the documented Forge Bot key is actually installed:
+    // the other gates in this file skip in that case, and asserting
+    // `user.signingkey` regardless made this gate fail on any machine that
+    // never held the key, while pointing the config at a fingerprint with no
+    // secret key would be worse than leaving it unset.
+    if let Some((keys, _)) = run_gpg(&["--list-secret-keys", "--keyid-format=LONG"]) {
+        if !keys.contains(FORGE_BOT_FINGERPRINT) {
+            eprintln!(
+                "SKIP: Forge Bot key `{FORGE_BOT_FINGERPRINT}` not in keyring — \
+                 user.signingkey cannot be verified against the documented key"
+            );
+            return;
+        }
+    }
+
     let (cfg_out, _) = run_bash(&format!(
         "git -C {} config --get user.signingkey",
         root.to_string_lossy().replace('\\', "/")
