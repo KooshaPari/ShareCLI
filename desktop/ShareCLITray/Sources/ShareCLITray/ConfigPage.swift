@@ -233,9 +233,7 @@ struct NumericEditorRow: View {
                     ),
                     in: range,
                     step: step
-                ) {
-                    Text(label)
-                }
+                )
                 .onChange(of: value.wrappedValue) { _, _ in
                     validate()
                 }
@@ -298,6 +296,31 @@ private struct RuntimeSubpage: View {
     @State private var maxMemoryMB: String = ""
     @State private var maxProcesses: String = ""
     @State private var didLoad = false
+
+    /// Prefill editors from the live config via the existing IPC
+    /// `config.get` plumbing so the hard validator doesn't fire on the
+    /// empty initial value (parsed as 0).
+    private func loadCurrentValues() {
+        Task { @MainActor in
+            guard let data = await state.getConfig() else { return }
+            guard let obj = try? JSONDecoder().decode([String: AnyCodable].self, from: data) else { return }
+            guard case .object(let runtime) = obj["runtime"] else { return }
+            if maxMemoryMB.isEmpty, case .int(let mb)? = runtime["max_memory_mb"] {
+                maxMemoryMB = "\(mb)"
+            } else if maxMemoryMB.isEmpty, case .double(let mb)? = runtime["max_memory_mb"] {
+                maxMemoryMB = isIntegerLike(mb) ? "\(Int(mb))" : "\(mb)"
+            }
+            if maxProcesses.isEmpty, case .int(let mp)? = runtime["max_processes"] {
+                maxProcesses = "\(mp)"
+            } else if maxProcesses.isEmpty, case .double(let mp)? = runtime["max_processes"] {
+                maxProcesses = isIntegerLike(mp) ? "\(Int(mp))" : "\(mp)"
+            }
+        }
+    }
+
+    private func isIntegerLike(_ d: Double) -> Bool {
+        d == d.rounded() && abs(d) < 1e12
+    }
 
     var body: some View {
         Group {
@@ -400,6 +423,7 @@ private struct RuntimeSubpage: View {
         .onAppear {
             if !didLoad {
                 didLoad = true
+                loadCurrentValues()
             }
         }
     }
