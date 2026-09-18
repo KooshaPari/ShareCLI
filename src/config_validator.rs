@@ -46,6 +46,7 @@ pub fn validate_config(config: &Config) -> Vec<ValidationError> {
     validate_port(&config.port, &mut errors);
     validate_paths(&config.paths, &mut errors);
     validate_project_limits(&config.project_limits, &mut errors);
+    validate_runtime(&config.runtime, &mut errors);
     validate_spawn(&config.spawn, &mut errors);
     validate_spawn_policy(&config.spawn_policy, &mut errors);
     validate_cast(&config.cast, &mut errors);
@@ -160,6 +161,27 @@ fn validate_project_limits(
     if limits.max_processes == 0 {
         errors.push(ValidationError::new(
             "config.project_limits.max_processes",
+            "must be greater than 0",
+        ));
+    }
+}
+
+/// Per-process resource caps (`[runtime]`).
+///
+/// Both fields are optional; `None` means "inherit the default" and is valid.
+/// A cap that is explicitly set to zero is rejected, which is the rule the
+/// tray's Runtime tab advertises when it warns that the Rust validator will
+/// reject the value on save.
+fn validate_runtime(runtime: &crate::config::RuntimeConfig, errors: &mut Vec<ValidationError>) {
+    if runtime.max_memory_mb == Some(0) {
+        errors.push(ValidationError::new(
+            "config.runtime.max_memory_mb",
+            "must be greater than 0",
+        ));
+    }
+    if runtime.max_processes == Some(0) {
+        errors.push(ValidationError::new(
+            "config.runtime.max_processes",
             "must be greater than 0",
         ));
     }
@@ -425,5 +447,49 @@ mod tests {
                 "unexpected spawn_policy error: {errs:?}",
             );
         }
+    }
+
+    // Runtime caps: unset means "inherit default" and must stay valid.
+    #[test]
+    fn test_runtime_unset_is_valid() {
+        let mut cfg = valid_config();
+        cfg.runtime.max_memory_mb = None;
+        cfg.runtime.max_processes = None;
+        let errs = validate_config(&cfg);
+        assert!(
+            !errs.iter().any(|e| e.field.starts_with("config.runtime.")),
+            "unset runtime caps should be valid: {errs:#?}",
+        );
+    }
+
+    // An explicit zero memory cap is rejected, matching the tray warning.
+    #[test]
+    fn test_runtime_max_memory_mb_zero_fails() {
+        let mut cfg = valid_config();
+        cfg.runtime.max_memory_mb = Some(0);
+        let errs = validate_config(&cfg);
+        assert!(errs.iter().any(|e| e.field == "config.runtime.max_memory_mb"));
+    }
+
+    // An explicit zero process cap is rejected.
+    #[test]
+    fn test_runtime_max_processes_zero_fails() {
+        let mut cfg = valid_config();
+        cfg.runtime.max_processes = Some(0);
+        let errs = validate_config(&cfg);
+        assert!(errs.iter().any(|e| e.field == "config.runtime.max_processes"));
+    }
+
+    // Positive runtime caps remain valid.
+    #[test]
+    fn test_runtime_positive_values_valid() {
+        let mut cfg = valid_config();
+        cfg.runtime.max_memory_mb = Some(8192);
+        cfg.runtime.max_processes = Some(32);
+        let errs = validate_config(&cfg);
+        assert!(
+            !errs.iter().any(|e| e.field.starts_with("config.runtime.")),
+            "positive runtime caps rejected: {errs:#?}",
+        );
     }
 }

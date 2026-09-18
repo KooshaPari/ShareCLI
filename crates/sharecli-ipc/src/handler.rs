@@ -624,6 +624,13 @@ impl Handler {
     }
 
     /// Apply a dot-path config patch: "runtime.max_memory_mb" → 8192
+    ///
+    /// The candidate config is validated before it is persisted. Without this
+    /// check the write path accepted values the tray's Runtime tab explicitly
+    /// warns about (for example `runtime.max_memory_mb = 0`), because
+    /// `Config::save` only serialises and `validate_config` previously ran at
+    /// CLI startup only. Rejecting here leaves both the in-memory config and
+    /// the file untouched, and the failure surfaces to the caller as an error.
     async fn apply_config_patch(&self, key: &str, value: &Value) -> Result<()> {
         let mut cfg = self.config.write().await;
         let mut raw = serde_json::to_value(&*cfg)?;
@@ -632,8 +639,16 @@ impl Handler {
         set_nested(&mut raw, &parts, value.clone())
             .map_err(|e| anyhow::anyhow!("config.set {key}: {e}"))?;
 
-        *cfg = serde_json::from_value(raw)?;
-        cfg.save()?;
+        let candidate: Config = serde_json::from_value(raw)?;
+
+        let errors = sharecli::config_validator::validate_config(&candidate);
+        if !errors.is_empty() {
+            let joined = errors.iter().map(|e| e.to_string()).collect::<Vec<_>>().join("; ");
+            return Err(anyhow::anyhow!("config.set {key} rejected: {joined}"));
+        }
+
+        candidate.save()?;
+        *cfg = candidate;
         Ok(())
     }
 }
