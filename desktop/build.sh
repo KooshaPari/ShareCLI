@@ -50,7 +50,7 @@ fi
 
 echo "==> Building Rust crates (profile: $PROFILE)"
 cd "$REPO_ROOT"
-cargo build "${CARGO_FLAGS[@]}" -p sharecli-ipc -p sharecli-ffi
+cargo build ${CARGO_FLAGS[@]+"${CARGO_FLAGS[@]}"} -p sharecli-ipc -p sharecli-ffi
 
 IPC_BIN="$TARGET_DIR/sharecli-ipc"
 FFI_LIB="$TARGET_DIR/libsharecli_ffi.dylib"
