@@ -57,18 +57,57 @@ impl Drop for ServeChild {
 fn wait_ws_message(url: &str, timeout: Duration) -> Option<String> {
     let deadline = std::time::Instant::now() + timeout;
     while std::time::Instant::now() < deadline {
-        let out = Command::new("websocat").args(["-n1", url]).output();
-        if let Ok(out) = out {
-            if out.status.success() {
-                let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                if !s.is_empty() {
-                    return Some(s);
-                }
-            }
+        if let Some(msg) = read_one_ws_message(url, Duration::from_secs(4)) {
+            return Some(msg);
         }
         thread::sleep(Duration::from_millis(250));
     }
     None
+}
+
+/// Read a single WS message with a hard deadline, then kill the reader.
+///
+/// Two independent defects made this gate impossible to pass:
+///  1. `websocat` was required to exit 0, but on this build `-1`, `-t -1`,
+///     `-n1` and `-t -n1` all keep streaming indefinitely while still
+///     delivering the payload, so `status.success()` never became true.
+///  2. `cargo test` gives a test binary no usable stdin, and `websocat` aborts
+///     immediately with `Invalid argument (os error 22)` when stdin is
+///     `/dev/null`. A held-open pipe is a valid stdin and websocat then streams
+///     normally.
+///
+/// Bounding the read and supplying a real stdin is the correct gate.
+fn read_one_ws_message(url: &str, limit: Duration) -> Option<String> {
+    use std::io::Read;
+
+    let mut child = Command::new("websocat")
+        .args(["-t", url])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+
+    // Held open (never written, never closed) for the lifetime of the read so
+    // websocat keeps a valid stdin instead of hitting EOF/os error 22.
+    let _stdin = child.stdin.take();
+    let mut stdout = child.stdout.take()?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    thread::spawn(move || {
+        // Return on the first chunk. A single text frame need not end in a
+        // newline, so read_line would block even though the payload arrived.
+        let mut buf = vec![0u8; 64 * 1024];
+        let msg = match stdout.read(&mut buf) {
+            Ok(n) if n > 0 => String::from_utf8_lossy(&buf[..n]).trim().to_string(),
+            _ => String::new(),
+        };
+        let _ = tx.send(msg);
+    });
+
+    let received = rx.recv_timeout(limit).ok();
+    let _ = child.kill();
+    let _ = child.wait();
+    received.filter(|s| !s.is_empty())
 }
 
 fn assert_ws_envelope(raw: &str) {

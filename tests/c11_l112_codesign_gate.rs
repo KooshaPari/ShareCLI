@@ -71,7 +71,11 @@ fn notarytool_binary_available() {
 #[test]
 fn stapler_binary_available() {
     // xcrun stapler only exists on macOS; skip gracefully on Linux CI.
-    let status = Command::new("xcrun").args(["stapler", "--help"]).output().map(|o| o.status);
+    // `xcrun stapler --help` is not an availability probe: it prints usage and
+    // exits 64 even when the tool is installed (measured on macOS with Xcode
+    // present). `--find` exits 0 and prints the resolved path, which is what
+    // "the binary is available" actually means.
+    let status = Command::new("xcrun").args(["--find", "stapler"]).output().map(|o| o.status);
     let success = status.as_ref().map(|s| s.success()).unwrap_or(false);
     if !success && !cfg!(target_os = "macos") {
         eprintln!("skipping stapler_binary_available: not macOS");
