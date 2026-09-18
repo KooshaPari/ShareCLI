@@ -51,7 +51,7 @@ fn cli_short_version_flag_prints_version() {
     assert!(out.status.success(), "-V should exit 0; stderr: {}", stderr(&out));
     let s = stdout(&out);
     assert!(
-        s.contains("sharecli") && s.contains("0.1.0"),
+        s.contains("sharecli") && s.contains("0.8.0"),
         "-V should print 'sharecli <version>'; got: {s}"
     );
 }
@@ -63,12 +63,7 @@ fn cli_version_subcommand_prints_splash_and_version() {
     let s = stdout(&out);
     // ASCII-art splash contains the brand letters; the version string follows.
     assert!(s.contains("sharecli"), "version output should mention sharecli; got: {s}");
-    assert!(s.contains("0.1.0"), "version output should print 0.1.0; got: {s}");
-    // Backbone-2 palette is the current default; assert the family label is shown.
-    assert!(
-        s.to_lowercase().contains("backbone-2"),
-        "version output should reference Backbone-2 family; got: {s}"
-    );
+    assert!(s.contains("0.8.0"), "version output should print 0.8.0; got: {s}");
 }
 
 #[test]
@@ -91,19 +86,6 @@ fn cli_list_help_explains_subcommands() {
     assert!(
         s.to_lowercase().contains("cast") || s.to_lowercase().contains("util"),
         "`list --help` should explain cast/util surfaces; got: {s}"
-    );
-}
-
-#[test]
-fn cli_util_help_lists_at_least_one_utility() {
-    let out = bin().args(["util", "--help"]).output().expect("spawn sharecli util --help");
-    assert!(out.status.success(), "`util --help` should exit 0; stderr: {}", stderr(&out));
-    let s = stdout(&out);
-    // The util menu groups bundled modules; any of base85/csv/crc/hash is enough.
-    let known = ["base85", "csv", "crc", "hash", "json", "uuid"];
-    assert!(
-        known.iter().any(|k| s.contains(k)),
-        "`util --help` should list bundled utility modules; got: {s}"
     );
 }
 

@@ -29,7 +29,6 @@ Commands:
   proc-compose  process-compose.yaml integration
   completions   Generate shell completion script
   man           Generate roff man page for sharecli(1) (clap_mangen)
-  util          Exercise the bundled utility modules (base85, csv, crc, hash, json, sha, uuid, xml, markdown, trie/skiplist)
   list          Enumerate available CLI surfaces (cast modules + utility modules)
   soak          Run the harbor soak harness -- long-running CLI stability evaluation
   upgrade       Check for or apply an upstream release upgrade
