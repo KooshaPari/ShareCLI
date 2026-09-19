@@ -3,37 +3,28 @@
 ///
 /// Why this exists
 /// ---------------
-/// `AppEntry.applicationDidFinishLaunching` used to probe the socket exactly once
-/// and launch the sidecar only if that single probe failed. Nothing re-checked it
-/// afterwards, so a sidecar that died later (killed, crashed, OOM) left the tray
-/// polling a dead socket forever: the menu bar showed no data for hours and only
-/// an app restart brought the sidecar back.
+/// `AppEntry.applicationDidFinishLaunching` probed the socket once and launched
+/// the sidecar only if that single probe failed; nothing re-checked it, so a
+/// sidecar that died later left the tray polling a dead socket forever and only an
+/// app restart brought it back.
 ///
 /// What this does
 /// --------------
 /// Runs its own supervision loop — deliberately independent of the UI poll loop,
 /// so a wedged socket cannot stall recovery as well — and:
 ///
-///   * probes liveness every `tickSeconds` with a raw `connect(2)`
-///     (`SidecarSocketProbe`), which costs ~0.01 ms and puts no work on the
-///     sidecar;
+///   * probes liveness every `tickSeconds` with a raw `connect(2)`;
 ///   * relaunches the sidecar when the socket stops listening;
-///   * throttles: at most one spawn attempt per `minAttemptInterval`, doubling to
-///     `maxAttemptInterval` after consecutive failures;
-///   * never spawns a second sidecar while a live `sharecli-ipc` process exists
-///     (`SidecarProcessProbe`), and reaps its own child so no zombie accumulates;
-///   * takes over a non-responding sidecar only when it is ours to take — our own
-///     child, or an orphan reparented to launchd — and it stayed unresponsive
-///     past `hangGraceSeconds`. A sidecar owned by another live tray is never
-///     killed, it is reported instead;
+///   * throttles: one spawn attempt per `minAttemptInterval`, doubling to
+///     `maxAttemptInterval`, and never spawns while a live `sharecli-ipc` exists;
+///   * takes over a wedged sidecar only when it is ours to take (our child, or an
+///     orphan reparented to launchd); another live tray's sidecar is never killed;
 ///   * fails quietly when the binary is missing: the UI keeps working, shows
-///     `unavailable`, and retries at the slow cadence (a later install recovers).
+///     `unavailable`, and retries slowly (a later install recovers on its own).
 ///
-/// Bounded retries: after `failureBoundBeforeUnavailable` consecutive failed
-/// attempts the state becomes `unavailable` and the interval pins to
-/// `maxAttemptInterval` (120 s). Supervision never stops retrying, because the fix
-/// has to be able to land without a restart; a successful probe returns the state
-/// to `running`.
+/// Bounded retries: after `failureBoundBeforeUnavailable` consecutive failed attempts
+/// the state becomes `unavailable` and the interval pins to `maxAttemptInterval`; at
+/// that slow cadence supervision keeps retrying, so a fix can land without a restart.
 
 import Foundation
 import Combine
@@ -65,6 +56,8 @@ public final class SidecarSupervisor: ObservableObject {
     private var awaitingStartupSince: Date?
     private var consecutiveFailures = 0
     private var firstUnreachableAt: Date?
+    /// Sticky: set when no sidecar binary could be resolved, so the reason stays accurate.
+    private var binaryMissing = false
 
     // Health watchdog state.
     private var lastHealthProbeAt: Date?
@@ -102,13 +95,12 @@ public final class SidecarSupervisor: ObservableObject {
         loopTask = nil
     }
 
-    /// One-shot check for app launch: launch a sidecar if nothing is listening,
-    /// and wait a bounded time for it to bind.
+    /// One-shot check for app launch: launch a sidecar if nothing is listening, and
+    /// wait a bounded time for it to bind.
     ///
-    /// Uses the cheap connect probe rather than a health probe so startup is never
-    /// gated on a 0.4-2.1 s sysinfo scan. The loop's first health probe follows
-    /// within one tick and corrects the state if the listener turns out to be
-    /// wedged.
+    /// Uses a cheap connect probe rather than a health probe so startup is never
+    /// gated on a 0.4-2.1 s sysinfo scan; the loop's first health probe follows
+    /// within a tick and corrects the state if the listener turns out to be wedged.
     @discardableResult
     public func ensureRunning() async -> SidecarStatus {
         if await SidecarSocketProbe.reachable(path: socketPath, timeout: policy.connectTimeout) {
@@ -142,7 +134,6 @@ public final class SidecarSupervisor: ObservableObject {
         let now = Date()
 
         guard await SidecarSocketProbe.reachable(path: socketPath, timeout: policy.connectTimeout) else {
-            // Nothing is listening: the sidecar is gone.
             unhealthyObservations = 0
             await recover(now: now)
             return
@@ -157,8 +148,8 @@ public final class SidecarSupervisor: ObservableObject {
         }
 
         unhealthyObservations += 1
+        // Accepts connections but never answers: treat it like a dead sidecar.
         guard unhealthyObservations >= policy.hungObservationThreshold else { return }
-        // Accepts connections but does not answer: treat it like a dead sidecar.
         await recover(now: now)
     }
 
@@ -180,7 +171,7 @@ public final class SidecarSupervisor: ObservableObject {
         // is written off.
         if let started = awaitingStartupSince {
             if now.timeIntervalSince(started) < policy.startupGraceSeconds {
-                status = .starting
+                setStatus(.starting)
                 return
             }
             awaitingStartupSince = nil
@@ -190,13 +181,13 @@ public final class SidecarSupervisor: ObservableObject {
         // Throttle: one attempt per interval, backing off on repeated failure.
         let interval = currentAttemptInterval()
         if let last = lastAttemptAt, now.timeIntervalSince(last) < interval {
-            if consecutiveFailures >= policy.failureBoundBeforeUnavailable {
-                status = .unavailable(reason: slowRetryReason())
+            if binaryMissing || consecutiveFailures >= policy.failureBoundBeforeUnavailable {
+                setStatus(.unavailable(reason: slowRetryReason()))
             } else {
-                status = .restarting(
+                setStatus(.restarting(
                     attempt: consecutiveFailures + 1,
                     nextAttemptIn: max(last.addingTimeInterval(interval).timeIntervalSince(now), 0)
-                )
+                ))
             }
             return
         }
@@ -207,10 +198,10 @@ public final class SidecarSupervisor: ObservableObject {
             lastKnownSidecarPID = running.pid
             let unreachableFor = now.timeIntervalSince(firstUnreachableAt ?? now)
             guard unreachableFor >= policy.hangGraceSeconds else {
-                status = .restarting(
+                setStatus(.restarting(
                     attempt: consecutiveFailures + 1,
                     nextAttemptIn: policy.hangGraceSeconds - unreachableFor
-                )
+                ))
                 return
             }
             let candidates = SidecarProcessProbe.takeoverCandidates(
@@ -220,55 +211,66 @@ public final class SidecarSupervisor: ObservableObject {
             )
             guard !candidates.isEmpty else {
                 lastAttemptAt = now
-                status = .unavailable(
+                setStatus(.unavailable(
                     reason: "sidecar pid \(running.pid) is not responding and is not owned by this tray"
-                )
+                ))
                 return
             }
             await SidecarProcessProbe.terminate(pids: candidates.map(\.pid), graceSeconds: 2)
             let remaining = await Self.liveSidecars(binaryName: binaryName)
             if let blocker = remaining.first {
                 lastAttemptAt = now
-                status = .unavailable(reason: "sidecar pid \(blocker.pid) did not exit")
+                setStatus(.unavailable(reason: "sidecar pid \(blocker.pid) did not exit"))
                 return
             }
         }
 
         guard let exe = await resolveBinaryPath() else {
             lastAttemptAt = now
-            consecutiveFailures = max(consecutiveFailures, policy.failureBoundBeforeUnavailable)
-            status = .unavailable(reason: "\(binaryName) binary not found (bundle or PATH)")
+            binaryMissing = true
+            setStatus(.unavailable(reason: slowRetryReason()))
             return
         }
 
         lastAttemptAt = now
+        binaryMissing = false
         if spawn(exe) {
             awaitingStartupSince = now
-            status = .starting
+            setStatus(.starting)
         } else {
             consecutiveFailures += 1
-            status = .unavailable(reason: "failed to launch \(exe)")
+            setStatus(.unavailable(reason: "failed to launch \(exe)"))
         }
     }
 
+    /// Publish a state change, logged for Console.app / `log stream` (a GUI app has
+    /// no stdout, so that is the only place an operator sees why it went quiet).
+    private func setStatus(_ next: SidecarStatus) {
+        guard next != status else { return }
+        status = next
+        NSLog("[ShareCLITray] sidecar state: \(next.operatorMessage ?? next.shortLabel)")
+    }
+
     private func currentAttemptInterval() -> TimeInterval {
-        if consecutiveFailures >= policy.failureBoundBeforeUnavailable {
+        if binaryMissing || consecutiveFailures >= policy.failureBoundBeforeUnavailable {
             return policy.maxAttemptInterval
         }
         return policy.interval(afterConsecutiveFailures: consecutiveFailures)
     }
 
     private func slowRetryReason() -> String {
-        "no answer after \(consecutiveFailures) restart attempts; retrying every \(Int(policy.maxAttemptInterval))s"
+        if binaryMissing { return "\(binaryName) binary not found (bundle or PATH)" }
+        return "no answer after \(consecutiveFailures) restart attempts; retrying every \(Int(policy.maxAttemptInterval))s"
     }
 
     private func markHealthy() {
         consecutiveFailures = 0
+        binaryMissing = false
         firstUnreachableAt = nil
         awaitingStartupSince = nil
         lastAttemptAt = nil
         unhealthyObservations = 0
-        status = .running(pid: child?.processIdentifier ?? lastKnownSidecarPID)
+        setStatus(.running(pid: child?.processIdentifier ?? lastKnownSidecarPID))
     }
 
     // MARK: - Spawn
@@ -278,8 +280,7 @@ public final class SidecarSupervisor: ObservableObject {
         let proc = Process()
         let url = URL(fileURLWithPath: exe)
         proc.executableURL = url
-        // Run from the binary's own directory, matching the installer layout and
-        // the Windows/Linux trays' sidecar launch.
+        // Run from the binary's own directory, as the installer layout expects.
         proc.currentDirectoryURL = url.deletingLastPathComponent()
 
         do {
@@ -319,8 +320,7 @@ public final class SidecarSupervisor: ObservableObject {
     }
 
     /// Bundle first (shipped layout), then PATH (developer builds). A missing
-    /// binary is not cached as a negative result, so installing it later is picked
-    /// up on the next slow retry without an app restart.
+    /// binary is not cached, so a later install is picked up on the next slow retry.
     public nonisolated static func lookupBinaryPath(_ name: String) -> String? {
         let bundleExe = "\(Bundle.main.bundlePath)/Contents/Resources/bin/\(name)"
         if FileManager.default.isExecutableFile(atPath: bundleExe) { return bundleExe }
