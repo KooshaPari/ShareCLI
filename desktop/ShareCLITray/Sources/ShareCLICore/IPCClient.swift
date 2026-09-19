@@ -388,7 +388,12 @@ public actor IPCClient {
     private let _socketPath: String
     /// Public read-only accessor for the Unix socket path this client
     /// connects to. Used by the preferences sheet + status bar tooltip.
-    public var socketPath: String { _socketPath }
+    ///
+    /// `nonisolated` because `_socketPath` is an immutable `let` of a Sendable
+    /// type. Callers outside the actor — notably the `@MainActor`
+    /// `SidecarSupervisor`, which needs the path synchronously in `init` — must
+    /// not have to `await` just to read a constant.
+    public nonisolated var socketPath: String { _socketPath }
     private var nextId: Int = 1
 
     public init(socketPath: String) {

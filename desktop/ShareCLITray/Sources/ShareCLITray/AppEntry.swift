@@ -32,9 +32,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Hide from Dock — pure tray app
         NSApp.setActivationPolicy(.accessory)
 
-        // Ensure IPC sidecar is running
+        // Keep the IPC sidecar alive for the whole app lifetime. The supervisor
+        // owns the launch *and* the recovery: it re-checks liveness on its own
+        // cadence, so a sidecar that dies later is relaunched without an app
+        // restart. Do not re-add a one-shot probe here.
         Task { @MainActor in
-            await ensureIPC()
+            await SidecarSupervisor.shared.ensureRunning()
+            SidecarSupervisor.shared.start()
             state.startPolling()
         }
 
@@ -172,42 +176,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         dashboardWindow = win
     }
-
-    // MARK: - IPC lifecycle
-
-    private func ensureIPC() async {
-        // Try connecting; if that fails, attempt to start the sidecar.
-        do {
-            _ = try await IPCClient.defaultClient().health()
-        } catch {
-            // Sidecar not running — launch it.
-            let exe = sidecarPath("sharecli-ipc")
-            if let exe {
-                let proc = Process()
-                proc.executableURL = URL(fileURLWithPath: exe)
-                try? proc.run()
-                try? await Task.sleep(nanoseconds: 300_000_000)
-            }
-        }
-    }
-
-    private func sidecarPath(_ name: String) -> String? {
-        let bundle = Bundle.main.bundlePath
-        let bundleExe = "\(bundle)/Contents/Resources/bin/\(name)"
-        if FileManager.default.fileExists(atPath: bundleExe) { return bundleExe }
-
-        let output = Process()
-        output.executableURL = URL(fileURLWithPath: "/usr/bin/which")
-        output.arguments = [name]
-        let pipe = Pipe()
-        output.standardOutput = pipe
-        try? output.run()
-        output.waitUntilExit()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return path?.isEmpty == false ? path : nil
-    }
 }
 
 // Notification.Name.sharecliHealthChanged is declared in ShareCLICore/AppState.swift
 // so both targets see the same symbol.
+//
+// Sidecar launch/recovery lives in ShareCLICore/SidecarSupervisor.swift.

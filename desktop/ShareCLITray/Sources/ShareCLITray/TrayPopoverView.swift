@@ -7,11 +7,16 @@ import ShareCLICore
 
 struct TrayPopoverView: View {
     @ObservedObject var state: AppState
+    /// Sidecar supervision state. Read-only here: the supervisor owns launch and
+    /// recovery, the popover only reports it, so an operator can see a restart or
+    /// a missing binary instead of a silently empty menu bar.
+    @ObservedObject private var supervisor = SidecarSupervisor.shared
     let onOpenDashboard: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
             headerBar
+            sidecarStatusLine
             Divider()
             statsRow
             operatorSection
@@ -25,6 +30,25 @@ struct TrayPopoverView: View {
         .frame(minHeight: 200, idealHeight: 480)
         .fixedSize(horizontal: true, vertical: false)
         .background(.ultraThinMaterial)
+    }
+
+    // MARK: - Sidecar supervision status
+
+    @ViewBuilder
+    private var sidecarStatusLine: some View {
+        if let message = supervisor.status.operatorMessage {
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                Text(message)
+                    .font(.caption2)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(supervisor.status.isRunning ? Color.secondary : Color.orange)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 6)
+        }
     }
 
     // MARK: - Header
