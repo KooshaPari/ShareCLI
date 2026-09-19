@@ -34,6 +34,11 @@ docs/.vitepress/dist/
 # and install-tray-macos.sh copies them into the .app. Regenerated on every
 # `desktop/build.sh --install`, so it must not show up as working-tree dirt.
 dist/
+
+# Local assessment workspace (outbox/evidence/decisions/results) produced by
+# audit runs. It is working state, not source, so it stays on disk but out of
+# the working tree.
+.audit/
 node_modules/
 target-cow-parity/
 Thumbs.db
