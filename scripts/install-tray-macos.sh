@@ -97,15 +97,44 @@ cp "$FFI_DYLIB" "$APP_PATH/Contents/Frameworks/"
 cp "$IPC_BIN" "$APP_PATH/Contents/Resources/bin/sharecli-ipc"
 chmod +x "$APP_PATH/Contents/MacOS/ShareCLITray" "$APP_PATH/Contents/Resources/bin/sharecli-ipc"
 
-# P4-16: Bundle Sparkle.framework so the auto-updater can resolve at
-# runtime. SwiftPM emits it under .build/<bin-dir>/ExecutableModules/.
-# Skip silently if absent (Sparkle dep may have been removed in a
-# future iteration — the script must stay resilient).
-SPARKLE_FW="$BIN_DIR/ExecutableModules/Sparkle.framework"
-if [[ -d "$SPARKLE_FW" ]]; then
+# P4-16: Bundle Sparkle.framework so the auto-updater can resolve at runtime.
+#
+# SwiftPM's layout differs between toolchains, so probe the known locations
+# instead of assuming one. This previously looked only at
+# "$BIN_DIR/ExecutableModules/Sparkle.framework", which does not exist on this
+# toolchain (the framework sits directly at "$BIN_DIR/Sparkle.framework"), and
+# the copy was skipped *silently*. The result was an installed .app that died on
+# launch with:
+#     dyld: Library not loaded: @rpath/Sparkle.framework/Versions/B/Sparkle
+# A framework the binary links against is therefore a hard error when missing,
+# not a silent skip.
+SPARKLE_FW=""
+for candidate in \
+    "$BIN_DIR/Sparkle.framework" \
+    "$BIN_DIR/ExecutableModules/Sparkle.framework" \
+    "$BIN_DIR/PackageFrameworks/Sparkle.framework"; do
+    if [[ -d "$candidate" ]]; then
+        SPARKLE_FW="$candidate"
+        break
+    fi
+done
+
+if [[ -n "$SPARKLE_FW" ]]; then
     rm -rf "$APP_PATH/Contents/Frameworks/Sparkle.framework"
     cp -R "$SPARKLE_FW" "$APP_PATH/Contents/Frameworks/"
     chmod -R +w "$APP_PATH/Contents/Frameworks/Sparkle.framework"
+elif otool -L "$TRAY_BIN" 2>/dev/null | grep -q 'Sparkle\.framework'; then
+    echo "ERROR: the tray binary links against Sparkle.framework, but the" >&2
+    echo "       framework was not found next to the build product. Installing" >&2
+    echo "       anyway would ship an .app that crashes on launch with" >&2
+    echo "       'Library not loaded: @rpath/Sparkle.framework/Versions/B/Sparkle'." >&2
+    echo "       Searched:" >&2
+    echo "         $BIN_DIR/Sparkle.framework" >&2
+    echo "         $BIN_DIR/ExecutableModules/Sparkle.framework" >&2
+    echo "         $BIN_DIR/PackageFrameworks/Sparkle.framework" >&2
+    echo "       Run 'swift package resolve && swift build -c release' in" >&2
+    echo "       $TRAY_PKG and retry." >&2
+    exit 1
 fi
 
 # t-70: Generate a per-channel appcast feed and copy it into the .app's

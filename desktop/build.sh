@@ -85,5 +85,5 @@ if [[ "$DO_INSTALL" -eq 1 ]]; then
     echo "==> Bundling .app and installing"
     INSTALL_ARGS=()
     [[ "$SYSTEM_INSTALL" -eq 1 ]] && INSTALL_ARGS+=(--system)
-    "$REPO_ROOT/scripts/install-tray-macos.sh" "${INSTALL_ARGS[@]}"
+    "$REPO_ROOT/scripts/install-tray-macos.sh" ${INSTALL_ARGS[@]+"${INSTALL_ARGS[@]}"}
 fi
