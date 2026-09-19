@@ -37,7 +37,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing = "0.1"
 tokio-util = { version = "0.7", features = ["codec"] }
 bytes = "1"
-dirs = "5"
+dirs = "7"
 
 [dev-dependencies]
 tempfile = "3"
