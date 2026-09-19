@@ -2,6 +2,16 @@
 
 Policy + operational runbook for sharecli's signed-commit surface. Backs audit-v38 **C06 L59** (Source code provenance), C04 L34 (Signed commits / Verified commits), and the operator-side key handling for Forge Bot automation.
 
+> **⚠️ Reconciliation needed (2026-09-19) — several claims below are stale or false on the current live repo.**
+>
+> Evidence gathered against `repos/KooshaPari/sharecli` on 2026-09-19:
+>
+> - **Repo-level rulesets: empty.** `gh api repos/KooshaPari/sharecli/rulesets` → `[]`. Ruleset id **`19181236` returns HTTP 404**. It is **stale / no longer present**. Do **not** cite `19181236` as live evidence. (This is already stated in [`gpg-verified-commits-l34.md`](gpg-verified-commits-l34.md): "Ruleset id 19181236 referenced in earlier C04.md evidence is stale / no longer present at the repo level.")
+> - **Forge Bot GPG key is NOT on this macOS runner's local keyring.** `gpg --list-secret-keys` shows only `rsa4096/D3D324D859B0E2D4` (`ArgisOS Release`). No `forge-bot-sharecli` / fingerprint `AAB36B31A8625A133B9398FE1C7D34D008A2D327` secret key exists here. The `C:/Program Files/Git/usr/bin/gpg.exe` paths throughout this file refer to a **Windows CI runner**, not this machine. Commit `211d5b99` on `main` is titled "skip signingkey gate when documented Forge Bot key is absent" — the repo already tolerates the key being absent.
+> - **Live evidence for C04 L34 / C06 L59** is the GitHub-web-flow **verified squash-merge commit** chain on `main` (e.g. post-#775 commits, per `gpg-verified-commits-l34.md`), **not** the stale ruleset or a local key that does not exist here.
+>
+> Read `gpg-verified-commits-l34.md` for the canonical current-state correction before acting on any claim in this file.
+
 ## Provenance policy (claim-lock scope)
 
 | Layer | Status | Notes |
