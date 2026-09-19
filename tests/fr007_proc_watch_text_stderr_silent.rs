@@ -132,7 +132,18 @@ fn fr007_proc_tree_watch_text_stderr_silent() {
         .spawn()
         .expect("spawn sharecli proc --tree --watch 1");
 
-    let (stdout, stderr) = drain_watch_pipes(&mut child, Duration::from_millis(12_000));
+    // Wait for the re-render rather than asserting it inside a fixed window.
+    //
+    // This used drain_watch_pipes(.., 12s) and then asserted ">= 2 frames". That
+    // is a throughput assertion: a single `proc --tree` host scan is expensive
+    // and, during a parallel full-suite run (215 test binaries plus a busy host),
+    // one scan can exceed the entire 12s dwell, producing exactly one frame. The
+    // test then failed for being scheduled slowly rather than for misbehaving.
+    // With a deadline it still fails if the watch genuinely never re-renders,
+    // which is the behaviour AC-007.35 cares about.
+    let (stdout, stderr) = drain_watch_until(&mut child, Duration::from_secs(60), |buf| {
+        buf.matches(TREE_HEADER).count() >= 2
+    });
 
     assert_stderr_silent(&stderr, "proc --tree --watch");
     assert_stderr_no_companion_markers(&stderr, "proc --tree --watch");

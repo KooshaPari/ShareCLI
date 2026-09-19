@@ -29,6 +29,11 @@
 agileplus.db
 desktop/ShareCLITray/.build/
 docs/.vitepress/dist/
+
+# Installer build output: scripts/build-appcast.sh writes per-channel feeds here
+# and install-tray-macos.sh copies them into the .app. Regenerated on every
+# `desktop/build.sh --install`, so it must not show up as working-tree dirt.
+dist/
 node_modules/
 target-cow-parity/
 Thumbs.db
