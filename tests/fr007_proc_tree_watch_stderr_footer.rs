@@ -53,7 +53,7 @@ fn fr007_proc_tree_watch_ndjson_stderr_gate_before_host_watch() {
         *buf_reader.lock().expect("stderr lock") = s;
     });
 
-    let deadline = Instant::now() + Duration::from_secs(20);
+    let deadline = Instant::now() + Duration::from_secs(120);
     loop {
         let s = stderr_buf.lock().expect("stderr lock").clone();
         if s.contains(GATE_MARKER) && s.contains(WATCH_MARKER) {
@@ -96,8 +96,35 @@ fn fr007_proc_tree_watch_ndjson_stdout_no_companion_leak() {
         .spawn()
         .expect("spawn sharecli proc --tree --json --watch 1");
 
-    thread::sleep(Duration::from_millis(3_500));
+    // Drain stderr on a reader thread, then wait until the first watch tick
+    // has emitted (GATE_MARKER or [watch] footer). The assertion below checks
+    // stdout is clean; without this wait the assertion could pass trivially
+    // if the watcher hasn't ticked yet — under host load the first tick can
+    // exceed a fixed sleep.
+    let stderr_buf: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+    let buf_reader = stderr_buf.clone();
+    let mut err_handle = child.stderr.take().expect("stderr handle");
+    let reader = thread::spawn(move || {
+        let mut s = String::new();
+        let _ = err_handle.read_to_string(&mut s);
+        *buf_reader.lock().expect("stderr lock") = s;
+    });
+
+    let deadline = Instant::now() + Duration::from_secs(120);
+    loop {
+        let s = stderr_buf.lock().expect("stderr lock").clone();
+        if s.contains(GATE_MARKER) || s.contains("[watch]") {
+            break;
+        }
+        if reader.is_finished() || Instant::now() > deadline {
+            break;
+        }
+        thread::sleep(Duration::from_millis(250));
+    }
+
     let _ = child.kill();
+    let _ = child.wait();
+    let _ = reader.join();
 
     let mut stdout = String::new();
     if let Some(mut out) = child.stdout.take() {
