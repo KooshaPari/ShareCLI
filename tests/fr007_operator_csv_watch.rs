@@ -4,10 +4,11 @@
 //! AC-007.89 CSV watch emits command body + gate → host_watch → pool → status companions
 //! each tick on stdout; stderr silent on success.
 
-use std::io::Read;
+use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 fn bin() -> Command {
     Command::new(env!("CARGO_BIN_EXE_sharecli"))
@@ -31,25 +32,72 @@ const HOST_CSV_HEADER: &str = "record,fd_count,net_rx_bytes,net_tx_bytes,mem_rss
 const POOL_CSV_HEADER: &str = "record,node_total,node_idle,bun_total,bun_idle,max_per_type,healthy";
 const STATUS_CSV_HEADER: &str = "record,scanned,watched,total_processes,agent_rows";
 
-fn drain_watch_pipes(child: &mut Child, dwell: Duration) -> (String, String) {
+/// Drain both pipes until enough `frame_marker` lines have appeared, or `max` elapses.
+///
+/// A watch tick is scan-bound, not interval-bound: one iteration of `status --csv` measures
+/// ~4 s of wall clock at near-zero CPU on a loaded host, so `--watch 1` does not mean a 1 s
+/// cadence and a fixed sleep can capture a single frame. Waiting for the frames the assertion
+/// actually needs is faster on an idle host (it returns as soon as they arrive) and correct on
+/// a busy one. The marker precedes its frame body, so `frames_wanted + 1` occurrences are
+/// needed before `frames_wanted` bodies are complete.
+fn drain_watch_until(
+    child: &mut Child,
+    frame_marker: &str,
+    frames_wanted: usize,
+    max: Duration,
+) -> (String, String) {
     let stdout = child.stdout.take().expect("piped stdout");
     let stderr = child.stderr.take().expect("piped stderr");
+
+    let out_buf = Arc::new(Mutex::new(String::new()));
+    let err_buf = Arc::new(Mutex::new(String::new()));
+
+    let out_sink = Arc::clone(&out_buf);
     let stdout_reader = thread::spawn(move || {
-        let mut buf = String::new();
-        let mut out = stdout;
-        let _ = out.read_to_string(&mut buf);
-        buf
+        let mut reader = BufReader::new(stdout);
+        let mut line = String::new();
+        while let Ok(n) = reader.read_line(&mut line) {
+            if n == 0 {
+                break;
+            }
+            out_sink.lock().unwrap().push_str(&line);
+            line.clear();
+        }
     });
+    let err_sink = Arc::clone(&err_buf);
     let stderr_reader = thread::spawn(move || {
-        let mut buf = String::new();
-        let mut err = stderr;
-        let _ = err.read_to_string(&mut buf);
-        buf
+        let mut reader = BufReader::new(stderr);
+        let mut line = String::new();
+        while let Ok(n) = reader.read_line(&mut line) {
+            if n == 0 {
+                break;
+            }
+            err_sink.lock().unwrap().push_str(&line);
+            line.clear();
+        }
     });
-    thread::sleep(dwell);
+
+    let deadline = Instant::now() + max;
+    // The marker is written before its frame body, so N complete frames need N+1 markers.
+    // Stopping on the Nth marker would truncate the Nth frame and the envelope assertion
+    // (which requires a complete body) would fail.
+    let needed = frames_wanted + 1;
+    loop {
+        let seen = out_buf.lock().unwrap().matches(frame_marker).count();
+        if seen >= needed || Instant::now() >= deadline {
+            break;
+        }
+        thread::sleep(Duration::from_millis(150));
+    }
+
     let _ = child.kill();
     let _ = child.wait();
-    (stdout_reader.join().expect("stdout drain"), stderr_reader.join().expect("stderr drain"))
+    stdout_reader.join().expect("stdout drain");
+    stderr_reader.join().expect("stderr drain");
+
+    let stdout_text = out_buf.lock().unwrap().clone();
+    let stderr_text = err_buf.lock().unwrap().clone();
+    (stdout_text, stderr_text)
 }
 
 fn assert_csv_envelope(frame: &str, body_header: &str, context: &str) {
@@ -86,7 +134,7 @@ fn assert_csv_watch_contract(args: &[&str], frame_marker: &str, body_header: &st
         .spawn()
         .unwrap_or_else(|e| panic!("spawn {context}: {e}"));
 
-    let (stdout, stderr) = drain_watch_pipes(&mut child, Duration::from_millis(10_000));
+    let (stdout, stderr) = drain_watch_until(&mut child, frame_marker, 2, Duration::from_secs(60));
 
     assert!(stderr.is_empty(), "{context} MUST keep stderr silent (AC-007.89); stderr: {stderr:?}");
     assert!(

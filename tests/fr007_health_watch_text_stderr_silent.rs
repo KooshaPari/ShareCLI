@@ -5,10 +5,11 @@
 //! text companions on stderr during refresh cycles; gate/host_watch and `[watch]` footer stay
 //! on stdout only (parity with AC-007.50 ps text watch stderr silence).
 
-use std::io::Read;
+use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 fn bin() -> Command {
     Command::new(env!("CARGO_BIN_EXE_sharecli"))
@@ -18,27 +19,65 @@ const GATE_MARKER: &str = "=== Thermal Gate (FR-011) ===";
 const WATCH_MARKER: &str = "=== Host Resource Watch ===";
 const HEALTH_HEADER: &str = "Shared runtime health:";
 
-fn drain_watch_pipes(child: &mut Child, dwell: Duration) -> (String, String) {
+/// Drain both pipes until enough `frame_marker` lines have appeared, or `max` elapses.
+///
+/// A watch tick is scan-bound, not interval-bound: one iteration measures seconds of wall
+/// clock at near-zero CPU on a loaded host, so `--watch 1` is not a 1 s cadence and a fixed
+/// sleep can capture a single frame. Waiting for the frames the assertion needs is faster on
+/// an idle host (it returns as soon as they arrive) and correct on a busy one.
+fn drain_watch_until(
+    child: &mut Child,
+    frame_marker: &str,
+    frames_wanted: usize,
+    max: Duration,
+) -> (String, String) {
     let stdout = child.stdout.take().expect("piped stdout");
     let stderr = child.stderr.take().expect("piped stderr");
+
+    let out_buf = Arc::new(Mutex::new(String::new()));
+    let err_buf = Arc::new(Mutex::new(String::new()));
+
+    let out_sink = Arc::clone(&out_buf);
     let stdout_reader = thread::spawn(move || {
-        let mut buf = String::new();
-        let mut out = stdout;
-        let _ = out.read_to_string(&mut buf);
-        buf
+        let mut reader = BufReader::new(stdout);
+        let mut line = String::new();
+        while let Ok(n) = reader.read_line(&mut line) {
+            if n == 0 {
+                break;
+            }
+            out_sink.lock().unwrap().push_str(&line);
+            line.clear();
+        }
     });
+    let err_sink = Arc::clone(&err_buf);
     let stderr_reader = thread::spawn(move || {
-        let mut buf = String::new();
-        let mut err = stderr;
-        let _ = err.read_to_string(&mut buf);
-        buf
+        let mut reader = BufReader::new(stderr);
+        let mut line = String::new();
+        while let Ok(n) = reader.read_line(&mut line) {
+            if n == 0 {
+                break;
+            }
+            err_sink.lock().unwrap().push_str(&line);
+            line.clear();
+        }
     });
-    thread::sleep(dwell);
+
+    let deadline = Instant::now() + max;
+    loop {
+        let seen = out_buf.lock().unwrap().matches(frame_marker).count();
+        if seen >= frames_wanted || Instant::now() >= deadline {
+            break;
+        }
+        thread::sleep(Duration::from_millis(150));
+    }
+
     let _ = child.kill();
     let _ = child.wait();
-    let stdout = stdout_reader.join().expect("stdout drain thread");
-    let stderr = stderr_reader.join().expect("stderr drain thread");
-    (stdout, stderr)
+    let _ = stdout_reader.join();
+    let _ = stderr_reader.join();
+    let out = out_buf.lock().unwrap().clone();
+    let err = err_buf.lock().unwrap().clone();
+    (out, err)
 }
 
 fn assert_stderr_silent(stderr: &str, context: &str) {
@@ -112,7 +151,7 @@ fn fr007_health_watch_text_stderr_silent() {
         .spawn()
         .expect("spawn sharecli health --watch 1");
 
-    let (stdout, stderr) = drain_watch_pipes(&mut child, Duration::from_millis(12_000));
+    let (stdout, stderr) = drain_watch_until(&mut child, HEALTH_HEADER, 2, Duration::from_secs(60));
 
     assert_stderr_silent(&stderr, "health --watch");
     assert_stderr_no_companion_markers(&stderr, "health --watch");

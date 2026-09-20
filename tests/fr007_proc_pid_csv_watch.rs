@@ -80,7 +80,7 @@ fn fr007_proc_pid_csv_watch_stderr_silent_and_envelope() {
         .spawn()
         .expect("spawn proc --pid --csv --watch 1");
 
-    let (stdout, stderr) = drain_watch_pipes(&mut child, Duration::from_millis(10_000));
+    let (stdout, stderr) = drain_watch_pipes(&mut child, Duration::from_millis(18_000));
 
     assert!(
         stderr.is_empty(),

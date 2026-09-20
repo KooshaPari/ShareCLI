@@ -112,7 +112,7 @@ fn fr007_status_watch_text_stderr_silent() {
         .spawn()
         .expect("spawn sharecli status --watch 1");
 
-    let (stdout, stderr) = drain_watch_pipes(&mut child, Duration::from_millis(12_000));
+    let (stdout, stderr) = drain_watch_pipes(&mut child, Duration::from_millis(20_000));
 
     assert_stderr_silent(&stderr, "status --watch");
     assert_stderr_no_companion_markers(&stderr, "status --watch");
