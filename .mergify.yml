@@ -6,6 +6,18 @@ pull_request_rules:
     actions:
       merge:
         method: squash
+
+  - name: automatic merge of dependabot PRs
+    conditions:
+      - or:
+          - author=dependabot[bot]
+          - author=renovate[bot]
+      - check-success=ci
+      - "#check-success-or-neutral>=1"
+    actions:
+      merge:
+        method: squash
+
   - name: automatic rebase
     conditions:
       - conflict
