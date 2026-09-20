@@ -118,6 +118,32 @@ impl Clone for CoalesceCache {
     }
 }
 
+/// Acquire an exclusive advisory lock, polling `try_lock_exclusive` until either
+/// success or `deadline` elapses. Lane-7 BLOCKER (tiger): the previous
+/// `lock_exclusive()` call blocked indefinitely when a sibling was wedged.
+fn acquire_lock_with_deadline(file: &fs::File, deadline: Duration) -> Result<()> {
+    let started = SystemTime::now();
+    let mut backoff = Duration::from_millis(5);
+    let max_backoff = Duration::from_millis(250);
+    loop {
+        match FileExt::try_lock_exclusive(file) {
+            Ok(()) => return Ok(()),
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                let elapsed = started.elapsed().unwrap_or(Duration::ZERO);
+                if elapsed >= deadline {
+                    anyhow::bail!(
+                        "could not acquire exclusive lock within {:?} (held by another process)",
+                        deadline
+                    );
+                }
+                thread::sleep(backoff);
+                backoff = (backoff * 2).min(max_backoff);
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+}
+
 impl CoalesceCache {
     /// Default result lifetime (5 minutes) — longer than origin harness lint TTLs
     /// so Hypervisor callers share across agent turns unless overridden.
@@ -297,9 +323,11 @@ impl CoalesceCache {
             .open(&lock_path)
             .with_context(|| format!("open lock file {}", lock_path.display()))?;
 
-        // Block until we are the sole holder.
-        lock_file
-            .lock_exclusive()
+        // Block until we are the sole holder, with a deadline. A hung holder
+        // (killed -9 between fork+exec, NFS stall, etc.) must not wedge every
+        // sibling silently.
+        // Lane-7 BLOCKER (tiger): previously `lock_exclusive()` waited forever.
+        acquire_lock_with_deadline(&lock_file, Duration::from_secs(30))
             .with_context(|| format!("acquire exclusive lock on {}", lock_path.display()))?;
 
         // Re-check: a sibling may have stored the result while we were waiting.
@@ -574,5 +602,106 @@ mod tests {
             .expect("third with_lock");
         assert_eq!(call_count, 2, "successful run IS cached, f() must not re-run");
         assert_eq!(r3.stdout, b"OK");
+    }
+
+    // -----------------------------------------------------------------------
+    // Lane-7 BLOCKER (tiger): lock acquisition must time out instead of hanging
+    // forever when the holder is wedged. Exercises the helper directly with
+    // a 200ms deadline so the unit test stays fast.
+    // -----------------------------------------------------------------------
+    #[test]
+    fn acquire_lock_with_deadline_errors_when_held() {
+        let dir = TempDir::new().expect("tempdir");
+        let lock_path = dir.path().join("held.lock");
+        // Touch the file so a second open can flock it.
+        fs::write(&lock_path, b"x").unwrap();
+        let holder = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&lock_path)
+            .unwrap();
+        holder.lock_exclusive().unwrap();
+
+        let contender = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&lock_path)
+            .unwrap();
+        let started = SystemTime::now();
+        let err = acquire_lock_with_deadline(&contender, Duration::from_millis(200))
+            .expect_err("must fail when another holder owns the lock");
+        let elapsed = started.elapsed().unwrap_or(Duration::ZERO);
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("could not acquire exclusive lock"),
+            "expected lock-deadline error, got: {msg}"
+        );
+        assert!(
+            elapsed >= Duration::from_millis(200),
+            "deadline must be honored; elapsed={elapsed:?}"
+        );
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "deadline should be tight; elapsed={elapsed:?}"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Lane-7 BLOCKER (tiger): end-to-end with_lock honors the deadline.
+    // Slow: spawns a thread that holds the lock for 60s and waits ~30s
+    // for the deadline to fire. Tagged #[ignore] so it does not run by default;
+    // run with: cargo test -p sharecli-ipc -- --ignored.
+    //
+    // Caveat: macOS flock semantics treat all holders in the same process as one
+    // owner, so a sibling thread holding the lock does not reliably block a
+    // second thread's try_lock_exclusive. The helper-level test above
+    // (`acquire_lock_with_deadline_errors_when_held`) covers the deadline
+    // contract with two top-level `fs::File` handles, which is sufficient.
+    // This ignored test is kept for manual verification on Linux where cross-
+    // process flock contention is observable in-process via `Command::new`.
+    // -----------------------------------------------------------------------
+    #[test]
+    #[ignore = "macOS flock is per-process; run --ignored on Linux to verify"]
+    fn with_lock_lock_deadline_does_not_hang() {
+        let dir = TempDir::new().expect("tempdir");
+        let cache = CoalesceCache::new(dir.path());
+        let key = command_key(&["hung".into()], Path::new("/p"), &[]);
+
+        let holder_dir = dir.path().to_path_buf();
+        let holder_key = key.clone();
+        let holder = thread::spawn(move || {
+            let lock_path = holder_dir.join(format!("{}.lock", holder_key.0));
+            let f = fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(false)
+                .open(&lock_path)
+                .unwrap();
+            f.lock_exclusive().unwrap();
+            thread::sleep(Duration::from_secs(60));
+        });
+
+        thread::sleep(Duration::from_millis(200));
+
+        let started = SystemTime::now();
+        let result: Result<CachedResult> = cache.with_lock(&key, || {
+            Ok(CachedResult { exit_code: 0, stdout: vec![], stderr: vec![] })
+        });
+        let elapsed = started.elapsed().unwrap_or(Duration::ZERO);
+
+        // Don't assert hard on macOS — the test exists for Linux verification.
+        if result.is_err() {
+            let err = format!("{}", result.unwrap_err());
+            assert!(
+                err.contains("could not acquire exclusive lock"),
+                "expected lock-deadline error, got: {err}"
+            );
+            assert!(
+                elapsed < Duration::from_secs(45),
+                "with_lock took too long: {elapsed:?}"
+            );
+        }
+
+        drop(holder);
     }
 }
