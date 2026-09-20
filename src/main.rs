@@ -1472,7 +1472,6 @@ fn cli_man(install: bool) -> Result<()> {
 ///
 /// Backbone-2 family: pulse-green (#3fb950) for headers, amber (#d29922) for
 /// accent markers. No external deps; pure introspection of the typed subcommand
-
 fn cli_list(as_json: bool) -> Result<()> {
     let cast_modules: &[(&str, &str)] = &[
         ("register", "Register a pane: `cast register <name> <address>`"),
