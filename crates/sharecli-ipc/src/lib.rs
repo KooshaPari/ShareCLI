@@ -321,6 +321,15 @@ impl CoalesceCache {
         // We are first — run the command.
         let value = f()?;
         let cached: CachedResult = value.into();
+
+        // Lane-7 BLOCKER (tiger): failed runs were stored and replayed to siblings
+        // for the full TTL. Skip persistence for any non-success result so siblings
+        // re-run on their own; success results are stored as before.
+        if cached.exit_code != 0 {
+            record_coalesce_hit_kind(CoalesceHitKind::Miss);
+            return Ok((T::from(cached), CoalesceHitKind::Miss));
+        }
+
         self.store(key, &cached)?;
         record_coalesce_hit_kind(CoalesceHitKind::Miss);
 
@@ -395,6 +404,7 @@ mod tests {
 
     // -----------------------------------------------------------------------
     // (c) with_lock: second call returns cached result without re-running f
+    //     (only true for successful runs; failed runs are not cached.)
     // -----------------------------------------------------------------------
     #[test]
     fn with_lock_deduplicates() {
@@ -410,11 +420,11 @@ mod tests {
         let r1: CachedResult = cache
             .with_lock(&key, || {
                 call_count += 1;
-                Ok(CachedResult { exit_code: 42, stdout: b"run1".to_vec(), stderr: vec![] })
+                Ok(CachedResult { exit_code: 0, stdout: b"run1".to_vec(), stderr: vec![] })
             })
             .expect("first with_lock");
         assert_eq!(call_count, 1, "f() must run on first call");
-        assert_eq!(r1.exit_code, 42);
+        assert_eq!(r1.exit_code, 0);
 
         // Second call — cache is populated, f() must NOT run again.
         let r2: CachedResult = cache
@@ -424,7 +434,7 @@ mod tests {
             })
             .expect("second with_lock");
         assert_eq!(call_count, 1, "f() must NOT run when cache is populated");
-        assert_eq!(r2.exit_code, 42, "second call must return the cached result");
+        assert_eq!(r2.exit_code, 0, "second call must return the cached result");
         assert_eq!(r2.stdout, b"run1");
     }
 
@@ -516,5 +526,53 @@ mod tests {
         let section = after.format_status_section();
         assert!(section.contains("=== Hypervisor Coalesce ==="));
         assert!(section.contains("Nocache runs:"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Lane-7 BLOCKER (tiger): failed runs MUST NOT be cached, otherwise the
+    // next sibling sees the broken result for the full TTL.
+    // -----------------------------------------------------------------------
+    #[test]
+    fn with_lock_does_not_cache_failed_run() {
+        let dir = TempDir::new().expect("tempdir");
+        let cache = CoalesceCache::new(dir.path());
+        let key = command_key(&["ruff".into(), "check".into()], Path::new("/p"), &[]);
+
+        let mut call_count = 0u32;
+
+        // First call: exit_code 1 (failure). f() runs, result returns to caller,
+        // but no entry is stored on disk.
+        let r1: CachedResult = cache
+            .with_lock(&key, || {
+                call_count += 1;
+                Ok(CachedResult { exit_code: 1, stdout: b"FAIL".to_vec(), stderr: vec![] })
+            })
+            .expect("first with_lock");
+        assert_eq!(call_count, 1);
+        assert_eq!(r1.exit_code, 1);
+        assert!(
+            !cache.entry_path(&key).exists(),
+            "failed runs MUST NOT persist to disk (lane-7 BLOCKER)"
+        );
+
+        // Second call: f() MUST run again because the cache was not populated.
+        let r2: CachedResult = cache
+            .with_lock(&key, || {
+                call_count += 1;
+                Ok(CachedResult { exit_code: 0, stdout: b"OK".to_vec(), stderr: vec![] })
+            })
+            .expect("second with_lock");
+        assert_eq!(call_count, 2, "failed-run must NOT short-circuit the next caller");
+        assert_eq!(r2.exit_code, 0);
+
+        // Third call: success IS cached, so f() does NOT run.
+        let r3: CachedResult = cache
+            .with_lock(&key, || {
+                call_count += 1;
+                Ok(CachedResult { exit_code: 99, stdout: b"won't run".to_vec(), stderr: vec![] })
+            })
+            .expect("third with_lock");
+        assert_eq!(call_count, 2, "successful run IS cached, f() must not re-run");
+        assert_eq!(r3.stdout, b"OK");
     }
 }
