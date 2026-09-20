@@ -107,11 +107,11 @@ jobs:
           done
 
           if [[ "$REWRAP_OK" != "true" ]]; then
-cat >&2 << 'EOF'
-::error::p12 password mismatch — APPLE_CERTIFICATE_PWD does not match the p12 file.
-To fix: run `scripts/reexport-p12.sh` locally (Keychain Access required),
-then update APPLE_CERTIFICATE and APPLE_CERTIFICATE_PWD in Infisical.
-EOF
+            {
+              echo "::error::p12 password mismatch — APPLE_CERTIFICATE_PWD does not match the p12 file."
+              echo "To fix: run \`scripts/reexport-p12.sh\` locally (Keychain Access required),"
+              echo "then update APPLE_CERTIFICATE and APPLE_CERTIFICATE_PWD in Infisical."
+            } >&2
             exit 1
           fi
 
