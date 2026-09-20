@@ -4,7 +4,7 @@
 //! into Hypervisor nocache lane priority for harness callers.
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serial_test::serial;
 use sharecli_core::{FakeThermalGate, Hypervisor, QueuePriority, SpawnRequest, ThermalDecision};
@@ -137,8 +137,16 @@ async fn fr008_hypervisor_operator_env_critical_before_normal() {
             .expect("holder nocache run")
     });
 
+    let holder_started_deadline = Instant::now() + Duration::from_secs(30);
     while !std::fs::read_to_string(&order_path).map(|s| s.contains("holder_start")).unwrap_or(false)
     {
+        if Instant::now() >= holder_started_deadline {
+            panic!(
+                "holder_start never observed in {} within 30s; order file: {:?}",
+                order_path.display(),
+                std::fs::read_to_string(&order_path).unwrap_or_default()
+            );
+        }
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
 

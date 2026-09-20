@@ -6,8 +6,9 @@
 
 use std::io::Read;
 use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 fn bin() -> Command {
     Command::new(env!("CARGO_BIN_EXE_sharecli"))
@@ -68,26 +69,61 @@ fn assert_text_operator_order(stdout: &str, body_header: &str, context: &str) {
     );
 }
 
-fn drain_watch_pipes(child: &mut Child, dwell: Duration) -> (String, String) {
-    let stdout = child.stdout.take().expect("piped stdout");
-    let stderr = child.stderr.take().expect("piped stderr");
-    let stdout_reader = thread::spawn(move || {
-        let mut buf = String::new();
-        let mut out = stdout;
-        let _ = out.read_to_string(&mut buf);
-        buf
-    });
-    let stderr_reader = thread::spawn(move || {
-        let mut buf = String::new();
-        let mut err = stderr;
-        let _ = err.read_to_string(&mut buf);
-        buf
-    });
-    thread::sleep(dwell);
+/// Drain stdout/stderr while polling for `frames_needed` occurrences of
+/// `frame_marker` in stdout. `max` bounds the total wait; if the watcher
+/// can't emit that many frames in `max`, the call returns whatever was
+/// captured so far (and the assertion below will likely fail).
+///
+/// Replaces a fixed-sleep drain that was flaky under parallel CI load: a
+/// fixed sleep can land before the watcher has emitted enough frames.
+fn drain_watch_pipes(
+    child: &mut Child,
+    frame_marker: &str,
+    frames_needed: usize,
+    max: Duration,
+) -> (String, String) {
+    let stdout_handle = child.stdout.take().expect("piped stdout");
+    let stderr_handle = child.stderr.take().expect("piped stderr");
+    let stdout_buf: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+    let stderr_buf: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+    let out_reader = {
+        let buf = stdout_buf.clone();
+        thread::spawn(move || {
+            let mut s = String::new();
+            let mut out = stdout_handle;
+            let _ = out.read_to_string(&mut s);
+            *buf.lock().expect("stdout lock") = s;
+        })
+    };
+    let err_reader = {
+        let buf = stderr_buf.clone();
+        thread::spawn(move || {
+            let mut s = String::new();
+            let mut err = stderr_handle;
+            let _ = err.read_to_string(&mut s);
+            *buf.lock().expect("stderr lock") = s;
+        })
+    };
+
+    let deadline = Instant::now() + max;
+    loop {
+        let count = stdout_buf
+            .lock()
+            .expect("stdout lock")
+            .matches(frame_marker)
+            .count();
+        if count >= frames_needed || Instant::now() >= deadline {
+            break;
+        }
+        thread::sleep(Duration::from_millis(250));
+    }
+
     let _ = child.kill();
     let _ = child.wait();
-    let stdout = stdout_reader.join().expect("stdout drain thread");
-    let stderr = stderr_reader.join().expect("stderr drain thread");
+    let _ = out_reader.join();
+    let _ = err_reader.join();
+    let stdout = stdout_buf.lock().expect("stdout lock").clone();
+    let stderr = stderr_buf.lock().expect("stderr lock").clone();
     (stdout, stderr)
 }
 
@@ -149,7 +185,7 @@ fn fr007_health_watch_text_pool_status_order() {
         .spawn()
         .expect("spawn sharecli health --watch 1");
 
-    let (stdout, stderr) = drain_watch_pipes(&mut child, Duration::from_millis(12_000));
+    let (stdout, stderr) = drain_watch_pipes(&mut child, HEALTH_HEADER, 2, Duration::from_millis(30_000));
 
     assert_stderr_silent(stderr.as_bytes(), "health --watch");
     assert_text_watch_stdout(&stdout, HEALTH_HEADER, "health --watch");
@@ -177,7 +213,7 @@ fn fr007_pool_watch_text_pool_status_order() {
         .spawn()
         .expect("spawn sharecli pool --watch 1");
 
-    let (stdout, stderr) = drain_watch_pipes(&mut child, Duration::from_millis(12_000));
+    let (stdout, stderr) = drain_watch_pipes(&mut child, POOL_HEADER, 2, Duration::from_millis(30_000));
 
     assert_stderr_silent(stderr.as_bytes(), "pool --watch");
     assert_text_watch_stdout(&stdout, POOL_HEADER, "pool --watch");
@@ -205,7 +241,7 @@ fn fr007_status_watch_text_pool_status_order() {
         .spawn()
         .expect("spawn sharecli status --watch 1");
 
-    let (stdout, stderr) = drain_watch_pipes(&mut child, Duration::from_millis(12_000));
+    let (stdout, stderr) = drain_watch_pipes(&mut child, STATUS_HEADER, 2, Duration::from_millis(30_000));
 
     assert_stderr_silent(stderr.as_bytes(), "status --watch");
     assert_text_watch_stdout(&stdout, STATUS_HEADER, "status --watch");
@@ -233,7 +269,7 @@ fn fr007_ps_all_watch_text_pool_status_order() {
         .spawn()
         .expect("spawn sharecli ps --all --watch 1");
 
-    let (stdout, stderr) = drain_watch_pipes(&mut child, Duration::from_millis(12_000));
+    let (stdout, stderr) = drain_watch_pipes(&mut child, PS_INVENTORY_HEADER, 2, Duration::from_millis(30_000));
 
     assert_stderr_silent(stderr.as_bytes(), "ps --all --watch");
     assert_text_watch_stdout(&stdout, PS_INVENTORY_HEADER, "ps --all --watch");
