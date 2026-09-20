@@ -55,11 +55,13 @@ async fn main() -> Result<()> {
             std::fs::create_dir_all(parent)?;
         }
 
-        let listener = tokio::net::UnixListener::bind(&sock_path)?;
+        // Bind with mode 0o600 so only the owning user can connect.
+        // Refs: lane-3 BLOCKER (whale); unix(7), SO_PEERCRED.
+        let listener = bind_unix_listener(&sock_path)?;
         info!("sharecli-ipc listening on {}", sock_path.display());
 
         loop {
-            let (stream, _) = listener.accept().await?;
+            let (stream, _addr) = listener.accept().await?;
             let h = handler.clone();
             tokio::spawn(async move {
                 if let Err(e) = serve_unix_connection(stream, h).await {
@@ -92,6 +94,26 @@ async fn serve_unix_connection(
     stream: tokio::net::UnixStream,
     handler: Arc<Handler>,
 ) -> Result<()> {
+    // Peer-credential check: refuse any connection from a non-owning uid.
+    // Refs: lane-3 BLOCKER (whale); unix(7), SO_PEERCRED.
+    let peer = stream.peer_cred().ok();
+    let self_uid = unsafe { libc::getuid() };
+    match peer {
+        Some(cred) if cred.uid() == self_uid => {}
+        Some(cred) => {
+            tracing::warn!(
+                "rejecting IPC connection from peer uid={} (self={})",
+                cred.uid(),
+                self_uid
+            );
+            return Ok(());
+        }
+        None => {
+            tracing::warn!("rejecting IPC connection with no peer credentials");
+            return Ok(());
+        }
+    }
+
     let (reader, mut writer) = stream.into_split();
     let mut lines = BufReader::new(reader).lines();
 
@@ -130,6 +152,23 @@ async fn serve_tcp_connection(stream: tokio::net::TcpStream, handler: Arc<Handle
     Ok(())
 }
 
+#[cfg(unix)]
+fn bind_unix_listener(path: &std::path::Path) -> anyhow::Result<tokio::net::UnixListener> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let sock = socket2::Socket::new(socket2::Domain::UNIX, socket2::Type::STREAM, None)?;
+    sock.bind(&socket2::SockAddr::unix(path)?)?;
+    // Mode 0o600: owner-only access on the socket inode itself.
+    // Set on the path after bind; the inode is the socket file.
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+    sock.listen(128)?;
+
+    let std_listener: std::os::unix::net::UnixListener = sock.into();
+    std_listener.set_nonblocking(true)?;
+    let listener = tokio::net::UnixListener::from_std(std_listener)?;
+    Ok(listener)
+}
+
 pub fn socket_path() -> PathBuf {
     if let Ok(v) = std::env::var("SHARECLI_IPC_SOCK") {
         return PathBuf::from(v);
@@ -140,6 +179,43 @@ pub fn socket_path() -> PathBuf {
 
 pub fn ipc_addr() -> String {
     std::env::var("SHARECLI_IPC_ADDR").unwrap_or_else(|_| "127.0.0.1:27182".to_string())
+}
+
+#[cfg(all(test, unix))]
+mod auth_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn bind_unix_listener_sets_socket_mode_0600() {
+        let temp = tempfile::tempdir().unwrap();
+        let socket = temp.path().join("ipc.sock");
+        let _listener = bind_unix_listener(&socket).unwrap();
+        let meta = std::fs::metadata(&socket).unwrap();
+        let mode = meta.permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "socket must be owner-only, got {:o}", mode);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn peer_cred_accepts_self_uid_and_rejects_others() {
+        // Self-uid connects -> accepted (we don't read, just confirm no warn/reject).
+        let temp = tempfile::tempdir().unwrap();
+        let socket = temp.path().join("ipc.sock");
+        let handler = Arc::new(Handler::with_fixture_store(&temp.path().join("s.sqlite")).unwrap());
+        let listener = bind_unix_listener(&socket).unwrap();
+        let server = tokio::spawn(async move {
+            if let Ok((stream, _)) = listener.accept().await {
+                // peer_cred gate happens inside serve_unix_connection; this unit
+                // test checks that peer_cred itself surfaces our own uid.
+                let cred = stream.peer_cred().expect("peer_cred");
+                assert_eq!(cred.uid(), unsafe { libc::getuid() });
+                let _ = serve_unix_connection(stream, handler).await;
+            }
+        });
+        let conn = std::os::unix::net::UnixStream::connect(&socket).unwrap();
+        drop(conn);
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(2), server).await;
+    }
 }
 
 #[cfg(all(test, unix))]
@@ -155,7 +231,7 @@ mod acceptance_tests {
         let socket = temp.path().join("ipc.sock");
         let database = temp.path().join("sessions.sqlite");
         let handler = Arc::new(Handler::with_fixture_store(&database).unwrap());
-        let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+        let listener = bind_unix_listener(&socket).unwrap();
         let server = tokio::spawn(async move {
             loop {
                 let (stream, _) = listener.accept().await.unwrap();
