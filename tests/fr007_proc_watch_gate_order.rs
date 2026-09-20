@@ -5,9 +5,10 @@
 //! on every refresh (parity with one-shot text AC-007.21)
 
 use std::io::Read;
+use std::sync::{Arc, Mutex};
 use std::process::{Child, Command, Stdio};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 fn bin() -> Command {
     Command::new(env!("CARGO_BIN_EXE_sharecli"))
@@ -27,18 +28,62 @@ fn assert_gate_before_watch(segment: &str, context: &str) {
     assert!(gate_pos < watch_pos, "{context} MUST print gate before host watch; got: {segment}");
 }
 
-fn drain_stdout_after_watch(child: &mut Child, dwell: Duration) -> String {
-    let stdout = child.stdout.take().expect("piped stdout");
-    let reader = thread::spawn(move || {
-        let mut buf = String::new();
-        let mut out = stdout;
-        let _ = out.read_to_string(&mut buf);
-        buf
-    });
-    thread::sleep(dwell);
+/// Drain stdout/stderr while polling for `frames_needed` occurrences of
+/// `frame_marker` in stdout. `max` bounds the total wait; if the watcher
+/// can't emit that many frames in `max`, the call returns whatever was
+/// captured so far (and the assertion below will likely fail).
+///
+/// Replaces a fixed-sleep drain that was flaky under parallel CI load: a
+/// fixed sleep can land before the watcher has emitted enough frames.
+fn drain_watch_pipes(
+    child: &mut Child,
+    frame_marker: &str,
+    frames_needed: usize,
+    max: Duration,
+) -> (String, String) {
+    let stdout_handle = child.stdout.take().expect("piped stdout");
+    let stderr_handle = child.stderr.take().expect("piped stderr");
+    let stdout_buf: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+    let stderr_buf: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+    let out_reader = {
+        let buf = stdout_buf.clone();
+        thread::spawn(move || {
+            let mut s = String::new();
+            let mut out = stdout_handle;
+            let _ = out.read_to_string(&mut s);
+            *buf.lock().expect("stdout lock") = s;
+        })
+    };
+    let err_reader = {
+        let buf = stderr_buf.clone();
+        thread::spawn(move || {
+            let mut s = String::new();
+            let mut err = stderr_handle;
+            let _ = err.read_to_string(&mut s);
+            *buf.lock().expect("stderr lock") = s;
+        })
+    };
+
+    let deadline = Instant::now() + max;
+    loop {
+        let count = stdout_buf
+            .lock()
+            .expect("stdout lock")
+            .matches(frame_marker)
+            .count();
+        if count >= frames_needed || Instant::now() >= deadline {
+            break;
+        }
+        thread::sleep(Duration::from_millis(250));
+    }
+
     let _ = child.kill();
     let _ = child.wait();
-    reader.join().expect("stdout drain thread")
+    let _ = out_reader.join();
+    let _ = err_reader.join();
+    let stdout = stdout_buf.lock().expect("stdout lock").clone();
+    let stderr = stderr_buf.lock().expect("stderr lock").clone();
+    (stdout, stderr)
 }
 
 /// FR-007 / AC-007.22 — watch text re-renders gate before host watch on each refresh.
@@ -52,7 +97,7 @@ fn fr007_proc_watch_text_gate_ordering() {
         .spawn()
         .expect("spawn sharecli proc --watch 1");
 
-    let stdout = drain_stdout_after_watch(&mut child, Duration::from_millis(30_000));
+    let (stdout, _stderr) = drain_watch_pipes(&mut child, INVENTORY_HEADER, 2, Duration::from_millis(30_000));
 
     let frame_count = stdout.matches(INVENTORY_HEADER).count();
     assert!(
@@ -82,7 +127,7 @@ fn fr007_proc_watch_ndjson_gate_ordering() {
         .spawn()
         .expect("spawn sharecli proc --json --watch 1");
 
-    let stdout = drain_stdout_after_watch(&mut child, Duration::from_millis(30_000));
+    let (stdout, _stderr) = drain_watch_pipes(&mut child, INVENTORY_HEADER, 2, Duration::from_millis(30_000));
 
     let lines: Vec<&str> = stdout.lines().filter(|l| !l.is_empty()).collect();
     assert!(

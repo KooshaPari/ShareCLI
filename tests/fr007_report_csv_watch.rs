@@ -5,9 +5,10 @@
 //! each tick on stdout; stderr silent on success.
 
 use std::io::Read;
+use std::sync::{Arc, Mutex};
 use std::process::{Child, Command, Stdio};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 fn bin() -> Command {
     Command::new(env!("CARGO_BIN_EXE_sharecli"))
@@ -21,25 +22,62 @@ const HOST_CSV_HEADER: &str = "record,fd_count,net_rx_bytes,net_tx_bytes,mem_rss
 const POOL_CSV_HEADER: &str = "record,node_total,node_idle,bun_total,bun_idle,max_per_type,healthy";
 const STATUS_CSV_HEADER: &str = "record,scanned,watched,total_processes,agent_rows";
 
-fn drain_watch_pipes(child: &mut Child, dwell: Duration) -> (String, String) {
-    let stdout = child.stdout.take().expect("piped stdout");
-    let stderr = child.stderr.take().expect("piped stderr");
-    let stdout_reader = thread::spawn(move || {
-        let mut buf = String::new();
-        let mut out = stdout;
-        let _ = out.read_to_string(&mut buf);
-        buf
-    });
-    let stderr_reader = thread::spawn(move || {
-        let mut buf = String::new();
-        let mut err = stderr;
-        let _ = err.read_to_string(&mut buf);
-        buf
-    });
-    thread::sleep(dwell);
+/// Drain stdout/stderr while polling for `frames_needed` occurrences of
+/// `frame_marker` in stdout. `max` bounds the total wait; if the watcher
+/// can't emit that many frames in `max`, the call returns whatever was
+/// captured so far (and the assertion below will likely fail).
+///
+/// Replaces a fixed-sleep drain that was flaky under parallel CI load: a
+/// fixed sleep can land before the watcher has emitted enough frames.
+fn drain_watch_pipes(
+    child: &mut Child,
+    frame_marker: &str,
+    frames_needed: usize,
+    max: Duration,
+) -> (String, String) {
+    let stdout_handle = child.stdout.take().expect("piped stdout");
+    let stderr_handle = child.stderr.take().expect("piped stderr");
+    let stdout_buf: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+    let stderr_buf: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+    let out_reader = {
+        let buf = stdout_buf.clone();
+        thread::spawn(move || {
+            let mut s = String::new();
+            let mut out = stdout_handle;
+            let _ = out.read_to_string(&mut s);
+            *buf.lock().expect("stdout lock") = s;
+        })
+    };
+    let err_reader = {
+        let buf = stderr_buf.clone();
+        thread::spawn(move || {
+            let mut s = String::new();
+            let mut err = stderr_handle;
+            let _ = err.read_to_string(&mut s);
+            *buf.lock().expect("stderr lock") = s;
+        })
+    };
+
+    let deadline = Instant::now() + max;
+    loop {
+        let count = stdout_buf
+            .lock()
+            .expect("stdout lock")
+            .matches(frame_marker)
+            .count();
+        if count >= frames_needed || Instant::now() >= deadline {
+            break;
+        }
+        thread::sleep(Duration::from_millis(250));
+    }
+
     let _ = child.kill();
     let _ = child.wait();
-    (stdout_reader.join().expect("stdout drain"), stderr_reader.join().expect("stderr drain"))
+    let _ = out_reader.join();
+    let _ = err_reader.join();
+    let stdout = stdout_buf.lock().expect("stdout lock").clone();
+    let stderr = stderr_buf.lock().expect("stderr lock").clone();
+    (stdout, stderr)
 }
 
 fn assert_csv_envelope(frame: &str, context: &str) {
@@ -79,7 +117,7 @@ fn fr007_report_csv_watch_stderr_silent_and_envelope() {
         .spawn()
         .expect("spawn report --format csv --watch 1");
 
-    let (stdout, stderr) = drain_watch_pipes(&mut child, Duration::from_millis(18_000));
+    let (stdout, stderr) = drain_watch_pipes(&mut child, FRAME_MARKER, 2, Duration::from_millis(30_000));
 
     assert!(
         stderr.is_empty(),
