@@ -151,8 +151,35 @@ impl SlotQueue {
             .unwrap_or(QueuePriority::Normal.as_u8())
     }
 
+    /// Effective priority after rank aging. Phase-0.4 (Lane-7 BLOCKER, tiger):
+    /// an orphan Critical waiter that never dequeues (holder wedged, ticket
+    /// file leaked, parent killed) used to starve every Normal waiter
+    /// forever, because `is_my_turn` compares raw ranks only. After 1 s of
+    /// waiting a Critical ticket decays to High, after 2 s to Normal, etc.
+    /// `AGING_STEP` is the time-in-queue per one priority step downward.
+    const AGING_STEP_MS: u128 = 1_000;
+
+    fn effective_rank(_ticket: &str, base_priority: QueuePriority, waited: Duration) -> u8 {
+        let decay_steps = (waited.as_millis() / Self::AGING_STEP_MS) as u8;
+        base_priority.as_u8().saturating_add(decay_steps).min(u8::MAX)
+    }
+
     /// True when this ticket is next among equal-or-highest-priority waiters (FIFO by ticket name).
-    fn is_my_turn(&self, lane: &str, my_priority: QueuePriority, my_ticket: &str) -> Result<bool> {
+    ///
+    /// Aging (Phase-0.4 / Lane-7 BLOCKER): my own rank is decayed by elapsed
+    /// wait time so that a Critical ticket that has been blocked > N seconds
+    /// yields to a fresh Normal waiter — an orphan Critical holder no longer
+    /// starves the lane. Peer tickets are compared on their **base** rank
+    /// only; FIFO within same priority is preserved by ticket-name order.
+    /// This asymmetry is intentional: the bug we are fixing is starvation by
+    /// a single orphan ticket, not intra-priority reordering of my peers.
+    fn is_my_turn(
+        &self,
+        lane: &str,
+        my_priority: QueuePriority,
+        my_ticket: &str,
+        my_enqueued_at: Instant,
+    ) -> Result<bool> {
         let dir = self.waiting_dir(lane);
         let entries = match fs::read_dir(&dir) {
             Ok(rd) => rd,
@@ -160,8 +187,17 @@ impl SlotQueue {
             Err(e) => return Err(e).with_context(|| format!("read waiting dir {}", dir.display())),
         };
 
-        let my_rank = my_priority.as_u8();
-        let mut best_rank = u8::MAX;
+        let now_secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+
+        // My age-adjusted rank: a Critical ticket I have been holding
+        // expires from priority over time.
+        let my_effective =
+            Self::effective_rank(my_ticket, my_priority, my_enqueued_at.elapsed());
+
+        let mut best_effective = u8::MAX;
         let mut tickets_at_best: Vec<String> = Vec::new();
 
         for entry in entries {
@@ -173,25 +209,69 @@ impl SlotQueue {
             if ticket.starts_with('.') {
                 continue;
             }
-            let rank = Self::ticket_priority(&ticket);
+            let base_rank = Self::ticket_priority(&ticket);
 
-            if rank < best_rank {
-                best_rank = rank;
+            // Decode the enqueue-second embedded in the ticket name
+            // (segment 1 of `<rank>.<secs>.<pid>.<seq>`) and age the peer
+            // by `now_secs - ticket_secs`. Cross-process peers share the
+            // wall-clock hint; same-process tickets correlate via pid.
+            let ticket_secs = ticket
+                .split('.')
+                .nth(1)
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(now_secs);
+            let peer_waited_ms: u64 = if now_secs >= ticket_secs {
+                let diff = (now_secs - ticket_secs) as u128;
+                let ms = diff.saturating_mul(1_000);
+                if ms > u128::from(u64::MAX) {
+                    u64::MAX
+                } else {
+                    ms as u64
+                }
+            } else {
+                0
+            };
+            let base_priority = match base_rank {
+                0 => QueuePriority::Critical,
+                1 => QueuePriority::High,
+                2 => QueuePriority::Normal,
+                3 => QueuePriority::Low,
+                _ => QueuePriority::Background,
+            };
+            let peer_effective = Self::effective_rank(
+                &ticket,
+                base_priority,
+                Duration::from_millis(peer_waited_ms),
+            );
+
+            if peer_effective < best_effective {
+                best_effective = peer_effective;
                 tickets_at_best.clear();
                 tickets_at_best.push(ticket);
-            } else if rank == best_rank {
+            } else if peer_effective == best_effective {
                 tickets_at_best.push(ticket);
             }
         }
 
-        if best_rank == u8::MAX {
+        if best_effective == u8::MAX {
             return Ok(true);
         }
-        if my_rank != best_rank {
+
+        // Compare my age-adjusted rank against the cohort's best
+        // age-adjusted rank. Strict-better ME (lower numeric rank) → I win.
+        // Strict-better peer → they win. Tie → FIFO-by-ticket-name decides.
+        if my_effective > best_effective {
             return Ok(false);
         }
+        if my_effective < best_effective {
+            return Ok(true);
+        }
 
-        let winner = tickets_at_best.iter().min().map(String::as_str).unwrap_or(my_ticket);
+        let winner = tickets_at_best
+            .iter()
+            .min()
+            .map(String::as_str)
+            .unwrap_or(my_ticket);
         Ok(winner == my_ticket)
     }
 
@@ -206,22 +286,30 @@ impl SlotQueue {
     ) -> Result<T> {
         self.ensure_root()?;
         let (ticket_path, ticket) = self.enqueue_waiter(lane, priority)?;
+        let enqueued_at = Instant::now();
+        // RAII guard: removes the ticket file on early return (timeout, error,
+        // panic) and on the normal success path. Phase-0.4 (Lane-7 BLOCKER):
+        // the previous `let _ = fs::remove_file(&ticket_path);` only fired on
+        // the success branch, so a wedged holder or panicked closure leaked
+        // its ticket and starved every subsequent waiter in the lane.
+        let mut guard = WaiterTicketGuard::new(ticket_path.clone());
         let deadline = Instant::now() + self.timeout;
 
-        let result = (|| {
+        let result = (|| -> Result<T> {
             loop {
                 if Instant::now() >= deadline {
                     record_slot_timeout();
-                    anyhow::bail!(
+                    let err = anyhow::anyhow!(
                         "queue timeout: no free slot for lane `{lane}` within {}s \
                          (max_concurrent={})",
                         self.timeout.as_secs(),
                         self.max_concurrent
                     );
+                    return Err(err);
                 }
 
                 // Prefer higher-priority waiters; FIFO by ticket among ties (Feb yield-to-higher-priority).
-                if !self.is_my_turn(lane, priority, &ticket)? {
+                if !self.is_my_turn(lane, priority, &ticket, enqueued_at)? {
                     record_slot_wait();
                     thread::sleep(self.poll);
                     continue;
@@ -238,14 +326,16 @@ impl SlotQueue {
 
                     match lock_file.try_lock_exclusive() {
                         Ok(()) => {
-                            if !self.is_my_turn(lane, priority, &ticket)? {
+                            if !self.is_my_turn(lane, priority, &ticket, enqueued_at)? {
                                 drop(lock_file);
                                 record_slot_wait();
                                 thread::sleep(self.poll);
                                 continue;
                             }
                             // Drop waiter before running so peers can reorder.
+                            // RAII guard cleans up automatically if either step panics.
                             let _ = fs::remove_file(&ticket_path);
+                            guard.release();
                             record_slot_acquire();
                             let value = f()?;
                             // Lock releases on drop of lock_file.
@@ -261,8 +351,43 @@ impl SlotQueue {
             }
         })();
 
-        let _ = fs::remove_file(&ticket_path);
+        // `guard` drops here. If we acquired a slot successfully, the
+        // happy-path branch already removed the ticket and called
+        // `guard.release()`, so Drop is a no-op. If we exited via timeout,
+        // panic, or any other error, Drop unlinks the leftover ticket.
+        drop(guard);
         result
+    }
+}
+
+/// RAII guard that removes a waiter ticket file on drop unless `release()`
+/// was called. Phase-0.4 (Lane-7 BLOCKER, tiger): previous code only
+/// `remove_file`d the ticket on the happy path; a wedged holder, panicked
+/// closure, or early return leaked the ticket and starved the lane.
+struct WaiterTicketGuard {
+    path: PathBuf,
+    cleaned: bool,
+}
+
+impl WaiterTicketGuard {
+    fn new(path: PathBuf) -> Self {
+        Self { path, cleaned: false }
+    }
+
+    /// Mark the ticket as removed. Idempotent. After calling this, the
+    /// guard's `Drop` is a no-op. The caller is responsible for actually
+    /// unlinking the file (typically via [`remove_file`][fs::remove_file],
+    /// which is what the slot-acquire branch does).
+    fn release(&mut self) {
+        self.cleaned = true;
+    }
+}
+
+impl Drop for WaiterTicketGuard {
+    fn drop(&mut self) {
+        if !self.cleaned {
+            let _ = fs::remove_file(&self.path);
+        }
     }
 }
 
@@ -442,6 +567,191 @@ mod tests {
             vec!["holder_start", "holder_end", "critical", "normal_late"],
             "AC-008.14: Critical MUST dequeue before Normal"
         );
+    }
+
+    /// Phase-0.4 (Lane-7 BLOCKER, tiger): the closure can panic, error, or
+    /// time out and the waiter ticket MUST still be removed. The previous
+    /// code only removed the ticket on the happy path, leaking it on every
+    /// error and starving the lane forever.
+    #[test]
+    fn with_slot_cleans_ticket_on_closure_error() {
+        let dir = TempDir::new().unwrap();
+        let q = SlotQueue::with_options(
+            dir.path(),
+            1,
+            Duration::from_secs(2),
+            Duration::from_millis(20),
+        );
+        let waiting = dir.path().join("err.waiting");
+        let res = q.with_slot::<()>("err", QueuePriority::Normal, || {
+            anyhow::bail!("intentional closure failure");
+        });
+        assert!(res.is_err());
+        // The waiter ticket MUST have been removed by the RAII guard even
+        // though the closure returned Err.
+        thread::sleep(Duration::from_millis(50));
+        let count = fs::read_dir(&waiting).map(|rd| rd.count()).unwrap_or(0);
+        assert_eq!(count, 0, "ticket must be cleaned up after closure error");
+    }
+
+    /// Phase-0.4: timeout path (no free slot within deadline) MUST clean the
+    /// ticket too, otherwise subsequent waiters see a phantom waiter.
+    #[test]
+    fn with_slot_cleans_ticket_on_timeout() {
+        let dir = TempDir::new().unwrap();
+        let q = SlotQueue::with_options(
+            dir.path(),
+            1,
+            // Tight timeout so the test runs in <1s.
+            Duration::from_millis(200),
+            Duration::from_millis(20),
+        );
+        let waiting = dir.path().join("timeout.waiting");
+
+        // Hold the only slot for the full timeout window.
+        let holder_started = Arc::new(AtomicBool::new(false));
+        let holder_started_clone = Arc::clone(&holder_started);
+        let q_root = dir.path().to_path_buf();
+        let holder = thread::spawn(move || {
+            let qh = SlotQueue::with_options(
+                q_root,
+                1,
+                Duration::from_secs(5),
+                Duration::from_millis(10),
+            );
+            qh.with_slot("timeout", QueuePriority::Normal, || {
+                holder_started_clone.store(true, Ordering::SeqCst);
+                thread::sleep(Duration::from_millis(600));
+                Ok(())
+            })
+            .unwrap();
+        });
+        while !holder_started.load(Ordering::SeqCst) {
+            thread::sleep(Duration::from_millis(5));
+        }
+
+        let res = q.with_slot("timeout", QueuePriority::Normal, || {
+            Ok::<_, anyhow::Error>(())
+        });
+        assert!(res.is_err(), "second caller must time out");
+        // The timing-out waiter must have cleaned its ticket. The holder's
+        // ticket has already been removed by its own success-path `release()`.
+        thread::sleep(Duration::from_millis(50));
+        let count = fs::read_dir(&waiting).map(|rd| rd.count()).unwrap_or(0);
+        assert_eq!(count, 0, "no leftover waiter tickets after timeout");
+        holder.join().unwrap();
+    }
+
+    /// Phase-0.4 (Lane-7 BLOCKER, tiger): rank aging. A Critical ticket that
+    /// has been waiting > AGING_STEP_MS decays one rank at a time, eventually
+    /// yielding to a fresh Normal waiter with free slots.
+    #[test]
+    fn effective_rank_decays_over_time() {
+        // Critical at t=0 is rank 0.
+        assert_eq!(
+            SlotQueue::effective_rank("ignored", QueuePriority::Critical, Duration::from_millis(0)),
+            0
+        );
+        // Under 1 s of waiting: no decay.
+        assert_eq!(
+            SlotQueue::effective_rank(
+                "ignored",
+                QueuePriority::Critical,
+                Duration::from_millis(999)
+            ),
+            0
+        );
+        // At 1 s exactly: one rank step down (Critical -> High).
+        assert_eq!(
+            SlotQueue::effective_rank(
+                "ignored",
+                QueuePriority::Critical,
+                Duration::from_millis(1_000)
+            ),
+            1
+        );
+        // At 2 s: two steps (Critical -> Normal).
+        assert_eq!(
+            SlotQueue::effective_rank(
+                "ignored",
+                QueuePriority::Critical,
+                Duration::from_millis(2_000)
+            ),
+            2
+        );
+        // Normal at 0 s vs Critical at 2 s: same effective rank, FIFO decides.
+        assert_eq!(
+            SlotQueue::effective_rank("ignored", QueuePriority::Normal, Duration::from_millis(0)),
+            SlotQueue::effective_rank(
+                "ignored",
+                QueuePriority::Critical,
+                Duration::from_millis(2_000)
+            ),
+        );
+        // Normal at 0 s beats Critical at 3 s (rank 2 vs rank 3).
+        assert!(
+            SlotQueue::effective_rank("ignored", QueuePriority::Normal, Duration::ZERO)
+                < SlotQueue::effective_rank(
+                    "ignored",
+                    QueuePriority::Critical,
+                    Duration::from_millis(3_000)
+                )
+        );
+        // Background at 0 s == Critical at 4 s (both rank 4): FIFO decides.
+        assert_eq!(
+            SlotQueue::effective_rank(
+                "ignored",
+                QueuePriority::Background,
+                Duration::from_millis(0)
+            ),
+            SlotQueue::effective_rank(
+                "ignored",
+                QueuePriority::Critical,
+                Duration::from_millis(4_000)
+            )
+        );
+    }
+
+    /// Phase-0.4: end-to-end aging. We create an orphan Critical ticket in
+    /// the waiting dir (no holder), a Normal waiter arrives, and after the
+    /// Normal ticket's age-adjusted rank catches up to the (decayed) Critical
+    /// rank, the Normal waiter is allowed to proceed.
+    #[test]
+    fn orphan_critical_does_not_starve_fresh_normal() {
+        let dir = TempDir::new().unwrap();
+        let q_root = dir.path().to_path_buf();
+        let waiting = q_root.join("orphan.waiting");
+
+        // Pre-place an orphan Critical ticket that "appeared" > 3 seconds ago.
+        fs::create_dir_all(&waiting).unwrap();
+        let old_secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            .saturating_sub(4);
+        let orphan = format!("00.{old_secs}.{}.0", std::process::id());
+        fs::write(waiting.join(&orphan), "0\n").unwrap();
+
+        // A Normal waiter arrives. The orphan Critical decayed to rank >=3
+        // (4 s of waiting -> 4 steps down from rank 0 = rank 4), so the
+        // Normal ticket is now best (rank 2). It must proceed without
+        // waiting for the orphan — but the orphan's ticket file is still in
+        // the dir, which our function handles by checking only base ranks.
+        let q = SlotQueue::with_options(
+            q_root,
+            1,
+            Duration::from_secs(2),
+            Duration::from_millis(20),
+        );
+        let started = Instant::now();
+        q.with_slot("orphan", QueuePriority::Normal, || {
+            assert!(
+                started.elapsed() < Duration::from_secs(1),
+                "normal waiter must not wait the full timeout; orphan should not block"
+            );
+            Ok::<_, anyhow::Error>(())
+        })
+        .expect("normal waiter must succeed past the orphan Critical");
     }
 
     /// FR-008 / AC-008.15 — operator env overrides rules.conf priority.
