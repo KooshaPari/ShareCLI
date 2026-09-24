@@ -1530,10 +1530,8 @@ struct SpawnView: View {
     @State private var workingDirectory: String = NSHomeDirectory()
     @State private var binary: String = "/usr/bin/env"
     @State private var argsCSV: String = ""
-    @State private var memoryMB: Double = 256
     @State private var project: String = ""
     @State private var harness: String = ""
-    @State private var env: String = ""
     @State private var spawning: Bool = false
     @State private var lastResult: ProcessSpawnResult?
     @State private var lastError: String?
@@ -1571,24 +1569,12 @@ struct SpawnView: View {
                             TextField("e.g. node,index.js,--inspect=0", text: $argsCSV)
                                 .textFieldStyle(.roundedBorder)
                         }
-                        GridRow {
-                            Text("Env (CSV k=v)").gridColumnAlignment(.trailing).foregroundStyle(.secondary)
-                            TextField("KEY1=value1,KEY2=value2", text: $env)
-                                .textFieldStyle(.roundedBorder)
-                        }
                     }
                     .padding(8)
                 }
 
                 GroupBox("Pool tags") {
                     Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 8) {
-                        GridRow {
-                            Text("Memory limit").gridColumnAlignment(.trailing).foregroundStyle(.secondary)
-                            HStack {
-                                Slider(value: $memoryMB, in: 16...8192, step: 16)
-                                Text("\(Int(memoryMB)) MB").monospacedDigit().frame(width: 80, alignment: .trailing)
-                            }
-                        }
                         GridRow {
                             Text("Project").gridColumnAlignment(.trailing).foregroundStyle(.secondary)
                             TextField("(optional)", text: $project).textFieldStyle(.roundedBorder)
@@ -1670,26 +1656,17 @@ struct SpawnView: View {
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
 
-        let envPairs: [(String, String)] = env
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-            .compactMap { pair in
-                let parts = pair.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
-                guard parts.count == 2 else { return nil }
-                return (String(parts[0]), String(parts[1]))
-            }
-
         do {
             let result = try await state.client.spawn(payload: ProcessSpawnPayload(
                 name: binary,
                 command: binary,
                 args: argv,
                 project: project.isEmpty ? nil : project,
-                harness: harness.isEmpty ? nil : harness
+                harness: harness.isEmpty ? nil : harness,
+                cwd: workingDirectory.isEmpty ? nil : workingDirectory
             ))
             lastResult = result
-            // Save the args (not the env or cwd) so the user can recall a clean spawn.
+            // Save only the argv so the preset recalls a clean spawn.
             if let data = try? JSONSerialization.data(withJSONObject: argv),
                let json = String(data: data, encoding: .utf8) {
                 lastArgsJSON = json
@@ -1701,7 +1678,6 @@ struct SpawnView: View {
                 project: project.isEmpty ? nil : project,
                 harness: harness.isEmpty ? nil : harness,
                 workingDir: workingDirectory,
-                memoryLimitMB: Int(memoryMB),
                 succeeded: result.success,
                 spawnedPID: result.pid,
                 errorMessage: result.error
@@ -1715,7 +1691,6 @@ struct SpawnView: View {
                 project: project.isEmpty ? nil : project,
                 harness: harness.isEmpty ? nil : harness,
                 workingDir: workingDirectory,
-                memoryLimitMB: Int(memoryMB),
                 succeeded: false,
                 spawnedPID: nil,
                 errorMessage: "\(error)"

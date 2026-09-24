@@ -330,32 +330,6 @@ public struct ProcessCmdline: Decodable, Hashable {
     public let argv: [String]
 }
 
-// MARK: - Per-process detail IPC (process.fdcount, process.io)
-
-public struct ProcessFdcountResult: Decodable, Hashable {
-    public let pid: UInt32
-    public let fd_count: UInt32?
-    public let sampled_at: UInt64
-    public let note: String?
-}
-
-public struct ProcessIoResult: Decodable, Hashable {
-    public let pid: UInt32
-    public let disk_read_bytes: UInt64?
-    public let disk_write_bytes: UInt64?
-    public let sampled_at: UInt64
-    public let note: String?
-}
-
-// MARK: - Tree view (process.tree)
-
-public struct ProcessTreeNode: Decodable, Hashable, Identifiable {
-    public var id: UInt32 { pid }
-    public let pid: UInt32
-    public let name: String
-    public let children: [ProcessTreeNode]
-}
-
 // MARK: - Spawn (process.spawn)
 
 public struct ProcessSpawnPayload: Encodable {
@@ -364,13 +338,15 @@ public struct ProcessSpawnPayload: Encodable {
     public let args: [String]
     public let project: String?
     public let harness: String?
+    public let cwd: String?
 
-    public init(name: String, command: String, args: [String], project: String?, harness: String?) {
+    public init(name: String, command: String, args: [String], project: String?, harness: String?, cwd: String?) {
         self.name = name
         self.command = command
         self.args = args
         self.project = project
         self.harness = harness
+        self.cwd = cwd
     }
 }
 
@@ -507,34 +483,6 @@ public actor IPCClient {
         return snap.cmdline.isEmpty ? nil : snap
     }
 
-    /// Per-process FD count (cross-platform via `lsof`).
-    /// Returns `fd_count: nil` + a `note` if the sidecar couldn't read it.
-    public func fetchFdcount(pid: UInt32) async throws -> ProcessFdcountResult {
-        let resp: IPCResponse<ProcessFdcountResult> = try await call(
-            method: "process.fdcount", params: ["pid": .uint(pid)]
-        )
-        guard let snap = resp.result else { throw IPCError.nilResult("process.fdcount") }
-        return snap
-    }
-
-    /// Per-process disk I/O bytes (Linux-only).
-    /// Returns `disk_read_bytes: nil` + a `note` if not available.
-    public func fetchIo(pid: UInt32) async throws -> ProcessIoResult {
-        let resp: IPCResponse<ProcessIoResult> = try await call(
-            method: "process.io", params: ["pid": .uint(pid)]
-        )
-        guard let snap = resp.result else { throw IPCError.nilResult("process.io") }
-        return snap
-    }
-
-    /// Fetch a flat tree of the process fleet (parent → children).
-    public func fetchProcessTree() async throws -> ProcessTreeNode? {
-        let resp: IPCResponse<ProcessTreeNode> = try await call(
-            method: "process.tree", params: [:]
-        )
-        return resp.result
-    }
-
     /// Spawn a new process in the pool. The sidecar returns the assigned PID
     /// on success, or `success: false` with `error` populated.
     public func spawn(payload: ProcessSpawnPayload) async throws -> ProcessSpawnResult {
@@ -545,7 +493,8 @@ public actor IPCClient {
                 "command": .string(payload.command),
                 "args": .array(payload.args.map { .string($0) }),
                 "project": payload.project.map(AnyCodable.string) ?? .null,
-                "harness": payload.harness.map(AnyCodable.string) ?? .null
+                "harness": payload.harness.map(AnyCodable.string) ?? .null,
+                "cwd": payload.cwd.map(AnyCodable.string) ?? .null
             ]
         )
         guard let snap = resp.result else { throw IPCError.nilResult("process.spawn") }

@@ -5,8 +5,10 @@
 //!   process.kill        → { pid }
 //!   process.kill_all    → {}
 //!   process.cmdline     → { pid } → { cmd: Vec<String> }
+//!   process.spawn       → { pid, success, error }  (validated; typed failures)
 //!   health.status       → HealthSnapshot
 //!   pool.status         → PoolSnapshot
+//!   pool.effectiveness  → { coalesce, slot_queue, sampled_at }
 //!   status.snapshot     → StatusSnapshot
 //!   config.get          → Config
 //!   config.set          → { key, value }  (dot-path into TOML)
@@ -23,6 +25,7 @@
 use std::fs;
 #[cfg(target_os = "linux")]
 use std::io::Read;
+use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
 #[cfg(target_os = "linux")]
@@ -37,7 +40,10 @@ use sharecli::monitoring::HostResourceWatchJson;
 use sharecli::runtime::SharedRuntime;
 use sharecli::{ProcessInfo, ProcessPool};
 use sharecli_fleet::thermal::ThermalGovernor;
-use sharecli_fleet::{count_host_agents, gate_status_snapshot, GateStatusSnapshot};
+use sharecli_fleet::{
+    count_host_agents, gate_status_snapshot, global_coalesce_meters,
+    global_slot_queue_meters, GateStatusSnapshot,
+};
 use sharecli_session::{
     LayoutSnapshot, RecoveryExecutor, SessionObservation, SessionStore,
     DEFAULT_RECOVERY_MAX_AGE_SECONDS,
@@ -518,6 +524,70 @@ impl Handler {
                 Ok(serde_json::to_value(CmdlineResponse { cmd })?)
             }
 
+            "process.spawn" => {
+                // The current Swift Spawn form is the wire contract: it always
+                // sends name/command/args/project/harness (and now cwd). `name`
+                // is advisory — the pool derives the display name from `command`.
+                let command = req
+                    .params
+                    .get("command")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .ok_or_else(|| anyhow::anyhow!("process.spawn: command must be a non-empty string"))?;
+                // Empty args is valid (it is the Spawn form default); a missing
+                // args key is treated the same way.
+                let args: Vec<String> = match req.params.get("args") {
+                    None | Some(Value::Null) => Vec::new(),
+                    Some(Value::Array(items)) => {
+                        let mut parsed = Vec::with_capacity(items.len());
+                        for item in items {
+                            match item.as_str() {
+                                Some(s) => parsed.push(s.to_string()),
+                                None => {
+                                    return Err(anyhow::anyhow!(
+                                        "process.spawn: args must contain only strings"
+                                    ))
+                                }
+                            }
+                        }
+                        parsed
+                    }
+                    Some(_) => {
+                        return Err(anyhow::anyhow!(
+                            "process.spawn: args must be an array of strings"
+                        ))
+                    }
+                };
+                let project =
+                    req.params.get("project").and_then(Value::as_str).map(str::to_owned);
+                let harness =
+                    req.params.get("harness").and_then(Value::as_str).map(str::to_owned);
+                let cwd = req
+                    .params
+                    .get("cwd")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(PathBuf::from);
+
+                // Validation failures above surface as envelope errors; a real
+                // spawn failure (ENOENT, EPERM, …) is a typed result so the tray
+                // renders `success: false` + `error` instead of a thrown error.
+                match self.pool.spawn(command, &args, cwd, project, harness).await {
+                    Ok(info) => Ok(serde_json::json!({
+                        "pid": info.pid,
+                        "success": true,
+                        "error": Value::Null,
+                    })),
+                    Err(e) => Ok(serde_json::json!({
+                        "pid": 0,
+                        "success": false,
+                        "error": e.to_string(),
+                    })),
+                }
+            }
+
             "health.status" => {
                 self.pool.refresh().await;
                 let procs = self.pool.list().await;
@@ -543,6 +613,21 @@ impl Handler {
                 let mut snap = self.capture_pool_snapshot(gate, host_watch).await;
                 snap.status = Some(Box::new(self.capture_status_snapshot().await?));
                 Ok(serde_json::to_value(snap)?)
+            }
+
+            "pool.effectiveness" => {
+                // Cheap process-global atomic snapshots (FR-008 / AC-008.11-12);
+                // no per-process scanning. Field names match the Swift
+                // PoolEffectivenessSnapshot decoder exactly.
+                let sampled_at = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or_default();
+                Ok(serde_json::json!({
+                    "coalesce": global_coalesce_meters(),
+                    "slot_queue": global_slot_queue_meters(),
+                    "sampled_at": sampled_at,
+                }))
             }
 
             "status.snapshot" => {

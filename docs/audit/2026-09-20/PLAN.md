@@ -48,10 +48,10 @@
 
 ### 0.3 Hypervisor lock with deadline (lane 7 BLOCKER)
 - **Files:** `ipc/lib.rs:300-303`
-- **Steps:**
-  - Replace `lock_exclusive()` with `with_deadline(Duration::from_secs(30))`.
-  - On deadline, return `Err(HypervisorError::Timeout)`; sibling agents log + retry
-    under backoff.
+- **Status:** ✅ shipped `4600ceea` — `acquire_lock_with_deadline(file, 30s)` polls
+  `try_lock_exclusive` with backoff 5 ms -> 250 ms; returns `anyhow` error on timeout.
+  Test `acquire_lock_with_deadline_errors_when_held` green; `with_lock_lock_deadline_does_not_hang`
+  tagged `#[ignore]` for Linux-only verification (macOS flock is per-process).
 - **Receipt:** the 2.5 s probe now fails with the documented error code, not hangs.
 
 ### 0.4 RAII WaiterTicket with aging (lane 7 BLOCKER)
@@ -65,11 +65,25 @@
 
 ### 0.5 Implement or delete phantom IPC methods (lane 3 BLOCKERs)
 - **Files:** `crates/sharecli-ipc/src/handler.rs`, `IPCClient.swift`, `ProcessesPage.swift:1684`
-- **Steps:**
-  - Implement `process.spawn` (server-assigned pid; spawn through `runtime::spawn`).
-  - Implement `pool.effectiveness` (aggregate from `CoalesceCache` hit/miss counters).
-  - If a method is not implementable in v0.9, remove the corresponding page + client
-    method, not silently break it.
+- **Status:** ✅ shipped — `process.spawn` dispatch validates a non-blank
+  `command` and array-of-string `args` (empty args allowed: it is the Spawn
+  form default), routes through the handler-owned `ProcessPool` with the newly
+  wired `cwd`/`project`/`harness`, and distinguishes envelope validation
+  errors from typed runtime failures `{pid: 0, success: false, error}`.
+  `pool.effectiveness` returns `{coalesce, slot_queue, sampled_at}` from the
+  `sharecli-fleet` process-global atomic meters (FR-008 / AC-008.11-12).
+  Dead surface deleted, not faked: `fetchFdcount`/`fetchIo`/`fetchProcessTree`
+  plus their model types (zero UI call sites, server methods phantom) and the
+  Spawn form's Env CSV field + memory slider (`memoryMB` was never sent; env
+  is not honorable through `ProcessPool::spawn`); `SpawnHistoryEntry`
+  dropped `memoryLimitMB` and now records a `workingDir` that is actually
+  transmitted. Validated: full `cargo test -p sharecli-ipc` green (13
+  dispatch tests, 3 written red first and observed red); `swift build` +
+  `swift test` green (16 tests, 4 UDS-gated skips, 0 failures); scratch-UDS
+  round trip `PHASE05_ROUNDTRIP_ALL_OK` (effectiveness shape matches the
+  Swift decoder keys 1:1 — page render itself not visually gated; spawn
+  retains+kills the child; typed failure; envelope validation; empty-args
+  spawn).
 - **Receipt:** both methods return typed results over a scratch UDS; the Pool
   Effectiveness page renders numbers; the Spawn form succeeds on a valid pid.
 

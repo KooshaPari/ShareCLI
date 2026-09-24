@@ -111,10 +111,9 @@ public struct GateDecisionSample: Identifiable, Hashable {
 /// Persisted as JSON to `~/Library/Application Support/sharecli/spawn-history.json`
 /// so the in-app Spawn history survives app restarts.
 ///
-/// The shape is intentionally stable: it captures what the user submitted
-/// (command + args + project + harness + cwd + memory limit + env) plus
-/// the outcome (success/failure + spawned PID + error). Re-submitting is
-/// a one-click operation (see `SpawnView`).
+/// Captures what the user submitted (command + args + project + harness +
+/// cwd, all of which are sent over `process.spawn`) plus the outcome
+/// (success/failure + spawned PID + error).
 public struct SpawnHistoryEntry: Codable, Identifiable, Hashable {
     public let id: UUID
     public let timestamp: Date
@@ -123,7 +122,6 @@ public struct SpawnHistoryEntry: Codable, Identifiable, Hashable {
     public let project: String?
     public let harness: String?
     public let workingDir: String
-    public let memoryLimitMB: Int
     public let succeeded: Bool
     public let spawnedPID: UInt32?
     public let errorMessage: String?
@@ -136,7 +134,6 @@ public struct SpawnHistoryEntry: Codable, Identifiable, Hashable {
         project: String?,
         harness: String?,
         workingDir: String,
-        memoryLimitMB: Int,
         succeeded: Bool,
         spawnedPID: UInt32?,
         errorMessage: String?
@@ -148,7 +145,6 @@ public struct SpawnHistoryEntry: Codable, Identifiable, Hashable {
         self.project = project
         self.harness = harness
         self.workingDir = workingDir
-        self.memoryLimitMB = memoryLimitMB
         self.succeeded = succeeded
         self.spawnedPID = spawnedPID
         self.errorMessage = errorMessage

@@ -250,3 +250,115 @@ async fn fr003_ipc_handler_persists_and_lists_validated_layouts() {
     assert!(inspect.error.is_none(), "layout.inspect error: {:?}", inspect.error);
     assert_eq!(inspect.result["id"], "ipc-layout");
 }
+
+/// The tray polls `pool.effectiveness` on a five-second cadence. Its decoder
+/// requires both meter blocks plus a Unix sample timestamp.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn fr003_ipc_handler_pool_effectiveness_returns_typed_snapshot() {
+    let fixture = HandlerFixture::new();
+    let response = fixture
+        .handler
+        .dispatch(r#"{"id":24,"method":"pool.effectiveness","params":{}}"#)
+        .await;
+
+    assert!(response.error.is_none(), "pool.effectiveness error: {:?}", response.error);
+    for field in ["hits", "misses", "nocache_runs"] {
+        assert!(response.result["coalesce"][field].is_u64(), "missing coalesce.{field}");
+    }
+    for field in ["acquires", "waits", "timeouts"] {
+        assert!(response.result["slot_queue"][field].is_u64(), "missing slot_queue.{field}");
+    }
+    assert!(response.result["sampled_at"].as_u64().is_some_and(|value| value > 0));
+}
+
+/// A successful spawn must return a server-assigned PID, retain the child in
+/// `process.list`, and stop it through the same handler-owned pool.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn fr003_ipc_handler_process_spawn_retains_and_kills_child() {
+    let fixture = HandlerFixture::new();
+    let handler = &fixture.handler;
+    let spawned = handler
+        .dispatch(
+            &serde_json::json!({
+                "id": 25,
+                "method": "process.spawn",
+                "params": {
+                    "name": "/bin/sleep",
+                    "command": "/bin/sleep",
+                    "args": ["5"],
+                    "project": "ipc-dispatch-test",
+                    "harness": null
+                }
+            })
+            .to_string(),
+        )
+        .await;
+
+    assert!(spawned.error.is_none(), "process.spawn error: {:?}", spawned.error);
+    assert_eq!(spawned.result["success"], serde_json::json!(true));
+    let pid = spawned.result["pid"].as_u64().expect("server-assigned pid") as u32;
+    assert!(pid > 0);
+
+    let listed = handler.dispatch(r#"{"id":26,"method":"process.list","params":{}}"#).await;
+    assert!(listed.error.is_none(), "process.list error: {:?}", listed.error);
+    assert!(listed
+        .result
+        .as_array()
+        .is_some_and(|rows| rows.iter().any(|row| row["pid"] == pid)));
+
+    let killed = handler
+        .dispatch(&serde_json::json!({"id": 27, "method": "process.kill", "params": {"pid": pid}}).to_string())
+        .await;
+    assert!(killed.error.is_none(), "process.kill error: {:?}", killed.error);
+    assert_eq!(killed.result, serde_json::json!(true));
+}
+
+/// Malformed spawn requests fail loudly in the envelope; an unrunnable
+/// command returns the typed `{pid, success, error}` failure the Swift
+/// decoder expects. Empty `args` is valid — it is the Spawn form default.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn fr003_ipc_handler_process_spawn_validates_and_reports_failure() {
+    let fixture = HandlerFixture::new();
+    let handler = &fixture.handler;
+
+    let missing = handler
+        .dispatch(r#"{"id":28,"method":"process.spawn","params":{"args":[]}}"#)
+        .await;
+    assert!(
+        missing.error.as_deref().is_some_and(|e| e.contains("command")),
+        "missing command must be rejected: {:?}",
+        missing.error
+    );
+
+    let blank = handler
+        .dispatch(r#"{"id":29,"method":"process.spawn","params":{"command":"   ","args":[]}}"#)
+        .await;
+    assert!(
+        blank.error.as_deref().is_some_and(|e| e.contains("command")),
+        "blank command must be rejected: {:?}",
+        blank.error
+    );
+
+    let bad_args = handler
+        .dispatch(r#"{"id":30,"method":"process.spawn","params":{"command":"/bin/echo","args":"x"}}"#)
+        .await;
+    assert!(
+        bad_args.error.as_deref().is_some_and(|e| e.contains("args")),
+        "non-array args must be rejected: {:?}",
+        bad_args.error
+    );
+
+    let failed = handler
+        .dispatch(
+            r#"{"id":31,"method":"process.spawn","params":{"command":"/nonexistent/sharecli-probe","args":[]}}"#,
+        )
+        .await;
+    assert!(
+        failed.error.is_none(),
+        "runtime spawn failure must be a typed result, not an envelope error: {:?}",
+        failed.error
+    );
+    assert_eq!(failed.result["success"], serde_json::json!(false));
+    assert_eq!(failed.result["pid"], serde_json::json!(0));
+    assert!(failed.result["error"].as_str().is_some_and(|e| !e.is_empty()));
+}
