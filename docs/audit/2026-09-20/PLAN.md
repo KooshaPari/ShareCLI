@@ -105,13 +105,31 @@
   exit 2 observed.
 - **Receipt:** `sharecli stop --pid 999999` → exit 2, "no such pid: 999999".
 
-### 0.7 Swift IPC read loop has a deadline (lane 2 BLOCKER)
-- **Files:** `desktop/ShareCLITray/Sources/ShareCLICore/IPCClient.swift:600-605`
+### 0.7 Swift IPC read loop has a deadline (lane 2 BLOCKER) — ✅ shipped (2026-09-24)
+- **Files:** `desktop/ShareCLITray/Sources/ShareCLICore/IPCClient.swift`
 - **Steps:**
   - `setsockopt(SO_RCVTIMEO, …)`; cap concurrent probes at the measured 64 ceiling
     with a semaphore.
   - Move read off `Darwin.read` to `poll(2)`/`DispatchSourceRead` with deadline.
 - **Receipt:** block-forever probe fails with `IPCError.timeout`; supervisor recovers.
+- **Status (2026-09-24):** ✅ shipped.
+  - `IPCClient` now has a per-request deadline (`init(socketPath:timeout:)`, default
+    5.0 s) covering connect + write + read; the byte-read loop waits in `poll(2)` for
+    only the remaining time and fails with the new `IPCError.timeout`; `SO_RCVTIMEO` /
+    `SO_SNDTIMEO` are set as belt-and-braces; write handles `EINTR`/`EAGAIN`.
+  - Concurrent probes are capped by a shared `DispatchSemaphore(64)` (the measured
+    utility-queue ceiling), so a burst of wedged probes can no longer occupy the whole
+    pool and starve supervisor recovery.
+  - Red observed twice: compile red (`extra argument 'timeout' in call`), then
+    behavioral red — in-process `WedgedSidecarServer` (accepts, never answers):
+    `testBlockForeverProbeFailsWithTimeoutNotAHang` waiter `.timedOut` (elapsed 5.93 s)
+    and `testWedgedProbeFloodResolvesAndThePoolServesFollowUpWork` failed — 70 wedged
+    probes never resolved AND the healthy follow-up call was starved (the BLOCKER
+    reproduced). A harness bug (`NSTemporaryDirectory()` path > 104-byte `sun_path`)
+    was fixed first by using short `/tmp/` socket paths.
+  - Green: both deadline tests pass (0.503 s / 1.019 s — the 64-slot cap visible as
+    two probe waves); full `swift test` = 18 executed, 4 UDS-gated skipped, 0 failures;
+    `swift build` clean.
 
 ---
 
