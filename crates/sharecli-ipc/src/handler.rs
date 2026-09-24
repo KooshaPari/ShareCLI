@@ -504,8 +504,11 @@ impl Handler {
                 let pid: u32 =
                     req.params["pid"].as_u64().ok_or_else(|| anyhow::anyhow!("missing pid"))?
                         as u32;
-                self.pool.kill(pid).await?;
-                Ok(Value::Bool(true))
+                // `false` when the pid is not pool-managed — mirrors the CLI
+                // miss contract instead of acknowledging a kill that never
+                // happened (lane-4 BLOCKER).
+                let killed = self.pool.kill(pid).await?;
+                Ok(Value::Bool(killed))
             }
 
             "process.kill_all" => {

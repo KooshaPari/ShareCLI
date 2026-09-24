@@ -1736,12 +1736,14 @@ async fn prune(idle_seconds: u64, force: bool) -> Result<()> {
 
     for proc in candidates {
         if force {
-            pool.kill(proc.pid).await?;
-            progress.inc(Some(&format!("{} ({})", proc.pid, proc.name)));
-            if line_mode {
-                println!("Pruned process {} ({})", proc.pid, proc.name);
+            // Ok(false) is unreachable: candidates came from this pool's list().
+            if pool.kill(proc.pid).await? {
+                progress.inc(Some(&format!("{} ({})", proc.pid, proc.name)));
+                if line_mode {
+                    println!("Pruned process {} ({})", proc.pid, proc.name);
+                }
+                pruned += 1;
             }
-            pruned += 1;
         } else {
             println!("Would prune: {} ({})", proc.pid, proc.name);
             pruned += 1;

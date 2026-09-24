@@ -89,8 +89,20 @@
 
 ### 0.6 Stop `stop --pid 999999` lying (lane 4 BLOCKER)
 - **Files:** `src/commands/mod.rs:646-649`
-- **Steps:**
-  - Inspect `pool.kill()`'s `Result`; print "no such pid" and exit 2 for misses.
+- **Status:** ✅ shipped — `ProcessPool::kill` now returns `Result<bool>`
+  (`Ok(true)` = pool-managed child stopped, `Ok(false)` = pid not managed by
+  this pool); all five callers updated: CLI `stop --pid` (prints
+  `no such pid: {pid}` to stderr and exits 2 on a miss), `stop` filter loop
+  and `project stop` match (list-derived pids: miss = already gone, never
+  counted as stopped), `prune --force` loop, and the IPC `process.kill` arm
+  (answers `false` instead of a phantom `true`; Swift discards the result so
+  the tray surface is unchanged). Observed red first: pre-change
+  `stop --pid 999999` printed `Process 999999 stopped.` with exit 0, and the
+  unit test was written red (E0600 against the old `Result<()>` signature).
+  Validated: `kill_unmanaged_pid_reports_not_found` green; full `--lib` 566
+  green; 9 kill/stop/prune integration targets 28 green; `cargo test
+  -p sharecli-ipc` 153 green (1 pre-existing Linux-only ignore); CLI probe
+  exit 2 observed.
 - **Receipt:** `sharecli stop --pid 999999` → exit 2, "no such pid: 999999".
 
 ### 0.7 Swift IPC read loop has a deadline (lane 2 BLOCKER)
