@@ -309,6 +309,20 @@
   LOW / POLISH findings.
 - Capture diff in `docs/audit/2026-09-20/RESULTS.md`.
 
+### Phase 0.5–0.7 close-out status (observed 2026-09-27)
+
+Phases 0.5–0.7 shipped at `b804fdbe`. Every gate that could complete honestly is green:
+`sharecli-ipc` (153 passed, 2 ignored), `cargo build -p sharecli`, the
+`stop --pid 999999` exit-2 receipt, `swift build`, and `swift test` (18 executed,
+4 UDS-gated skips, 0 failures).
+
+`cargo test -p sharecli --tests --no-fail-fast` (212 targets) is **UNKNOWN**: the host ran
+at load 120–231 from other agents' processes, run 1 stopped at 151/212, and a replacement
+run hung in `config_watcher`. Each surfaced failure was re-run as an isolated target —
+8 of 10 green; the 2 open failures are pre-existing load-sensitive gates on code paths
+this branch does not touch. Full evidence and per-failure provenance are in
+`docs/audit/2026-09-20/RESULTS.md`.
+
 ---
 
 ## Acceptance receipts (one per BLOCKER + per HIGH lane)
