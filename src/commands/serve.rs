@@ -101,6 +101,29 @@ struct AppState {
     metrics: Arc<MetricsRegistry>,
 }
 
+/// Resolve the config file the hot-reload watcher must watch.
+///
+/// Delegates to [`Config::config_path`], the exact resolver `Config::load`
+/// uses, so `sharecli serve` can never load one file and watch another. Before
+/// this existed the watch path was rebuilt inline from `dirs::config_dir()`,
+/// which ignores `SHARECLI_CONFIG_PATH`: with the override set the server
+/// loaded the overridden file but watched the default location, so saving to
+/// the file it had actually loaded produced no reload at all. Guarded by
+/// `config_watch_path_uses_config_path_override` here and by
+/// `tests/e2e_serve_hot_reload.rs`.
+fn config_watch_path() -> std::path::PathBuf {
+    match Config::config_path() {
+        Ok(p) => p,
+        // `config_path` only fails when `dirs::config_dir` is unavailable. Fall
+        // back to the same relative location `Config::load` would have failed
+        // to find, rather than silently watching a different file.
+        Err(e) => {
+            warn!("serve: could not resolve config path ({e}); watching ./config.toml");
+            std::path::PathBuf::from("config.toml")
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -156,9 +179,7 @@ pub async fn run(bind: &str, on_conflict: OnConflict) -> Result<()> {
     let config_arc = Arc::new(RwLock::new(initial_config.clone()));
     let (cfg_tx, mut cfg_rx) = watch::channel(initial_config.clone());
 
-    let config_path = dirs::config_dir()
-        .map(|d| d.join("sharecli").join("config.toml"))
-        .unwrap_or_else(|| std::path::PathBuf::from("config.toml"));
+    let config_path = config_watch_path();
 
     // `_config_watcher` is kept alive by the AppState so the file watch persists
     // for the lifetime of the server.
@@ -761,6 +782,36 @@ mod tests {
 
     use super::*;
     use crate::serve_lock::{decide, Decision, OnConflict, ServeInfo, ServeState};
+
+    // --- config watch path resolution (phase 1 task 1.2) ---
+
+    /// The watch path must be the exact file `Config::load` reads.
+    ///
+    /// `serve` previously rebuilt the path inline from `dirs::config_dir()`,
+    /// which ignores `SHARECLI_CONFIG_PATH`, so the server loaded one file and
+    /// watched another. This pins the override case, which is where the two
+    /// resolutions disagreed. End-to-end: `tests/e2e_serve_hot_reload.rs`.
+    #[test]
+    #[serial_test::serial]
+    fn config_watch_path_uses_config_path_override() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let override_path = dir.path().join("isolated.toml");
+
+        let previous = std::env::var_os("SHARECLI_CONFIG_PATH");
+        // SAFETY: `#[serial]` makes this test exclusive with any other test in
+        // this binary that touches the process environment.
+        unsafe { std::env::set_var("SHARECLI_CONFIG_PATH", &override_path) };
+        // Both resolutions must be observed *while* the override is set.
+        let watch_path = config_watch_path();
+        let load_path = Config::config_path().expect("config path");
+        match previous {
+            Some(v) => unsafe { std::env::set_var("SHARECLI_CONFIG_PATH", v) },
+            None => unsafe { std::env::remove_var("SHARECLI_CONFIG_PATH") },
+        }
+
+        assert_eq!(watch_path, override_path, "serve must watch the overridden file");
+        assert_eq!(watch_path, load_path, "serve must watch exactly the file Config::load reads");
+    }
 
     // --- serve_lock decision tests ---
 

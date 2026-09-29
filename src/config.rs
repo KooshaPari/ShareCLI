@@ -454,11 +454,8 @@ impl Config {
             return false;
         };
         // target/<profile>/deps/<crate>-<hash>
-        let in_deps = exe
-            .parent()
-            .and_then(|p| p.file_name())
-            .map(|n| n == "deps")
-            .unwrap_or(false);
+        let in_deps =
+            exe.parent().and_then(|p| p.file_name()).map(|n| n == "deps").unwrap_or(false);
         if in_deps {
             return true;
         }
@@ -466,14 +463,18 @@ impl Config {
         exe.components().any(|c| c.as_os_str() == "deps")
     }
 
-    /// Get config file path.
+    /// Get the config file path this process loads from and must save to.
+    ///
+    /// This is the single source of truth for path resolution: `load`, `init`,
+    /// `save` and `sharecli serve`'s hot-reload watcher all resolve through it,
+    /// so the server can never load one file and watch another.
     ///
     /// `SHARECLI_CONFIG_PATH` wins when set to a non-empty value. `save()`
     /// writes wherever this points, so without the override any test that
     /// exercises a config write rewrites the operator's live
     /// `~/Library/Application Support/sharecli/config.toml`. Tests set this to
     /// a temp path; it is also useful for side-by-side installs.
-    fn config_path() -> Result<PathBuf> {
+    pub fn config_path() -> Result<PathBuf> {
         if let Some(explicit) = std::env::var_os("SHARECLI_CONFIG_PATH") {
             if !explicit.is_empty() {
                 return Ok(PathBuf::from(explicit));

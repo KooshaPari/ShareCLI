@@ -214,6 +214,88 @@ The e2e asserts both halves of the fix end to end: the `401` carries a W3C-shape
 does not touch (`crates/sharecli-ipc/*`, `src/config.rs`, many `tests/fr007_*`); both
 files changed here were formatted and are clean.
 
+## Phase 1 task 1.2 — hot-reload trailing debounce + watch path resolution (2026-09-29)
+
+Two independent defects, each proved red before the fix.
+
+### 1.2a — the server loaded one config file and watched another
+
+`sharecli serve` rebuilt its watch path inline from `dirs::config_dir()`, while
+`Config::load` resolves through `Config::config_path()`, which honours
+`SHARECLI_CONFIG_PATH`. With the override set, the two disagreed: the server loaded the
+overridden file but watched the default location, so saving to the file it had actually
+loaded produced **no reload at all**.
+
+**Red — real public path** (`tests/e2e_serve_hot_reload.rs`, real `sharecli serve`, real
+socket, run against the original code):
+
+```
+config hot-reload did not fire for SHARECLI_CONFIG_PATH;
+GET /config still reports Some("initial")
+test result: FAILED. 0 passed; 1 failed
+```
+
+**Fix:** `Config::config_path()` is now public and documented as the single source of
+truth for path resolution; `serve` resolves through a new `config_watch_path()` helper
+that delegates to it.
+
+**Green:** `e2e_serve_hot_reload` 1 passed (reload observed after 1.3 s) and
+`config_watch_path_uses_config_path_override` 1 passed.
+
+> Harness note: the helper's first run failed on **my test**, not the product — I read
+> `Config::config_path()` after restoring the environment, so it compared the restored
+> default against the override. Both resolutions are now observed while the override is
+> set. Recorded here rather than silently corrected.
+
+### 1.2b — leading-edge debounce lost saves
+
+The debouncer fired on the **first** event and dropped everything inside the 200 ms
+window. For a burst of saves that means several reloads of intermediate states, and the
+final save can be dropped entirely.
+
+**Red — real file system:**
+
+```
+assertion `left == right` failed: a burst of 6 saves must coalesce into exactly one
+reload, got 4
+  left: 4
+ right: 1
+```
+
+**Fix:** rewritten as a genuine trailing debouncer. A `Debouncer` holds a monotonic
+`generation` plus the time of the *latest* event; a dedicated `config-debounce` thread
+sleeps to `latest + DEBOUNCE`, extends the deadline when a newer event lands, and claims
+the batch only if the generation is unchanged. The notify callback now only records
+events, so the deadline can never be extended from a thread that is simultaneously
+deciding to fire.
+
+The debounce state was split into `src/config_watcher/debounce.rs` so the deadline
+arithmetic is testable with injected instants instead of only through wall-clock
+filesystem timing, and so both files stay under the 350-line target
+(`config_watcher.rs` 252, `debounce.rs` 165).
+
+**Second defect found by my own new test:** `Debouncer::claim` accepted the same
+generation twice, so a batch could fire more than once. `debounce_claim_rejects_a_stale_generation`
+and `debounce_fires_once_after_the_window` went red on it; `claim` now also requires
+`pending`.
+
+**Green (observed):**
+
+| Gate | Result |
+|---|---|
+| `trailing_debounce_coalesces_a_burst_into_one_reload_of_final_content` (real FS, was `got 4`) | 1 passed, final content `v6` |
+| `five_edits_within_the_window_produce_exactly_one_reload` (the plan's literal AC) | 1 passed, `reloads == 1` |
+| `debounce_*` deterministic unit tests (deadline, stale claim, single fire, shutdown) | 4 passed |
+| `config_watch_path_uses_config_path_override` | 1 passed |
+| `reload_config_*` + `watcher_new_*` | 5 passed |
+| `tests/e2e_serve_hot_reload` (real serve, real socket) | 1 passed |
+| `cargo test --lib` | 571 passed, 0 failed, 0 ignored |
+| `rustfmt --check` on all changed files; `cargo clippy --lib --tests` | clean |
+
+The filesystem-timing tests live at the integration tier
+(`tests/config_watcher_hot_reload.rs`) beside the deterministic `Debouncer` unit tests,
+which keeps wall-clock flakiness out of the fast unit run.
+
 ## Verdict
 
 Phases 0.5–0.7 are verified green on every gate that completed honestly, including the
