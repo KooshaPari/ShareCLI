@@ -1,0 +1,28 @@
+name: Mature Recovery Oracle
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "crates/sharecli-core/**"
+      - "crates/sharecli-ipc/**"
+      - ".github/workflows/mature-recovery-oracle.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mature-recovery-oracle-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  fr008-semantic-identity:
+    name: FR-008 semantic identity oracle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run exact native adversarial control
+        run: cargo test -p sharecli-core --test recovery_fr008_semantic_identity -- --nocapture
