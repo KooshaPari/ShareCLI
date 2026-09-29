@@ -10,33 +10,48 @@
   "completion_percent": null,
   "source_denominator": "OPEN",
   "native_product_runs": 0,
+  "native_oracle_attempts": 1,
+  "native_oracle_results": {
+    "SC_F01": "INFRASTRUCTURE_BLOCKED_TEST_NOT_EXECUTED"
+  },
   "source_derived_model_counterexamples": 3,
   "architectural_risks_experimentally_closed": 0,
-  "blocking_findings": ["SC-F01", "SC-F02", "SC-F03", "SC-F04", "SC-F05"],
+  "blocking_findings": [
+    "SC-F01",
+    "SC-F02",
+    "SC-F03",
+    "SC-F04",
+    "SC-F05"
+  ],
   "gates": {
     "source_ledger_resolved": "OPEN",
     "history_alias_falsification": "OPEN",
-    "sota_research": "PASS_1_ONLY",
+    "sota_research": "MULTI_PASS_OPEN",
     "best_alternative_stack": "PROPOSED_NOT_VALIDATED",
     "bootstrap_decisions": "PROVISIONAL",
     "differentiation_survives_attack": "OPEN",
-    "ontology_review": "DRAFT",
+    "ontology_review": "DRAFT_REFINED",
     "all_accepted_obligations": "OPEN",
     "quality_overlays": "PARTIAL",
     "journeys": "DRAFT_NOT_VERIFIED",
     "stage_projections": "PROPOSED",
     "oracle_design_complete": "PARTIAL",
-    "high_risk_experiments": "BLOCKED",
-    "implementation_mapping": "PARTIAL",
+    "high_risk_experiments": "BLOCKED_SC_F01_TARGETED_RERUN_PENDING",
+    "implementation_mapping": "PARTIAL_REACHABILITY_SPLIT_ESTABLISHED",
     "bidirectional_trace_validity": "NOT_VALIDATED",
     "registry_repo_agreement": "PARTIAL",
-    "catalog_exclusion": "POLICY_DEFINED_NOT_ENFORCED",
+    "catalog_exclusion": "SEMANTICALLY_QUARANTINED_NOT_YET_TECHNICALLY_ENFORCED",
     "no_orphans": "NOT_VALIDATED",
     "no_contradictions": "OPEN",
     "no_blocking_findings": "BLOCKED",
     "independent_fresh_review": "NOT_RUN"
   },
-  "evidence_policy": "MODEL_COUNTEREXAMPLES_ARE_NOT_PRODUCT_ACCEPTANCE",
-  "next_minimal_context": ["SC-S05/SC-S14 and native changed-input fixture", "SC-S07 and live/orphan queue fixtures", "FR/TRACEABILITY/ADR donor source closure", "registry SOTA bootstrap dossier"],
+  "evidence_policy": "MODEL_COUNTEREXAMPLES_ARE_NOT_PRODUCT_ACCEPTANCE; BUILD_FAILURE_BEFORE_ORACLE_IS_UNKNOWN",
+  "next_minimal_context": [
+    "Targeted sharecli-core FR-008 oracle workflow exact result",
+    "SC-S07 live/orphan queue fixtures",
+    "February donor/user authority closure",
+    "Capability matrix observed/supervised/mediated/intercepted/optimization-eligible"
+  ],
   "pilot": "DEFERRED_UNTIL_BUILT_STAGE; not a substitute for design gate"
 }
