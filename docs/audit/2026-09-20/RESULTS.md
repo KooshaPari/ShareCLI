@@ -408,6 +408,67 @@ constructor.
 **pre-existing** (1170 before this change; this task added 25) and no task in this phase
 covers it — splitting a 1195-line config module warrants its own plan.
 
+### 1.4 — Atomic config write with `.bak` recovery
+
+**Finding (lane 8 MEDIUM-HIGH):** `Config::save` and `Config::init` used `std::fs::write`
+— open, truncate, write-in-place. No temp+rename, no `fsync`, no `.bak`.
+
+**Red — 3 failed / 1 passed** against the original `src/config.rs`:
+
+```
+save_keeps_the_previous_generation_as_a_backup           FAILED  save must keep a .bak of the previous config
+load_recovers_from_backup_when_the_primary_is_missing    FAILED  left: None  right: Some("/rescued")
+load_recovers_from_backup_when_the_primary_is_truncated  FAILED  load must succeed against .bak: TOML parse error at line 1, column 10
+save_leaves_no_temporary_files_behind                    ok
+```
+
+The second failure is the one that matters most: with the primary file gone, `load()`
+returned `Config::default()` — every registered project silently discarded with no error.
+
+**Fix:** new `src/config_write.rs` (123 lines) implementing stage-in-same-directory →
+`fsync` → preserve the outgoing generation as `.bak` (itself staged, then renamed, so an
+interrupted backup cannot publish a half-written `.bak`) → atomic `rename` → directory
+`fsync`. Every failure path removes the staging file, so a failed save leaves the previous
+config and no debris. `Config::save` and `Config::init` now call `write_atomic`;
+`Config::load` prefers the primary and recovers from `.bak` when the primary is missing or
+unparsable, warning through `tracing`, and never invents a default when both are unusable.
+
+The writer lives in its own module rather than inlined so `config.rs` does not grow
+further; it is declared in `lib.rs` and `main.rs` alongside `config`.
+
+**Green:**
+
+| Gate | Result |
+|---|---|
+| `tests/config_atomic_write` (was 3 failed / 1 passed) | 4 passed |
+| `cargo test --lib` | 572 passed, 0 failed, 0 ignored |
+| config / project / session integration, 10 targets | 52 passed, 0 failed |
+| `e2e_serve_hot_reload` / `e2e_serve_observability_order` | 1 passed / 1 passed |
+| `rustfmt --check` on changed files | clean |
+| `cargo clippy --all-targets` | 0 errors, same 2 pre-existing warnings |
+
+Targets run: `config_atomic_write`, `config_defaults`, `config_watcher_hot_reload`,
+`config_live_write_guard`, `fr002_config_init`, `fr002_config_load`,
+`fr003_project_registry`, `c01_coverage_lift`, `c01_coverage_lift_wave18`, `session_cli`.
+
+**Crash validation:** an in-process kill cannot be staged portably, so the tests construct
+exactly the state a crash under the old scheme leaves behind — primary truncated or
+absent, `.bak` holding the last good generation — and assert recovery. The atomicity
+itself rests on `rename(2)` being atomic within one file system, which is precisely why
+the staging file is created in the config's own directory rather than in a system temp
+directory elsewhere.
+
+> Harness note: the first implementation failed to compile — `.with_context()` was called
+> on an unwrapped `io::Error` instead of on the `Result`. Caught before any test ran.
+
+**Format:** `rustfmt` reports pre-existing drift in `src/commands/config_edit.rs`,
+`src/config_validator.rs`, `src/util/mod.rs` and `src/main.rs` (lines 37, 437). None are
+touched by this change; `src/main.rs` differs by exactly the one added `mod config_write;`
+line. Left as-is rather than folded into an unrelated commit.
+
+**Size:** `src/config.rs` is now 1231 lines (pre-existing over-limit: 1170 at branch start,
+1195 after 1.3).
+
 ## Verdict
 
 Phases 0.5–0.7 are verified green on every gate that completed honestly, including the

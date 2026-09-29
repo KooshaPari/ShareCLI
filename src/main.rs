@@ -22,6 +22,7 @@ mod commands;
 mod config;
 mod config_validator;
 mod config_watcher;
+mod config_write;
 mod dashboard_assets;
 mod error;
 mod error_envelope;

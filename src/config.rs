@@ -27,6 +27,7 @@ use std::sync::OnceLock;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 
 // ---------------------------------------------------------------------------
 // Top-level Config
@@ -402,16 +403,51 @@ pub fn global() -> &'static Config {
 
 impl Config {
     /// Load configuration from `~/.config/sharecli/config.toml`
+    ///
+    /// The primary file wins whenever it parses. When it is missing or
+    /// unparsable — the state a crash under a write-in-place save leaves behind —
+    /// the last good generation kept beside it is used instead of failing, or
+    /// instead of silently degrading to [`Config::default`], which would discard
+    /// every registered project without raising an error.
     pub fn load() -> Result<Self> {
         let config_path = Self::config_path()?;
 
         if config_path.exists() {
-            let contents = std::fs::read_to_string(&config_path)?;
-            let config: Config = toml::from_str(&contents)?;
-            Ok(config)
-        } else {
-            Ok(Config::default())
+            let raw = std::fs::read_to_string(&config_path)?;
+            match toml::from_str::<Config>(&raw) {
+                Ok(config) => return Ok(config),
+                Err(primary_error) => {
+                    if let Some(recovered) = Self::load_backup(&config_path) {
+                        warn!(
+                            config = %config_path.display(),
+                            error = %primary_error,
+                            "primary config unusable; recovered from backup"
+                        );
+                        return Ok(recovered);
+                    }
+                    return Err(primary_error.into());
+                }
+            }
         }
+
+        if let Some(recovered) = Self::load_backup(&config_path) {
+            warn!(
+                config = %config_path.display(),
+                "primary config missing; recovered from backup"
+            );
+            return Ok(recovered);
+        }
+
+        Ok(Config::default())
+    }
+
+    /// Best-effort parse of the `.bak` sibling. `None` when it is absent or
+    /// itself unusable, so recovery is never allowed to mask a genuinely
+    /// corrupt pair by inventing a default config.
+    fn load_backup(config_path: &std::path::Path) -> Option<Self> {
+        let backup = crate::config_write::backup_path(config_path);
+        let raw = std::fs::read_to_string(&backup).ok()?;
+        toml::from_str::<Config>(&raw).ok()
     }
 
     /// Initialize default configuration file
@@ -425,7 +461,7 @@ impl Config {
 
         let config = Config::default();
         let contents = toml::to_string_pretty(&config)?;
-        std::fs::write(&config_path, contents)?;
+        crate::config_write::write_atomic(&config_path, &contents)?;
 
         Ok(())
     }
@@ -440,7 +476,7 @@ impl Config {
         }
 
         let contents = toml::to_string_pretty(self)?;
-        std::fs::write(&config_path, contents)?;
+        crate::config_write::write_atomic(&config_path, &contents)?;
 
         Ok(())
     }
