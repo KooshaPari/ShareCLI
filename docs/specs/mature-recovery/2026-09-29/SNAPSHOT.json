@@ -1,0 +1,20 @@
+{
+  "program": "mature-recovery-2026-09-29",
+  "product": "KooshaPari/ShareCLI",
+  "repository_id": 1191459198,
+  "source_snapshot": "4f01d0199e82b62bcf20399afcc102f58a10ad07",
+  "source_tree": "2fa0e45cfa090acb69c83df98d8d77b9ff624bc9",
+  "registry": "KooshaPari/PhenoRegistry",
+  "registry_source_snapshot": "85d7cd00cf59c379c05b740e8130a85b0d5bd31b",
+  "specification_branch": "spec/mature-recovery-2026-09-29",
+  "implementation_candidate": null,
+  "observed_on": "2026-09-29",
+  "scope_products": ["KooshaPari/ShareCLI", "KooshaPari/BytePort"],
+  "internal_dependency_sources_inspected": [],
+  "dependency_revision_audit": "OPEN: donor and dependency pointers are not inspected dependency source snapshots",
+  "history_extent": "selected commit metadata, lineage ADR and recovery notes; not complete Git history",
+  "native_product_suites": "NOT_RUN",
+  "environment_limits": ["local git clone failed DNS resolution", "Rust toolchain unavailable"],
+  "source_coverage_denominator": "OPEN",
+  "specification_design_complete": false
+}
