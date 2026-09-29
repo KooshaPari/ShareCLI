@@ -352,6 +352,62 @@ Line counts, all inside the 350-line target: `config_watcher.rs` 254, `debounce.
 re-runs. This branch does not touch `runtime.rs`; the test spawns `sleep 1` under load
 459-487. Recorded as a pre-existing load-sensitive flake, not a regression.
 
+### 1.3 — `#[serde(default)]` shadowing on partial tables
+
+**Finding (lane 8 HIGH):** `#[serde(default)]` on the container `Config` only fills a
+field whose *table is absent entirely*. A table that is present but partial is
+deserialized by the child type, where serde's implicit rule for `Option<T>` fills a
+missing key with `None` rather than that type's `Default`. A partial `[runtime]` table
+therefore silently dropped `max_memory_mb` (4096) and `max_processes` (100).
+
+The audit also called the shape "two-tier and arbitrary": eight of the fifteen table types
+carried no struct-level `#[serde(default)]`, so the result depended on which table the
+operator happened to edit.
+
+**Red — 4 failed / 1 passed** against the original `src/config.rs`:
+
+```
+runtime_config_from_partial_toml_uses_defaults           FAILED  left: None  right: Some(4096)
+partial_runtime_table_keeps_defaults_in_config            FAILED  left: None  right: Some(4096)
+load_from_disk_of_a_partial_runtime_table_keeps_defaults  FAILED  left: None  right: Some(4096)
+every_present_but_empty_table_fills_from_its_own_default  FAILED  missing field `enabled`
+absent_tables_still_come_from_config_default              ok
+```
+
+The fourth failure is the sharper one: for tables whose fields are not `Option`, a
+present-but-empty table did not merely lose its defaults, it **failed to parse**.
+
+**Fix:** struct-level `#[serde(default)]` added to all eight — `RuntimeConfig`,
+`PoolConfig`, `MonitoringConfig`, `PortConfig`, `PathsConfig`, `DefaultHarnessConfig`,
+`ProjectLimitsConfig`, `SpawnConfig` — bringing all fifteen table types under one rule.
+The policy is now documented in the `config` module doc: every table owns its defaults,
+and the attribute is called out as load-bearing for `Option<T>` fields. `src/config.rs`
++25 / −0.
+
+**Green:**
+
+| Gate | Result |
+|---|---|
+| `tests/config_defaults` (was 4 failed / 1 passed) | 5 passed |
+| `cargo test --lib` | 572 passed, 0 failed, 0 ignored |
+| `fr002_config_load` / `fr002_config_init` | 3 passed / 2 passed |
+| `config_live_write_guard` / `config_watcher_hot_reload` | 1 passed / 1 passed |
+| `rustfmt --check` on changed files; `cargo clippy --all-targets` | clean, 0 errors |
+
+The suite includes the disk-level receipt `load_from_disk_of_a_partial_runtime_table_keeps_defaults`,
+which sets `SHARECLI_CONFIG_PATH` and drives the production `Config::load()` — the
+TOML-driven path the audit flagged as never asserted, as distinct from the direct
+constructor.
+
+> Harness note: that receipt was first written with `#[serial_test::serial]` but **without
+> `#[test]`**, so it compiled as dead code and did not run; the suite reported 4 tests
+> rather than 5. Caught by counting the tests, not by a failure. Recorded rather than
+> silently corrected.
+
+**Size:** `src/config.rs` is 1195 lines, over the 500-line hard limit. This is
+**pre-existing** (1170 before this change; this task added 25) and no task in this phase
+covers it — splitting a 1195-line config module warrants its own plan.
+
 ## Verdict
 
 Phases 0.5–0.7 are verified green on every gate that completed honestly, including the

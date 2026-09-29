@@ -3,6 +3,23 @@
 //! All configurable parameters are consolidated here. Hardcoded defaults
 //! serve as fallbacks when no config file is present; users override via
 //! `~/.config/sharecli/config.toml`.
+//!
+//! # Table-default policy
+//!
+//! **Every table owns its defaults.** Each table type carries a struct-level
+//! `#[serde(default)]` alongside a `Default` impl holding the documented
+//! values, so an absent table and a present-but-partial table deserialize to
+//! the same thing: `Default::default()`.
+//!
+//! The struct-level attribute is load-bearing for `Option<T>` fields. Without
+//! it serde's implicit rule for `Option` fills a missing key with `None` rather
+//! than with the type's `Default`, so a partial `[runtime]` table silently
+//! dropped `max_memory_mb` (4096) and `max_processes` (100). Tables whose
+//! fields are not `Option` fared worse: a present-but-empty table failed to
+//! parse outright with `missing field`.
+//!
+//! When adding a table to [`Config`], add `#[serde(default)]` to the table type
+//! and keep its `Default` in sync with the documented values.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -127,6 +144,7 @@ pub struct ServeJwtConfig {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct RuntimeConfig {
     /// Path to node executable
     pub node_path: Option<String>,
@@ -150,6 +168,7 @@ impl Default for RuntimeConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct PoolConfig {
     /// Enable shared process pool
     pub enabled: bool,
@@ -176,6 +195,7 @@ impl Default for PoolConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct MonitoringConfig {
     /// Interval between health checks (seconds)
     pub health_check_interval_secs: u64,
@@ -202,6 +222,7 @@ impl Default for MonitoringConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct PortConfig {
     /// Port for the ShareWei co-process
     pub sharewei_port: u16,
@@ -214,6 +235,7 @@ impl Default for PortConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct PathsConfig {
     /// Default directory to scan when `project discover` has no argument
     pub discovery_path: String,
@@ -231,6 +253,7 @@ impl Default for PathsConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct DefaultHarnessConfig {
     pub enabled: bool,
     pub max_instances: usize,
@@ -244,6 +267,7 @@ impl Default for DefaultHarnessConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ProjectLimitsConfig {
     /// Default memory limit per project (MB)
     pub memory_limit_mb: u64,
@@ -258,6 +282,7 @@ impl Default for ProjectLimitsConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SpawnConfig {
     /// Default harness type when none is specified
     pub default_harness: String,
