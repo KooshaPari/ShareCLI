@@ -279,7 +279,7 @@ generation twice, so a batch could fire more than once. `debounce_claim_rejects_
 and `debounce_fires_once_after_the_window` went red on it; `claim` now also requires
 `pending`.
 
-**Green (observed):**
+**Green (observed) — as committed in `113366e0`:**
 
 | Gate | Result |
 |---|---|
@@ -295,6 +295,62 @@ and `debounce_fires_once_after_the_window` went red on it; `claim` now also requ
 The filesystem-timing tests live at the integration tier
 (`tests/config_watcher_hot_reload.rs`) beside the deterministic `Debouncer` unit tests,
 which keeps wall-clock flakiness out of the fast unit run.
+
+#### 1.2b correction — the reload-*count* assertions were unsound and are removed
+
+Both filesystem tests above pinned `reloads == 1`. They passed at commit time, but they
+assert the host's scheduler rather than the contract, and they do not discriminate the
+leading-edge implementation from the trailing-edge one.
+
+The debouncer clocks **delivered** events; an external test only sees its own writes. A
+temporary probe, since removed, measured write-to-callback latency `L` against the
+*original* leading-edge watcher: **210, 219, 224, 281, 380 ms** over 5 samples at load
+251-438, against a 200 ms window — `L >= DEBOUNCE` on every sample. When `L` is that
+large the original leading-edge debouncer also reads the settled file, because a save made
+after a fire has already left that window by the time its own event is delivered.
+
+Four constructions of a discriminating filesystem test were tried — observe-then-save, a
+100 ms offset, a single save inside an open window, and the original count assertion.
+All four were green against the original code, 3/3 runs each.
+
+**Action taken:**
+
+- Removed both count-based filesystem assertions and kept one filesystem **receipt**,
+  `burst_of_saves_reaches_the_live_config_with_final_content`: at least one reload,
+  monotonic progress, final content observed. Its module docs state plainly that it is not
+  a discriminator, and why.
+- Moved the count requirement to the unit tier, where instants are injected and no wall
+  clock is involved: `debounce::tests::five_events_within_the_window_yield_exactly_one_claim`
+  — five events 40 ms apart yield exactly one claim, and the deadline follows the 5th.
+- Narrowed visibility back after the import that needed it was removed: `mod debounce`
+  and `pub(super) const DEBOUNCE`, since nothing outside the module reads either.
+- Corrected module docs that named tests which no longer exist, and one intra-doc link to
+  a private module.
+
+Honest consequence: the *red* evidence for the debounce change is the `got 4` capture
+above, taken against the original code. The committed tests cannot re-derive it, because
+the original logic was an inline closure inside the notify callback with no seam to inject
+a clock — the extraction is what made it testable at all.
+
+**Green (observed) — current working tree:**
+
+| Gate | Result |
+|---|---|
+| `cargo test --lib`, 2 consecutive runs | 572 passed, 0 failed, 0 ignored |
+| `config_watcher` lib tests (5 debounce + 5 watcher) | 10 passed |
+| `tests/config_watcher_hot_reload` (filesystem receipt) | 1 passed |
+| `tests/e2e_serve_hot_reload` — `serve_hot_reload_follows_config_path_override` | 1 passed |
+| `tests/e2e_serve_observability_order` — `serve_observability_records_auth_401_e2e` | 1 passed |
+| `rustfmt --check` on all changed files | clean |
+| `cargo clippy --all-targets` | 0 errors; 2 pre-existing warnings (`sharecli-ipc/src/queue.rs:164`, `commands/proc/tests.rs:1`) |
+
+Line counts, all inside the 350-line target: `config_watcher.rs` 254, `debounce.rs` 196,
+`tests/config_watcher_hot_reload.rs` 111, `tests/e2e_serve_hot_reload.rs` 149.
+
+`runtime::tests::test_process_pool` failed once during this session (`src/runtime.rs:933`,
+`process-pool spawn failed`) and then passed 3/3 in isolation and in both full-suite
+re-runs. This branch does not touch `runtime.rs`; the test spawns `sleep 1` under load
+459-487. Recorded as a pre-existing load-sensitive flake, not a regression.
 
 ## Verdict
 

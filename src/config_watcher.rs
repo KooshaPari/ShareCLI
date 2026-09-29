@@ -18,11 +18,13 @@
 //! # Debounce policy
 //!
 //! The debouncer is **trailing**: it waits for a quiet window of `DEBOUNCE`
-//! (see [`debounce`]) measured from the *latest* event, then reloads once.
-//! A leading-edge scheme fires on the first event and drops everything inside
-//! the window; for a burst of saves that produces several reloads of
-//! intermediate states and can lose the final save entirely. See
-//! `trailing_debounce_coalesces_a_burst_into_one_reload_of_final_content`.
+//! (defined in the private `debounce` module) measured from the *latest* event,
+//! then reloads once. A leading-edge scheme fires on the first event and drops
+//! everything inside the window; for a burst of saves that produces several
+//! reloads of intermediate states and can lose the final save entirely. The
+//! deterministic coverage for that contract is
+//! `debounce::tests::five_events_within_the_window_yield_exactly_one_claim`;
+//! the filesystem-tier receipt is `tests/config_watcher_hot_reload.rs`.
 
 mod debounce;
 

@@ -162,4 +162,35 @@ mod tests {
         d.shutdown = true;
         assert!(!d.claim(gen), "shutdown must suppress an outstanding reload");
     }
+
+    /// The plan's stated acceptance for task 1.2, proven deterministically:
+    /// five events inside the debounce window yield exactly one claim.
+    ///
+    /// This cannot be proven at the filesystem tier. An external observer only
+    /// sees its own writes, while the debouncer clocks *delivered* events; and
+    /// once file-system delivery latency approaches `DEBOUNCE` — measured on a
+    /// loaded host at 210, 219, 224, 281 and 380 ms against a 200 ms window —
+    /// even the original leading-edge implementation reads the settled file, so
+    /// no wall-clock assertion separates the two. Injected instants are the only
+    /// seam that does not measure the host's scheduler.
+    #[test]
+    fn five_events_within_the_window_yield_exactly_one_claim() {
+        let t0 = Instant::now();
+        let mut d = Debouncer::new();
+
+        for i in 0u64..5 {
+            d.record(t0 + Duration::from_millis(i * 40));
+        }
+
+        assert_eq!(
+            d.due_at(),
+            Some(t0 + Duration::from_millis(160) + DEBOUNCE),
+            "the deadline must follow the last of the five events"
+        );
+
+        let gen = d.generation;
+        assert!(d.claim(gen), "the settled batch must be claimable once");
+        assert!(!d.pending, "claiming must close the batch");
+        assert!(!d.claim(gen), "5 edits in the window must yield exactly one reload");
+    }
 }
