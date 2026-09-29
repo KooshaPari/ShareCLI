@@ -111,6 +111,61 @@ Ten targets ran sequentially with `--test-threads=1` and a per-target timeout.
   (no process/display capture permitted), the unrelated `Cargo.lock`
   `agileplus-cache` duplicate-key warning.
 
+## Public-path acceptance (real binaries, real processes) — 2026-09-28
+
+Earlier gates above ran the repo's own suites. These run the shipped artifacts the way a
+user does. Observed 2026-09-28 06:44–07:03 PDT, Pacific local.
+
+### Requirement → observed evidence
+
+| # | Explicit requirement (source) | Exercised how (real path) | Observed result |
+|---|---|---|---|
+| R1 | 0.5 `process.spawn` implemented server-side, not phantom (`FINDINGS.md` Lane 3) | real `sharecli-ipc` + real `process.spawn` of `/bin/sleep`; pid checked with `kill(pid,0)` | PASS: `success: true`, pid 73995 alive, then really gone after `process.kill` |
+| R2 | 0.5 `pool.effectiveness` implemented, tray decoder satisfied (Lane 3) | real `pool.effectiveness`; payload compared to `IPCClient.swift:294-316` and decoded by the real Swift client | PASS: `coalesce{hits,misses,nocache_runs}`, `slot_queue{acquires,waits,timeouts}`, `sampled_at>0`; real decode + hit-rate in 0…100 |
+| R3 | 0.5 socket must be owner-only `0600` (Lane 3 BLOCKER) | `stat` the live socket of a running sidecar | PASS: `mode=0o600` |
+| R4 | 0.5 unknown method must be rejected, not silently OK | real `fixture.unknown.method` | PASS: `error: "unknown method: fixture.unknown.method"` |
+| R5 | 0.6 `stop --pid` on a missing pid exits nonzero, does not claim success (Lane 4 BLOCKER) | real `sharecli stop --pid 999999` | PASS: exit 2, `no such pid: 999999`, no "stopped" claim |
+| R6 | 0.6 a real but unmanaged pid is reported as a miss **and left running** | real `sharecli stop --pid <live sleep pid>` | PASS: exit 2, `no such pid: <pid>`, and the foreign process was still alive afterwards |
+| R7 | 0.6 the real success path still works after the honesty change | real sidecar `process.spawn` → live pid → real `process.kill` | PASS: pid really terminated (`kill(pid,0) != 0` after) |
+| R8 | 0.6 daemon refusal must reach the user (**defect found by this run**) | real sidecar `process.kill` of unmanaged pid via the real Swift client | **RED → FIXED**: daemon returns `result:false` in 0.003 s; client discarded it and reported success. See "New BLOCKER found" below. |
+| R9 | 0.7 a daemon that accepts and never answers fails with `.timeout`, no hang (Lane 2 BLOCKER) | real listening socket that accepts and never replies | PASS: `IPCError.timeout` in 1.688 s against a 1.0 s deadline; no hang |
+| R10 | 0.7 a wedged peer must not starve the shared 64-slot probe pool | wedge first, then a healthy real-sidecar call | PASS: healthy call served immediately after the wedge |
+| R11 | 0.7 the request deadline must cover the **whole** request, not only the read | daemon that accepts and never drains; client `timeout: 5.0` | **RED → FIXED**: blocking `Darwin.write` could pin a pool slot past its own deadline. See below. |
+
+### Aggregate real-path results
+
+- `REAL_IPC_ACCEPTANCE` (external client, real sidecar): **10/10**
+- `REAL_CLI_ACCEPTANCE` (external client, real CLI binary): **5/5**
+- `IPCClientRealPathTests` (real Swift client vs real sidecar): **4/4**
+- `IPCClientKillContractTests` (self-contained, no sidecar): **4/4**
+- Full `swift test` with a live isolated sidecar: **26 executed, 0 failures, 0 skips**, `FULL_SWIFT_EXIT=0`
+
+### New BLOCKER found and fixed by this acceptance run
+
+`IPCClient.kill` discarded the daemon's answer:
+
+```swift
+let _: IPCResponse<Bool> = try await call(method: "process.kill", ...)
+```
+
+The daemon returns `false` for a pid it does not manage (the 0.6 fix), but the client
+threw the boolean away and returned `Void`. `AppState.kill` (`AppState.swift:397-404`)
+therefore recorded no error and the tray showed a successful stop for a process that was
+still running. The Rust half of 0.6 was correct; the Swift half silently defeated it.
+
+- Red evidence: `test_real_sidecar_rejects_kill_of_unknown_pid` failed against the real
+  sidecar before the change.
+- Fix: `kill` is now `@discardableResult -> Bool` and throws `IPCError.server("no such pid: \(pid)")`
+  on a refusal. `AppState.kill` already routed thrown errors to `lastError`, so the tray now
+  shows the refusal.
+- Regression tests: `IPCClientKillContractTests` (4 tests, no sidecar needed).
+
+The write half of the same 0.7 deadline was also incomplete: the read loop polled against
+the deadline but the request write was a plain blocking `Darwin.write`, so a peer that
+accepts and never drains could pin a shared probe slot indefinitely — the exact starvation
+the read deadline exists to prevent. The write is now `poll(POLLOUT)`-bounded by the same
+deadline.
+
 ## Verdict
 
 Phases 0.5–0.7 are verified green on every gate that completed honestly, including the

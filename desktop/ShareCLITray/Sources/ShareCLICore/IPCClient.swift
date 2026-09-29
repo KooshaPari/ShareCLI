@@ -423,10 +423,20 @@ public actor IPCClient {
         return resp.result ?? []
     }
 
-    public func kill(pid: UInt32) async throws {
-        let _: IPCResponse<Bool> = try await call(
+    /// Returns `true` when the daemon really stopped the process.
+    ///
+    /// The daemon answers `false` for a pid it does not manage (audit 0.6,
+    /// lane-4 BLOCKER). That refusal is the whole point of the contract, so it
+    /// must reach the caller: discarding it made the tray claim it had stopped
+    /// a process that was still running.
+    @discardableResult
+    public func kill(pid: UInt32) async throws -> Bool {
+        let resp: IPCResponse<Bool> = try await call(
             method: "process.kill", params: ["pid": .uint(pid)]
         )
+        guard let killed = resp.result else { throw IPCError.nilResult("process.kill") }
+        guard killed else { throw IPCError.server("no such pid: \(pid)") }
+        return true
     }
 
     public func killAll() async throws {
@@ -551,13 +561,28 @@ public actor IPCClient {
                     // One deadline covers write + read (audit 0.7).
                     let deadline = Date().addingTimeInterval(timeout)
 
-                    // Write request. SO_SNDTIMEO bounds a wedged peer, so a
-                    // full write that never drains surfaces as .timeout
-                    // rather than pinning the pool slot.
+                    // Write request. A blocking write to a peer that never
+                    // drains would pin this utility-pool slot forever — the
+                    // read loop below is bounded, but an unbounded write
+                    // reintroduces the same starvation the read deadline fixes.
+                    // Poll for writability and give up when the shared deadline
+                    // is spent, so a stalled peer fails with .timeout instead.
                     try payload.withUnsafeBytes { buf in
                         var written = 0
                         while written < buf.count {
-                            let n = Darwin.write(fd, buf.baseAddress!.advanced(by: written), buf.count - written)
+                            let remaining = deadline.timeIntervalSinceNow
+                            if remaining <= 0 { throw IPCError.timeout }
+                            var pfd = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
+                            let waitMs = Int32(max(1, min(remaining * 1000, Double(Int32.max))))
+                            let ready = poll(&pfd, 1, waitMs)
+                            if ready == 0 { continue }
+                            if ready < 0 {
+                                if errno == EINTR { continue }
+                                throw IPCError.writeFailed
+                            }
+                            let n = Darwin.write(
+                                fd, buf.baseAddress!.advanced(by: written), buf.count - written
+                            )
                             if n > 0 {
                                 written += n
                                 continue
