@@ -166,6 +166,54 @@ accepts and never drains could pin a shared probe slot indefinitely — the exac
 the read deadline exists to prevent. The write is now `poll(POLLOUT)`-bounded by the same
 deadline.
 
+## Phase 1 task 1.1 — serve middleware layer order (2026-09-29)
+
+`Router::layer` wraps everything added before it, so the **last** `.layer(...)` call is
+outermost at request time. Observability was applied **first**, making it innermost: an
+auth `401` and a rate-limit `429` short-circuited before ever reaching it, so those
+failures were never counted in RED metrics and the response carried no `traceparent`.
+
+**Red — helper coverage** (router tests driving the real `build_router`, not a copy):
+
+| Test | Failure before the fix |
+|---|---|
+| `observability_records_auth_401` | `auth 401 must be counted in RED metrics: before=0 after=0` |
+| `observability_records_rate_limit_429` | `429 response must carry a traceparent header` |
+
+**Red — real public path** (committed `tests/e2e_serve_observability_order.rs`, real
+`sharecli serve` binary, real socket, run against the original code by stashing the fix):
+
+```
+401 response must carry a traceparent header; got headers:
+test result: FAILED. 0 passed; 1 failed
+```
+
+**Fix:** move `http_observability_middleware` to the last `.layer(...)` call in
+`apply_middleware`, giving `observability -> auth -> rate limit -> route`. The relative
+order of auth and rate limit is unchanged; only observability moved from innermost to
+outermost. The ordering contract is now documented on `apply_middleware` and guarded by
+both tests.
+
+**Green (observed):**
+
+| Gate | Result |
+|---|---|
+| `observability_records_auth_401` + `observability_records_rate_limit_429` | 2 passed, 0 failed |
+| `tests/e2e_serve_observability_order` against fixed binary | 1 passed, 0 failed |
+| Standalone public-path harness | `E2E_SERVE_OBSERVABILITY 6/6` |
+| `cargo test --lib` | 568 passed, 0 failed, 0 ignored |
+| Neighbouring serve targets (`e2e_serve_healthz`, `c00_serve_error_envelope`, `c02_serve_rate_limit`, `fr012_serve_jwt_auth`, `c07_dev_mode_gate`) | 19 passed, 0 failed |
+| `cargo clippy --lib --tests` | 0 errors (pre-existing warnings only) |
+
+The e2e asserts both halves of the fix end to end: the `401` carries a W3C-shaped
+`traceparent`, and the real `GET /metrics/prometheus` reports
+`sharecli_http_unauthorized_total` incremented (`0 -> 1`). Controls confirm authenticated
+`/config` still returns `200` and public `/healthz` still answers without credentials.
+
+`cargo fmt --check` still exits non-zero from **pre-existing** drift in files this branch
+does not touch (`crates/sharecli-ipc/*`, `src/config.rs`, many `tests/fr007_*`); both
+files changed here were formatted and are clean.
+
 ## Verdict
 
 Phases 0.5–0.7 are verified green on every gate that completed honestly, including the
