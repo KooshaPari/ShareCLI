@@ -1,0 +1,23 @@
+# ShareCLI — semantic findings and source supplement
+
+Date 2026-09-29. Source candidate `4f01d0199e82b62bcf20399afcc102f58a10ad07`. Findings are not remediation receipts.
+
+**Ledger supplement SC-S14:** `crates/sharecli-core/src/lib.rs` lines 700–850, blob `cb35ab8d126c4571a2f329869efaec5102d94906`, inspected after ledger pass 1. `Hypervisor::run` performs thermal/watch collection, nocache-flag queue routing, then `command_key_with_mode` and `cache.lookup`; a cache hit returns without spawning. This establishes a live library caller, not every external CLI/tray entry path. Classification CURRENT_IMPLEMENTATION; resolution PARTIAL; affected FR008/SC-J02 and interception behavior. Remaining source after this excerpt and outer callers still require inspection.
+
+| Finding | Evidence and interpretation | Negative control / closure requirement | State |
+|---|---|---|---|
+| SC-F01 Incomplete equivalence identity | cache_key.rs Git mode hashes porcelain+HEAD but not edited bytes; Time lacks input identity; Args omits cwd/env. Local real-Git/cat plus source-equivalent Python hashing reproduced same key/different output. Core lookup caller verified in SC-S14. | Run native public path twice while changing an already-modified file, keeping HEAD/status stable; second output must be current. Also wrong tool/env/principal and failed fingerprint. | BLOCKS generic safe-sharing claim; native remediation not verified |
+| SC-F02 Aging wraps before saturation | queue.rs casts elapsed seconds to u8; arithmetic model maps Critical age255 to255 and age256 to0 | Orphan ticket older than256s must not regain critical precedence; no live-owner eviction; test configured timeout and crash history | SOURCE/MODEL COUNTEREXAMPLE; native fairness not established |
+| SC-F03 Ticket names do not establish FIFO | priority.time.pid.sequence strings compared lexicographically; same-priority/second/PID sequence10 sorts before2 | Native equal-effective-rank burst with sequence beyond9; verify stated policy, not just completion | MODEL COUNTEREXAMPLE; full scheduler run outstanding |
+| SC-F04 Interception policy needs a mode contract | core FuseGuard permits best-effort fallback; current FR009 describes loud unsupported failures | Distinguish optional degradation from required mediation failure; log output alone is not evidence of interception | OPEN interpretation, not asserted universal violation |
+| SC-F05 Observation does not prove integration reach | proc detection, explicit Hypervisor run and FUSE remapped cwd are separate mechanisms | Trace a real supported vendor invocation end to end; mark unsupported mediation explicitly | OPEN high-risk architecture boundary |
+
+## Experiment receipt
+
+Run `76a63a6a-84c8-40b8-95d5-5a253fe213ea`, observed `2026-09-29T18:27:14.766340+00:00`. Python3.13.5, git2.47.3, Linux. Real Git fixture and cat; Python source-derived models, **not Rust binaries**. Verifier script SHA256 `d64019b880057a30c659cd00ee5a77e25cb092ef6b13c581d49dd507e2a090b8`.
+
+SC-EXP-001: both reads had Git status ` M input.txt` and HEAD `647f05b421ac61d360c45b88cff73b7c860b0536`; both modeled keys were `bc697f1b6c5f651e0ad246d6a0fc7e8d04e167e412e64a7d8079f3bb61512dcb`. Actual outputs were `first edit\n` and `other edit\n`, SHA256 `08c091723a0ec2e0b141547933ed6247d8ae36fdc693cfb6e43a3c9f82720252` versus `c50add215a34876ca41570d9848e417d4d28b507a163008c2e65b2368276020d`. Positive controls: unchanged inputs preserve key; committing a new baseline changes key.
+
+SC-EXP-002: Critical effective rank by wait seconds 0→0, 2→2, 255→255, 256→0, 257→1. SC-EXP-003: lexical minimum of `02.1790700000.1234.2` and `02.1790700000.1234.10` is the latter. Queue results are exact arithmetic/order counterexamples, not observed end-to-end starvation. Default30s wait does not by itself erase an orphan file's longer age; live crash behavior still needs a native fixture.
+
+Raw script/results are in `experiments/` when present in this branch. No successful model-control check may be counted as successful product behavior. Source-family denominator and architecture-risk gates remain open.
