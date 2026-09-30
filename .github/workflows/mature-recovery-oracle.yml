@@ -89,3 +89,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Resource and schedule identity controls
         run: cargo test -p sharecli-ipc scheduling::tests:: -- --nocapture
+
+  scheduling-reference-model:
+    name: B05 scheduling reference model
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Envelope-safe baseline model
+        run: cargo test -p sharecli-ipc scheduling_reference::tests:: -- --nocapture
