@@ -38,3 +38,12 @@ jobs:
           python-version: "3.13"
       - name: Validate non-green fixture
         run: python scripts/recovery/validate_evidence.py docs/specs/mature-recovery/2026-09-29/evidence/example-not-run.json
+
+  a01-identities:
+    name: SC-WP-A01 identity tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test additive semantic identities
+        run: cargo test -p sharecli-ipc identity::tests:: -- --nocapture
