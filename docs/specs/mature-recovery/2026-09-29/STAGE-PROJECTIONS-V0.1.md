@@ -69,3 +69,29 @@ Adds breadth only where thesis survives:
 - CVP session persistence cannot use a disposable schema incompatible with RecoverySubject/Operation.
 - MVP in-flight sharing cannot be implemented by pretending the old durable cache is in-flight-only.
 - stage-specific stubs must identify replacement/growth disposition.
+
+
+## Thesis correction overlay — 2026-09-30
+
+The original projection underweighted the core optimization thesis.
+
+### Revised CVP requirement
+In addition to observation/owned lifecycle/session recovery, CVP MUST close one measurable scheduling/resource-packing journey:
+- >=2 competing WorkItems;
+- explicit ResourceEnvelope;
+- explicit SchedulingPolicy;
+- queue/admission/placement decision;
+- no resource-envelope violation;
+- measured comparison against naive concurrent execution.
+
+This may use a deterministic rule-based scheduler. Learned/predictive optimization is not required.
+
+### Revised MVP
+MVP must exercise multiple optimization strategies under one common scheduler/control model, such as:
+- queue/admission;
+- packing;
+- coalescing/in-flight sharing;
+- pressure-driven throttle/replan.
+
+### Mature
+Mature ShareCLI is judged partly by its ability to improve useful work under constrained resources/time horizons versus realistic native/status-quo scheduling. Process/session features support this thesis; they do not replace it.
