@@ -27,3 +27,14 @@ jobs:
           python-version: "3.13"
       - name: Validate
         run: python scripts/recovery/validate_work_packages.py docs/specs/mature-recovery/2026-09-29/work-packages.json
+
+  evidence-fixture:
+    name: Validate evidence receipt semantics
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Validate non-green fixture
+        run: python scripts/recovery/validate_evidence.py docs/specs/mature-recovery/2026-09-29/evidence/example-not-run.json
