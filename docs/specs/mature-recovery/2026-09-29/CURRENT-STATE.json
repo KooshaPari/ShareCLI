@@ -9,13 +9,11 @@
   "specification_design_complete": false,
   "completion_percent": null,
   "source_denominator": "OPEN",
-  "native_product_runs": 2,
+  "native_product_runs": 1,
   "native_oracle_attempts": 3,
   "native_oracle_results": {
     "SC_F01": "NATIVE_COUNTEREXAMPLE_REPRODUCED_GIT_CHANGED_BYTES",
-    "SC_F06": "NATIVE_COUNTEREXAMPLE_REPRODUCED_ARGS_CROSS_WORKSPACE",
-    "SC_F07": "NATIVE_COUNTEREXAMPLE_REPRODUCED_GIT_ENV_CHANGE",
-    "SC_F08": "NATIVE_COUNTEREXAMPLE_REPRODUCED_TIME_EXTERNAL_STATE"
+    "SC_EQUIVALENCE_MATRIX_V2": "QUEUED_NOT_EVIDENCE"
   },
   "source_derived_model_counterexamples": 3,
   "architectural_risks_experimentally_closed": 0,
@@ -24,17 +22,14 @@
     "SC-F02",
     "SC-F03",
     "SC-F04",
-    "SC-F05",
-    "SC-F06",
-    "SC-F07",
-    "SC-F08"
+    "SC-F05"
   ],
   "gates": {
     "source_ledger_resolved": "OPEN",
     "history_alias_falsification": "OPEN",
     "sota_research": "MULTI_PASS_OPEN",
     "best_alternative_stack": "PROPOSED_NOT_VALIDATED",
-    "bootstrap_decisions": "GENERIC_ARBITRARY_COMMAND_DURABLE_REPLAY_REJECTED_AS_DEFAULT; ADAPTER_MODEL_PROVISIONAL",
+    "bootstrap_decisions": "GENERIC_GIT_MODE_DURABLE_REPLAY_FALSIFIED; BROADER ADAPTER_MODEL_PROVISIONAL",
     "differentiation_survives_attack": "OPEN",
     "ontology_review": "DRAFT_REFINED",
     "all_accepted_obligations": "OPEN",
@@ -42,7 +37,7 @@
     "journeys": "DRAFT_NOT_VERIFIED",
     "stage_projections": "PROPOSED",
     "oracle_design_complete": "PARTIAL",
-    "high_risk_experiments": "GENERIC_CACHE_EQUIVALENCE_FALSIFIED_NATIVELY; QUEUE_FUSE_OWNERSHIP_OPEN",
+    "high_risk_experiments": "SC_F01_NATIVE_REPRODUCED; EXPANDED_EQUIVALENCE_MATRIX_QUEUED; QUEUE_FUSE_OWNERSHIP_OPEN",
     "implementation_mapping": "PARTIAL_REACHABILITY_SPLIT_ESTABLISHED",
     "bidirectional_trace_validity": "NOT_VALIDATED",
     "registry_repo_agreement": "PARTIAL",
@@ -52,13 +47,13 @@
     "no_blocking_findings": "BLOCKED",
     "independent_fresh_review": "NOT_RUN"
   },
-  "evidence_policy": "SC-F01/F06/F07/F08 HAVE EXACT NATIVE RECEIPTS; FAILURES ESTABLISH COUNTEREXAMPLES NOT REMEDIATION",
+  "evidence_policy": "ONLY SC-F01 CURRENTLY HAS AN EXACT NATIVE COUNTEREXAMPLE RECEIPT; QUEUED MATRIX RESULTS ARE NOT EVIDENCE",
   "next_minimal_context": [
+    "Harvest expanded Git/Time/Args/environment native matrix",
     "Define and test in-flight-only equivalence separately from durable replay",
     "Select first bounded tool-native/equivalence adapter prototype",
     "SC-S07 live/orphan queue fixtures and lease/fencing semantics",
-    "FUSE required/optional capability truth experiment",
-    "February donor/user authority closure"
+    "FUSE required/optional capability truth experiment"
   ],
   "pilot": "DEFERRED_UNTIL_BUILT_STAGE; not a substitute for design gate"
 }
