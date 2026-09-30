@@ -7,6 +7,9 @@ on:
     paths:
       - "crates/sharecli-core/**"
       - "crates/sharecli-ipc/**"
+      - "crates/sharecli-session/**"
+      - "scripts/recovery/**"
+      - "docs/specs/mature-recovery/**"
       - "crates/spawn-core-sys/**"
       - ".github/workflows/mature-recovery-oracle.yml"
   workflow_dispatch:
@@ -53,3 +56,27 @@ jobs:
         run: cargo test -p sharecli-ipc --test recovery_queue_pid_reuse -- --nocapture
 
 # execution-freeze-trigger: 2026-09-30T13
+
+  tier-a-contract-integrity:
+    name: Tier-A contract integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Validate work-package DAG
+        run: python scripts/recovery/validate_work_packages.py docs/specs/mature-recovery/2026-09-29/work-packages.json
+      - name: Validate evidence semantics
+        run: python scripts/recovery/validate_evidence.py docs/specs/mature-recovery/2026-09-29/evidence/example-not-run.json
+      - name: Validate semantic trace
+        run: python scripts/recovery/validate_trace.py docs/specs/mature-recovery/2026-09-29/trace-slice.json
+      - name: SC-WP-A01 identities
+        run: cargo test -p sharecli-ipc identity::tests:: -- --nocapture
+      - name: SC-WP-A02 recovery model
+        run: cargo test -p sharecli-session mature_recovery::tests:: -- --nocapture
+      - name: SC-WP-A03 capability truth
+        run: cargo test -p sharecli-ipc capability::tests:: -- --nocapture
+      - name: SC-WP-A04 equivalence adapter
+        run: cargo test -p sharecli-ipc equivalence::tests:: -- --nocapture
