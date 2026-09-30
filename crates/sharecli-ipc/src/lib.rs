@@ -30,7 +30,9 @@
 //! see `sharecli_core::Hypervisor::{queue, run}`.
 
 pub mod cache_key;
+pub mod capability;
 pub mod handler;
+pub mod equivalence;
 pub mod identity;
 pub mod log_buffer;
 pub mod nocache;
@@ -47,6 +49,8 @@ use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
 pub use cache_key::{command_key, command_key_with_mode, CacheKeyMode};
+pub use capability::{CapabilityFact, CapabilityTruth};
+pub use equivalence::{EquivalenceAdapter, EquivalenceDecision, EquivalenceEvidence, UnknownAdapter};
 pub use identity::{EvidenceReceiptId, EquivalenceAdapterId, ExecutionAttemptId, InvocationId, OwnershipClaimId, PolicyDecisionId, PolicyRevision, PolicyScopeId, ProcessGenerationId, RecoveryOperationId};
 use fs2::FileExt;
 pub use nocache::{
