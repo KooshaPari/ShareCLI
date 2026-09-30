@@ -1,0 +1,1 @@
+{"schema":"mature-recovery-trace/v1","traces":[{"trace_id":"SC-T01","obligation":"safe adapter-bounded work sharing","decision":"SC-AD-02","implementation":"Hypervisor/cache legacy path","oracle":"recovery_fr008 semantic identity controls","evidence_state":"FAIL","authority":"native_observation","satisfies":false}]}
