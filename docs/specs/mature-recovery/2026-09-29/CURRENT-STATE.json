@@ -9,10 +9,10 @@
   "specification_design_complete": false,
   "completion_percent": null,
   "source_denominator": "OPEN",
-  "native_product_runs": 0,
-  "native_oracle_attempts": 1,
+  "native_product_runs": 1,
+  "native_oracle_attempts": 3,
   "native_oracle_results": {
-    "SC_F01": "INFRASTRUCTURE_BLOCKED_TEST_NOT_EXECUTED"
+    "SC_F01": "NATIVE_COUNTEREXAMPLE_REPRODUCED"
   },
   "source_derived_model_counterexamples": 3,
   "architectural_risks_experimentally_closed": 0,
@@ -36,7 +36,7 @@
     "journeys": "DRAFT_NOT_VERIFIED",
     "stage_projections": "PROPOSED",
     "oracle_design_complete": "PARTIAL",
-    "high_risk_experiments": "BLOCKED_SC_F01_TARGETED_RERUN_PENDING",
+    "high_risk_experiments": "SC_F01_REPRODUCED_QUEUE_AND_MODE_RISKS_OPEN",
     "implementation_mapping": "PARTIAL_REACHABILITY_SPLIT_ESTABLISHED",
     "bidirectional_trace_validity": "NOT_VALIDATED",
     "registry_repo_agreement": "PARTIAL",
@@ -46,12 +46,12 @@
     "no_blocking_findings": "BLOCKED",
     "independent_fresh_review": "NOT_RUN"
   },
-  "evidence_policy": "MODEL_COUNTEREXAMPLES_ARE_NOT_PRODUCT_ACCEPTANCE; BUILD_FAILURE_BEFORE_ORACLE_IS_UNKNOWN",
+  "evidence_policy": "SC-F01 HAS EXACT NATIVE RECEIPT; OTHER MODEL COUNTEREXAMPLES ARE NOT PRODUCT ACCEPTANCE",
   "next_minimal_context": [
-    "Targeted sharecli-core FR-008 oracle workflow exact result",
-    "SC-S07 live/orphan queue fixtures",
-    "February donor/user authority closure",
-    "Capability matrix observed/supervised/mediated/intercepted/optimization-eligible"
+    "Equivalence-domain matrix: in-flight vs durable replay, tool/env/principal/external-input changes",
+    "SC-S07 live/orphan queue fixtures and ownership/fencing semantics",
+    "FUSE required/optional capability truth experiment",
+    "February donor/user authority closure"
   ],
   "pilot": "DEFERRED_UNTIL_BUILT_STAGE; not a substitute for design gate"
 }
