@@ -49,3 +49,5 @@ jobs:
         run: cargo test -p sharecli-ipc --test recovery_queue_crash -- --nocapture
       - name: Run native queue aging/FIFO adversarial controls
         run: cargo test -p sharecli-ipc queue::tests:: -- --nocapture
+      - name: Run PID-reuse ownership adversary
+        run: cargo test -p sharecli-ipc --test recovery_queue_pid_reuse -- --nocapture
