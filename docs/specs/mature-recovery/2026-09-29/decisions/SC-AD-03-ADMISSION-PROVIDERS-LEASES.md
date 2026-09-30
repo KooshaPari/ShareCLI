@@ -52,6 +52,8 @@ Stale/orphan detection SHOULD use an ownership identity such as:
 
 Priority aging MUST NOT serve as the only orphan-recovery mechanism.
 
+The February donor is stronger than the current Rust port on one point: `queue::dequeue` and `queue::peek` perform `kill -0` on the recorded waiter PID and remove dead tickets. The Rust recovery dropped this liveness filter. That donor behavior should be recovered as an outcome, but not copied literally as the final authority model because a live reused PID can still satisfy `kill -0`. Mature ShareCLI therefore needs process-generation/lease evidence in addition to basic liveness.
+
 ### Fairness
 
 Priority policy must be stated independently from filename representation.
