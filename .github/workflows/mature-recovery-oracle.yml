@@ -29,5 +29,7 @@ jobs:
         with:
           version: 0.14.1
       - uses: Swatinem/rust-cache@v2
-      - name: Run exact native adversarial control
+      - name: Run changed-input native adversarial control
         run: cargo test -p sharecli-core --test recovery_fr008_semantic_identity -- --nocapture
+      - name: Run equivalence-domain adversarial matrix
+        run: cargo test -p sharecli-core --test recovery_fr008_equivalence_matrix -- --nocapture
