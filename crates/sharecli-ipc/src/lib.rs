@@ -31,6 +31,7 @@
 
 pub mod cache_key;
 pub mod handler;
+pub mod identity;
 pub mod log_buffer;
 pub mod nocache;
 pub mod queue;
@@ -46,6 +47,7 @@ use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
 pub use cache_key::{command_key, command_key_with_mode, CacheKeyMode};
+pub use identity::{EvidenceReceiptId, EquivalenceAdapterId, ExecutionAttemptId, InvocationId, OwnershipClaimId, PolicyDecisionId, PolicyRevision, PolicyScopeId, ProcessGenerationId, RecoveryOperationId};
 use fs2::FileExt;
 pub use nocache::{
     has_nocache_arg, parse_nocache_args_csv, should_bypass_coalesce, DEFAULT_NOCACHE_ARGS,
