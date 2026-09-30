@@ -60,3 +60,14 @@ jobs:
         run: cargo test -p sharecli-ipc capability::tests:: -- --nocapture
       - name: Equivalence contract
         run: cargo test -p sharecli-ipc equivalence::tests:: -- --nocapture
+
+  a05-trace:
+    name: SC-WP-A05 semantic trace validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Validate semantic trace fixture
+        run: python scripts/recovery/validate_trace.py docs/specs/mature-recovery/2026-09-29/trace-slice.json
