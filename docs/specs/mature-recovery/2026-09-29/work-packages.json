@@ -194,8 +194,8 @@
       ],
       "merge_gate": "BLOCKED",
       "blocked_by": [
-        "scheduler/packing SOTA pass",
-        "baseline workload and metric contract"
+        "exact scheduling reference/benchmark receipt",
+        "native workload/pressure fixture before production scheduling integration"
       ],
       "critical": [
         "No hard envelope violation",
@@ -208,7 +208,8 @@
         "peak resource receipt",
         "completion/throughput receipt",
         "fairness/queue receipt"
-      ]
+      ],
+      "qualification": "SOTA passes 3-6 + benchmark contract complete; pure reference/benchmark model implemented"
     },
     {
       "id": "SC-WP-B06",
