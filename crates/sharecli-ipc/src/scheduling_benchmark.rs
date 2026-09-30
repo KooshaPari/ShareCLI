@@ -9,22 +9,6 @@ pub struct BenchmarkWork {
     pub demand: ResourceVector,
     pub duration_ms: u64,
 
-    #[test]
-    fn fit_scan_reduces_fragmentation_vs_strict_fifo_on_complementary_shapes() {
-        let env=ResourceEnvelope{id:"host".into(),observed_at_unix_ms:1,source:"fixture".into(),capacity:rv(4.0,4_000)};
-        let work=vec![
-            wi("cpu-a",100,3.0,1_000),
-            wi("cpu-b",100,3.0,1_000),
-            wi("mem-a",100,1.0,3_000),
-            wi("mem-b",100,1.0,3_000),
-        ];
-        let fifo=simulate_bounded_fifo(&env,&work);
-        let fit=simulate_bounded_fit_scan(&env,&work);
-        assert_eq!(fifo.hard_envelope_violations,0);
-        assert_eq!(fit.hard_envelope_violations,0);
-        assert_eq!(fit.completed,4);
-        assert!(fit.makespan_ms < fifo.makespan_ms, "fit={:?} fifo={:?}",fit,fifo);
-    }
 
 }
 
@@ -197,4 +181,22 @@ mod tests {
         assert_eq!(naive.hard_envelope_violations,1);
         assert_eq!(bounded.hard_envelope_violations,0);
     }
+
+    #[test]
+    fn fit_scan_reduces_fragmentation_vs_strict_fifo_on_complementary_shapes() {
+        let env=ResourceEnvelope{id:"host".into(),observed_at_unix_ms:1,source:"fixture".into(),capacity:rv(4.0,4_000)};
+        let work=vec![
+            wi("cpu-a",100,3.0,1_000),
+            wi("cpu-b",100,3.0,1_000),
+            wi("mem-a",100,1.0,3_000),
+            wi("mem-b",100,1.0,3_000),
+        ];
+        let fifo=simulate_bounded_fifo(&env,&work);
+        let fit=simulate_bounded_fit_scan(&env,&work);
+        assert_eq!(fifo.hard_envelope_violations,0);
+        assert_eq!(fit.hard_envelope_violations,0);
+        assert_eq!(fit.completed,4);
+        assert!(fit.makespan_ms < fifo.makespan_ms, "fit={:?} fifo={:?}",fit,fifo);
+    }
+
 }
