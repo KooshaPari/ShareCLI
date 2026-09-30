@@ -1110,4 +1110,42 @@ mod tests {
         );
     }
 
+
+    /// Mature-recovery adversarial control: the February donor explicitly
+    /// removed dead-PID tickets before ordering. The Rust recovery currently
+    /// ages ticket names but does not validate waiter liveness. A fresh dead
+    /// Critical ticket must not block a live Normal waiter.
+    #[test]
+    fn fresh_dead_waiter_must_not_block_live_waiter() {
+        let dir = tempfile::tempdir().unwrap();
+        let q = SlotQueue::with_options(
+            dir.path(),
+            1,
+            Duration::from_secs(2),
+            Duration::from_millis(10),
+        );
+        let lane = "dead-waiter";
+        let waiting = q.waiting_dir(lane);
+        fs::create_dir_all(&waiting).unwrap();
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        // PID u32::MAX is not a plausible live userspace process on the Linux
+        // recovery runner. More importantly, current is_my_turn never checks
+        // liveness at all; it only parses rank/time from this filename.
+        let dead = format!("00.{now}.{}.1", u32::MAX);
+        let mine = format!("02.{now}.{}.2", std::process::id());
+        fs::write(waiting.join(&dead), "0\n").unwrap();
+        fs::write(waiting.join(&mine), "2\n").unwrap();
+
+        assert!(
+            q.is_my_turn(lane, QueuePriority::Normal, &mine, Instant::now())
+                .unwrap(),
+            "dead waiter ticket still participates in ordering; donor liveness behavior was lost"
+        );
+    }
+
 }
