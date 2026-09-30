@@ -44,5 +44,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Run native queue adversarial controls
+      - name: Run positive queue crash-recovery control
+        run: cargo test -p sharecli-ipc --test recovery_queue_crash -- --nocapture
+      - name: Run native queue aging/FIFO adversarial controls
         run: cargo test -p sharecli-ipc queue::tests:: -- --nocapture
