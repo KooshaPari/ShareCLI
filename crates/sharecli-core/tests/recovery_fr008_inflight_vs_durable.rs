@@ -2,6 +2,7 @@
 //! from unsafe durable replay under the current coupled Lock-Wait-Cache path.
 //!
 //! No product remediation is included.
+//! Recovery rerun marker: 2026-09-30 after ontology/admission slices.
 
 #![cfg(unix)]
 
