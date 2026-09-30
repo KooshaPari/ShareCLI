@@ -98,3 +98,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Envelope-safe baseline model
         run: cargo test -p sharecli-ipc scheduling_reference::tests:: -- --nocapture
+
+  scheduling-benchmark-simulator:
+    name: B05 scheduling benchmark simulator
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Naive versus bounded FIFO benchmark controls
+        run: cargo test -p sharecli-ipc scheduling_benchmark::tests:: -- --nocapture
