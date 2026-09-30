@@ -80,3 +80,12 @@ jobs:
         run: cargo test -p sharecli-ipc capability::tests:: -- --nocapture
       - name: SC-WP-A04 equivalence adapter
         run: cargo test -p sharecli-ipc equivalence::tests:: -- --nocapture
+
+  scheduling-domain:
+    name: SC-WP-A06 scheduling domain
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Resource and schedule identity controls
+        run: cargo test -p sharecli-ipc scheduling::tests:: -- --nocapture
