@@ -1,93 +1,74 @@
-# ShareCLI developer-agent handoff gate — v0.1
+# ShareCLI developer-agent handoff gate — v0.2
 
-Status: **PARTIAL HANDOFF READY**  
+Status: **PARTIAL / TWO-TIER HANDOFF**  
 Date: 2026-09-30.
 
-Developer agents MAY begin bounded remediation/prototype work listed below. They MUST NOT treat the mature specification/design program as complete or implement speculative unresolved families as settled architecture.
+Developer agents may work only inside the tiers below. Specification/design completion remains false.
 
-## Green-to-implement work packages
+## Tier A — structurally authorized now
 
-### SC-DEV-01 — split in-flight coordination from durable result storage
-Goal: create explicit internal abstractions so an execution can be shared while active without automatically becoming replayable afterward.
+### SC-DEV-A1 — equivalence adapter contract
+Implement a minimal versioned adapter interface and decision enum:
+`BYPASS | IN_FLIGHT | DURABLE`.
 
-Constraints:
-- preserve normal execution when no adapter authorizes durable reuse;
-- no generic Time/Args/Git fallback may manufacture durable eligibility;
-- existing behavior may remain behind compatibility flags during migration;
-- do not delete historical modes until migration/compatibility decision is explicit.
+Hard constraints:
+- unknown/unregistered adapter = BYPASS;
+- no generic Time/Args/Git mode may manufacture DURABLE eligibility;
+- receipt records adapter/version/input identity/decision;
+- one deterministic fixture adapter only initially.
 
-Required tests:
-- concurrent same accepted equivalence executes underlying command once;
-- after completion, changed relevant input executes again unless durable adapter authorizes replay;
-- owner failure wakes/retries/bypasses correctly;
-- no cached-success result from an UNKNOWN equivalence decision.
+Authority: SC-AD-02 + native SC-F01/F06/F07/F08.
 
-### SC-DEV-02 — equivalence adapter interface
-Implement a minimal versioned adapter contract and BYPASS/IN_FLIGHT/DURABLE decision type.
+### SC-DEV-A2 — capability-truth model
+Represent observed/attributed/owned/supervised/mediated/filesystem-intercepted/optimization-eligible/result-shareable/recovery-managed independently.
 
-Do **not** implement a broad catalog yet. Start with:
-- one deterministic fixture adapter;
-- unknown adapter fallback = BYPASS;
-- evidence exposes adapter/version/relevant-input identity.
+No UI may infer one state from another.
 
-### SC-DEV-03 — queue identity/fairness correctness
-Fix independently demonstrated structural defects without expanding queue scope:
-- saturating aging, no u8 wrap;
-- semantic numeric FIFO;
-- stale/dead waiter reclaim;
-- generation-safe ownership abstraction;
-- cleanup failures observable.
+### SC-DEV-A3 — FUSE policy plumbing
+Introduce `off | optional | required` configuration/result types and truthful degraded evidence.
 
-Cross-platform ownership may use platform adapters. Do not hard-code Linux pidfd as the public ontology.
+Production behavior change for `required` must remain behind explicit opt-in until its fail-closed native oracle exists.
 
-### SC-DEV-04 — truthful FUSE mode plumbing
-Introduce off/optional/required policy and capability result.
-- optional unavailable → continue + degraded evidence;
-- required unavailable → fail before dependent command;
-- off → no mount attempt.
+### SC-DEV-A4 — trace/evidence enforcement
+Implement machine validation that:
+- relation-less FR tags are not semantic trace edges;
+- old scorecards/catalogs are excluded unless explicitly qualified;
+- exact candidate/configuration/verifier identity is required for green.
 
-### SC-DEV-05 — capability-truth projection
-Expose enough machine-readable state to distinguish observed/owned/mediated/equivalence/filesystem/recovery facts.
+This is control-plane work, not product behavior.
 
-## Prototype-only work packages
+## Tier B — experiment-dependent / do not merge production remediation yet
 
-### SC-EXP-01 — native jobserver
-One nested-build fixture comparing native jobserver, ProductLease, and explicit composition.
+### SC-DEV-B1 — split in-flight from durable storage
+Design/prototype is authorized. Production merge waits for the exact `recovery_fr008_inflight_vs_durable` receipt and independent review of owner-failure semantics.
 
-### SC-EXP-02 — process-generation providers
-Compare Linux pidfd and corresponding Windows/macOS primitives behind one ProcessGeneration/OwnerHandle interface.
+### SC-DEV-B2 — queue ownership/fairness replacement
+Prototype abstractions are authorized. Production remediation waits for exact queue aging/FIFO/PID-reuse receipts and native-jobserver comparison.
 
-### SC-EXP-03 — tool-specific durable adapter
-Select one real tool family only after comparative value vs its native cache is demonstrated.
+Do not patch only u8 wrap/string ordering and call queue architecture solved.
 
-## Not authorized yet
+### SC-DEV-B3 — platform ProcessGeneration provider
+Prototype Linux pidfd / Windows / macOS candidates. No cross-platform public contract is frozen yet.
+
+### SC-DEV-B4 — real tool durable adapter
+Not authorized until one real tool family demonstrates value over its native cache.
+
+## Explicitly prohibited
 
 - universal durable command cache rewrite;
+- hashing additional generic fields and declaring semantic equivalence solved;
 - universal FUSE requirement;
 - mesh/distributed expansion;
-- new dashboard feature growth unrelated to capability truth;
-- third-party orchestration platform;
+- dashboard growth unrelated to capability truth;
 - requirement-count padding;
-- declaring generic cache modes correct by adding more hash fields.
+- broad implementation-complete claim.
 
-## Mandatory independent receipts before merging architecture-sensitive remediation
+## Merge receipt
 
-Each PR must identify:
-- ontology/obligation IDs;
-- decision record;
-- exact candidate SHA;
-- exact dependency revisions;
-- positive and negative oracle commands;
-- run/job IDs;
-- executed-case count;
-- unresolved risks.
+Architecture-sensitive work must identify ontology/obligation/decision IDs, exact candidate/dependencies, positive and negative oracle commands, exact run/job IDs, executed-case count, and unresolved risks.
 
-A developer-written unit test alone is insufficient for the architecture-risk gates.
+## Verdict
 
-## Handoff verdict
-
-**READY FOR DEVELOPER AGENTS: YES, bounded work packages SC-DEV-01..05 and experiments SC-EXP-01..03.**
-
-**READY FOR “implement the whole mature ShareCLI”: NO.**
-
-Specification/design completion remains gated by the pass-2 coverage ledger and independent architecture review.
+**Tier A developer handoff: READY.**  
+**Tier B prototype handoff: READY; production merge gate CLOSED.**  
+**Whole mature ShareCLI implementation: NOT READY.**
