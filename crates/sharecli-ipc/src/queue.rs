@@ -1045,4 +1045,69 @@ mod tests {
         t1.join().unwrap();
         t2.join().unwrap();
     }
+
+    /// Mature-recovery adversarial control: the aging computation must be
+    /// monotonic. Casting the elapsed step count to u8 before saturation wraps
+    /// 256 steps back to zero and can restore an ancient Critical ticket to the
+    /// highest priority.
+    #[test]
+    fn effective_rank_must_saturate_instead_of_wrapping_at_256_steps() {
+        let at_255 = SlotQueue::effective_rank(
+            "ignored",
+            QueuePriority::Critical,
+            Duration::from_secs(255),
+        );
+        let at_256 = SlotQueue::effective_rank(
+            "ignored",
+            QueuePriority::Critical,
+            Duration::from_secs(256),
+        );
+        let at_300 = SlotQueue::effective_rank(
+            "ignored",
+            QueuePriority::Critical,
+            Duration::from_secs(300),
+        );
+
+        assert_eq!(at_255, u8::MAX);
+        assert_eq!(
+            at_256,
+            u8::MAX,
+            "aging wrapped at 256 steps; an ancient Critical waiter became rank 0 again"
+        );
+        assert_eq!(at_300, u8::MAX);
+    }
+
+    /// Mature-recovery adversarial control: sequence suffixes encode arrival
+    /// order and therefore must compare numerically. Lexicographic filename
+    /// order incorrectly puts sequence 10 ahead of sequence 2.
+    #[test]
+    fn ticket_sequence_fifo_must_be_numeric_not_lexicographic() {
+        let dir = tempfile::tempdir().unwrap();
+        let q = SlotQueue::with_options(
+            dir.path(),
+            1,
+            Duration::from_secs(2),
+            Duration::from_millis(10),
+        );
+        let lane = "sequence-fifo";
+        let waiting = q.waiting_dir(lane);
+        fs::create_dir_all(&waiting).unwrap();
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let pid = std::process::id();
+        let earlier = format!("02.{now}.{pid}.2");
+        let later = format!("02.{now}.{pid}.10");
+        fs::write(waiting.join(&earlier), "2\n").unwrap();
+        fs::write(waiting.join(&later), "2\n").unwrap();
+
+        assert!(
+            q.is_my_turn(lane, QueuePriority::Normal, &earlier, Instant::now())
+                .unwrap(),
+            "numeric FIFO requires sequence 2 to win before sequence 10"
+        );
+    }
+
 }
