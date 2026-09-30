@@ -8,13 +8,30 @@
   "registry_source_snapshot": "85d7cd00cf59c379c05b740e8130a85b0d5bd31b",
   "specification_branch": "spec/mature-recovery-2026-09-29",
   "implementation_candidate": null,
-  "observed_on": "2026-09-29",
-  "scope_products": ["KooshaPari/ShareCLI", "KooshaPari/BytePort"],
-  "internal_dependency_sources_inspected": [],
-  "dependency_revision_audit": "OPEN: donor and dependency pointers are not inspected dependency source snapshots",
-  "history_extent": "selected commit metadata, lineage ADR and recovery notes; not complete Git history",
-  "native_product_suites": "NOT_RUN",
-  "environment_limits": ["local git clone failed DNS resolution", "Rust toolchain unavailable"],
+  "observed_on": "2026-09-30",
+  "scope_products": [
+    "KooshaPari/ShareCLI",
+    "KooshaPari/BytePort"
+  ],
+  "internal_dependency_sources_inspected": [
+    {
+      "repository": "KooshaPari/PhenoInfra",
+      "revision": "dd040ed1bb293e3c843245448a9a173f5dff3470",
+      "basis": "Cargo manifest pin / lockfile"
+    },
+    {
+      "repository": "KooshaPari/PhenoShared",
+      "revision": "68beca269720d582a408dc5bbb62982fe86964af",
+      "basis": "Cargo.lock resolution for substrate/runtime-process"
+    }
+  ],
+  "dependency_revision_audit": "PARTIAL: exact PhenoInfra/PhenoShared revisions frozen; donor February harness and any additional runtime/system dependencies still require semantic source inspection where material",
+  "history_extent": "multiple lineage/PR/commit passes including February recovery, thesis restoration and trace-authority review; useful history denominator remains open",
+  "native_product_suites": "TARGETED_RECOVERY_ORACLES_EXECUTED; full product suite not accepted as mature evidence",
+  "environment_limits": [
+    "native FUSE availability/privilege is environment-dependent and observed degraded on Linux CI",
+    "full installed multi-platform product acceptance not completed"
+  ],
   "source_coverage_denominator": "OPEN",
   "specification_design_complete": false
 }
