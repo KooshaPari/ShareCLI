@@ -1,6 +1,6 @@
 {
   "product": "KooshaPari/ShareCLI",
-  "observed_on": "2026-09-29",
+  "observed_on": "2026-09-30",
   "source_snapshot": "4f01d0199e82b62bcf20399afcc102f58a10ad07",
   "registry_source_snapshot": "85d7cd00cf59c379c05b740e8130a85b0d5bd31b",
   "specification_branch": "spec/mature-recovery-2026-09-29",
@@ -9,10 +9,13 @@
   "specification_design_complete": false,
   "completion_percent": null,
   "source_denominator": "OPEN",
-  "native_product_runs": 1,
+  "native_product_runs": 2,
   "native_oracle_attempts": 3,
   "native_oracle_results": {
-    "SC_F01": "NATIVE_COUNTEREXAMPLE_REPRODUCED"
+    "SC_F01": "NATIVE_COUNTEREXAMPLE_REPRODUCED_GIT_CHANGED_BYTES",
+    "SC_F06": "NATIVE_COUNTEREXAMPLE_REPRODUCED_ARGS_CROSS_WORKSPACE",
+    "SC_F07": "NATIVE_COUNTEREXAMPLE_REPRODUCED_GIT_ENV_CHANGE",
+    "SC_F08": "NATIVE_COUNTEREXAMPLE_REPRODUCED_TIME_EXTERNAL_STATE"
   },
   "source_derived_model_counterexamples": 3,
   "architectural_risks_experimentally_closed": 0,
@@ -21,14 +24,17 @@
     "SC-F02",
     "SC-F03",
     "SC-F04",
-    "SC-F05"
+    "SC-F05",
+    "SC-F06",
+    "SC-F07",
+    "SC-F08"
   ],
   "gates": {
     "source_ledger_resolved": "OPEN",
     "history_alias_falsification": "OPEN",
     "sota_research": "MULTI_PASS_OPEN",
     "best_alternative_stack": "PROPOSED_NOT_VALIDATED",
-    "bootstrap_decisions": "PROVISIONAL",
+    "bootstrap_decisions": "GENERIC_ARBITRARY_COMMAND_DURABLE_REPLAY_REJECTED_AS_DEFAULT; ADAPTER_MODEL_PROVISIONAL",
     "differentiation_survives_attack": "OPEN",
     "ontology_review": "DRAFT_REFINED",
     "all_accepted_obligations": "OPEN",
@@ -36,7 +42,7 @@
     "journeys": "DRAFT_NOT_VERIFIED",
     "stage_projections": "PROPOSED",
     "oracle_design_complete": "PARTIAL",
-    "high_risk_experiments": "SC_F01_REPRODUCED_QUEUE_AND_MODE_RISKS_OPEN",
+    "high_risk_experiments": "GENERIC_CACHE_EQUIVALENCE_FALSIFIED_NATIVELY; QUEUE_FUSE_OWNERSHIP_OPEN",
     "implementation_mapping": "PARTIAL_REACHABILITY_SPLIT_ESTABLISHED",
     "bidirectional_trace_validity": "NOT_VALIDATED",
     "registry_repo_agreement": "PARTIAL",
@@ -46,10 +52,11 @@
     "no_blocking_findings": "BLOCKED",
     "independent_fresh_review": "NOT_RUN"
   },
-  "evidence_policy": "SC-F01 HAS EXACT NATIVE RECEIPT; OTHER MODEL COUNTEREXAMPLES ARE NOT PRODUCT ACCEPTANCE",
+  "evidence_policy": "SC-F01/F06/F07/F08 HAVE EXACT NATIVE RECEIPTS; FAILURES ESTABLISH COUNTEREXAMPLES NOT REMEDIATION",
   "next_minimal_context": [
-    "Equivalence-domain matrix: in-flight vs durable replay, tool/env/principal/external-input changes",
-    "SC-S07 live/orphan queue fixtures and ownership/fencing semantics",
+    "Define and test in-flight-only equivalence separately from durable replay",
+    "Select first bounded tool-native/equivalence adapter prototype",
+    "SC-S07 live/orphan queue fixtures and lease/fencing semantics",
     "FUSE required/optional capability truth experiment",
     "February donor/user authority closure"
   ],
