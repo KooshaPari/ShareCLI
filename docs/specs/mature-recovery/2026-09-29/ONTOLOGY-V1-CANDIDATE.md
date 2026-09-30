@@ -1,6 +1,6 @@
 # ShareCLI ontology v1.0 candidate — workload coordination contract
 
-Status: **CANDIDATE FREEZE / architecture-risk experiments still gate final acceptance**  
+Status: **V1.1 CANDIDATE / adversarial-review refinements incorporated; experiments still gate freeze**  
 Date: 2026-09-30.  
 Frozen implementation source: `4f01d0199e82b62bcf20399afcc102f58a10ad07`.
 
@@ -54,6 +54,15 @@ Human, agent or service authority. Principal identity is not PID identity.
 ### ProcessGeneration
 A particular process lifetime. Minimum identity is platform-specific but MUST resist PID reuse. PID is an attribute, not the entity.
 
+### OwnershipClaim
+Durable authority/registration binding a Principal/Project to a ProcessGeneration or managed workload. It survives replacement of the ephemeral ShareCLI controller/worker and has its own generation/provenance.
+
+### PolicyScope
+A host/project/workspace/principal-scoped policy input. Multiple scopes may overlap; precedence/composition is resolved explicitly into a PolicyDecision rather than by configuration accident.
+
+### PolicyDecision
+Versioned resolved policy for admission/mediation/equivalence/filesystem behavior, with provenance to contributing PolicyScopes.
+
 ### Project
 Product policy/authorization grouping.
 
@@ -81,10 +90,16 @@ Explicit result:
 Unknown/failed equivalence resolves to BYPASS.
 
 ### ExecutionAttempt
-One real attempt to execute an Invocation.
+One real attempt to execute an Invocation. One Invocation may create multiple attempts through retry/speculation/racing.
+
+### AttemptDisposition
+State/reason for an attempt such as selected, superseded, cancelled, failed or unknown.
+
+### ResultSelection
+Evidence-backed choice of which successful attempt/result is authoritative for the invocation. Durable reuse may bind only to an accepted selected result.
 
 ### ResultArtifact
-Result bound to ExecutionAttempt, equivalence identity and provenance. It is not a TTL entry by definition.
+Result bound to execution/equivalence identity and provenance. Producer may be a ShareCLI ExecutionAttempt or an imported/native tool-cache mechanism; provenance must distinguish them. It is not a TTL entry by definition.
 
 ### AdmissionProvider
 Authority controlling concurrency/admission for a workload family:
@@ -103,7 +118,7 @@ Actual interception/redirection route such as an authorized proxy/dispatcher. Ob
 `off | optional | required`.
 
 ### FilesystemSession
-Verified interception/isolation session. Optional failure produces truthful degradation; required failure prevents dependent execution.
+Verified interception/isolation session with declared coverage/scope. Optional failure produces truthful degradation; required failure prevents dependent execution. Session readiness does not imply all subprocess/filesystem activity is covered.
 
 ### EvidenceReceipt
 Verifier observation bound to exact subject, candidate, configuration, adapter/provider version and environment.
@@ -138,6 +153,12 @@ No state implies another unless an accepted transition says so.
 18. Speculation cannot exceed durable-equivalence authority.
 19. Evidence binds the exact implementation/dependency/configuration candidate.
 20. UI/API status is a projection of these facts, not a substitute for them.
+21. Overlapping policy scopes resolve through an explicit PolicyDecision.
+22. Controller/worker replacement does not destroy durable OwnershipClaims.
+23. Multiple ExecutionAttempts require explicit disposition/result selection.
+24. Native/external cache results preserve producer provenance rather than masquerading as ShareCLI execution.
+25. Filesystem interception claims include coverage scope.
+26. Distributed/remote coordination is not part of the currently accepted local/owned-workstation product boundary; future mesh expansion requires a separate architecture/authority gate.
 
 ## Mechanism disposition
 
