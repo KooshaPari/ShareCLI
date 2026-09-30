@@ -1,16 +1,239 @@
 {
-  "schema":"mature-recovery-work-packages/v1",
-  "product":"KooshaPari/ShareCLI",
-  "source_snapshot":"4f01d0199e82b62bcf20399afcc102f58a10ad07",
-  "packages":[
-    {"id":"SC-WP-A01","tier":"A","title":"Semantic identity types","depends_on":[],"merge_gate":"READY","critical":["ProcessGeneration is not PID","legacy unknown stays unknown"],"evidence_required":["serialization","same-pid-different-generation","legacy-load"]},
-    {"id":"SC-WP-A02","tier":"A","title":"Recovery subject and operation model","depends_on":["SC-WP-A01"],"merge_gate":"READY","critical":["preserve observation/process identity","no spawn in model work"],"evidence_required":["reopen continuity","legacy unknown generation"]},
-    {"id":"SC-WP-A03","tier":"A","title":"Capability truth projection","depends_on":["SC-WP-A01"],"merge_gate":"READY","critical":["observed does not imply owned/mediated/optimized"],"evidence_required":["observed-only","mediated-passthrough","FUSE-degraded"]},
-    {"id":"SC-WP-A04","tier":"A","title":"Equivalence adapter interface","depends_on":["SC-WP-A01"],"merge_gate":"READY","critical":["unknown=Bypass","generic historical modes cannot manufacture Durable"],"evidence_required":["fixture-adapter","changed-input","unknown-command"]},
-    {"id":"SC-WP-A05","tier":"A","title":"Trace and evidence qualification validator","depends_on":["SC-WP-A02","SC-WP-A03","SC-WP-A04"],"merge_gate":"READY","critical":["no relation-less trace","no stale/skipped/wrong-candidate green"],"evidence_required":["invalid-catalog fixtures","exact-receipt fixtures"]},
-    {"id":"SC-WP-B01","tier":"B","title":"Session recovery integration","depends_on":["SC-WP-A01","SC-WP-A02","SC-WP-A05"],"merge_gate":"BLOCKED","blocked_by":["Exited recovery semantics","SC-VS-S01..S12 public oracle harness"],"evidence_required":["SC-VS-S01..S12"]},
-    {"id":"SC-WP-B02","tier":"B","title":"In-flight and durable split","depends_on":["SC-WP-A04","SC-WP-A05"],"merge_gate":"BLOCKED","blocked_by":["exact in-flight-vs-durable receipt","owner-failure semantics"],"evidence_required":["recovery_fr008_inflight_vs_durable"]},
-    {"id":"SC-WP-B03","tier":"B","title":"Admission provider","depends_on":["SC-WP-A01","SC-WP-A03","SC-WP-A05"],"merge_gate":"BLOCKED","blocked_by":["queue PID-reuse/fairness receipts","native jobserver comparison"],"evidence_required":["PID reuse","aging","FIFO","jobserver composition"]},
-    {"id":"SC-WP-B04","tier":"B","title":"Required FUSE mode","depends_on":["SC-WP-A03","SC-WP-A05"],"merge_gate":"BLOCKED","blocked_by":["dependent journey","fail-closed oracle"],"evidence_required":["required-unavailable","optional-degraded"]}
+  "schema": "mature-recovery-work-packages/v1",
+  "product": "KooshaPari/ShareCLI",
+  "source_snapshot": "4f01d0199e82b62bcf20399afcc102f58a10ad07",
+  "packages": [
+    {
+      "id": "SC-WP-A01",
+      "tier": "A",
+      "title": "Semantic identity types",
+      "depends_on": [],
+      "merge_gate": "READY",
+      "critical": [
+        "ProcessGeneration is not PID",
+        "legacy unknown stays unknown"
+      ],
+      "evidence_required": [
+        "serialization",
+        "same-pid-different-generation",
+        "legacy-load"
+      ]
+    },
+    {
+      "id": "SC-WP-A02",
+      "tier": "A",
+      "title": "Recovery subject and operation model",
+      "depends_on": [
+        "SC-WP-A01"
+      ],
+      "merge_gate": "READY",
+      "critical": [
+        "preserve observation/process identity",
+        "no spawn in model work"
+      ],
+      "evidence_required": [
+        "reopen continuity",
+        "legacy unknown generation"
+      ]
+    },
+    {
+      "id": "SC-WP-A03",
+      "tier": "A",
+      "title": "Capability truth projection",
+      "depends_on": [
+        "SC-WP-A01"
+      ],
+      "merge_gate": "READY",
+      "critical": [
+        "observed does not imply owned/mediated/optimized"
+      ],
+      "evidence_required": [
+        "observed-only",
+        "mediated-passthrough",
+        "FUSE-degraded"
+      ]
+    },
+    {
+      "id": "SC-WP-A04",
+      "tier": "A",
+      "title": "Equivalence adapter interface",
+      "depends_on": [
+        "SC-WP-A01"
+      ],
+      "merge_gate": "READY",
+      "critical": [
+        "unknown=Bypass",
+        "generic historical modes cannot manufacture Durable"
+      ],
+      "evidence_required": [
+        "fixture-adapter",
+        "changed-input",
+        "unknown-command"
+      ]
+    },
+    {
+      "id": "SC-WP-A05",
+      "tier": "A",
+      "title": "Trace and evidence qualification validator",
+      "depends_on": [
+        "SC-WP-A02",
+        "SC-WP-A03",
+        "SC-WP-A04"
+      ],
+      "merge_gate": "READY",
+      "critical": [
+        "no relation-less trace",
+        "no stale/skipped/wrong-candidate green"
+      ],
+      "evidence_required": [
+        "invalid-catalog fixtures",
+        "exact-receipt fixtures"
+      ]
+    },
+    {
+      "id": "SC-WP-B01",
+      "tier": "B",
+      "title": "Session recovery integration",
+      "depends_on": [
+        "SC-WP-A01",
+        "SC-WP-A02",
+        "SC-WP-A05"
+      ],
+      "merge_gate": "BLOCKED",
+      "blocked_by": [
+        "Exited recovery semantics",
+        "SC-VS-S01..S12 public oracle harness"
+      ],
+      "evidence_required": [
+        "SC-VS-S01..S12"
+      ]
+    },
+    {
+      "id": "SC-WP-B02",
+      "tier": "B",
+      "title": "In-flight and durable split",
+      "depends_on": [
+        "SC-WP-A04",
+        "SC-WP-A05"
+      ],
+      "merge_gate": "BLOCKED",
+      "blocked_by": [
+        "exact in-flight-vs-durable receipt",
+        "owner-failure semantics"
+      ],
+      "evidence_required": [
+        "recovery_fr008_inflight_vs_durable"
+      ]
+    },
+    {
+      "id": "SC-WP-B03",
+      "tier": "B",
+      "title": "Admission provider",
+      "depends_on": [
+        "SC-WP-A01",
+        "SC-WP-A03",
+        "SC-WP-A05"
+      ],
+      "merge_gate": "BLOCKED",
+      "blocked_by": [
+        "queue PID-reuse/fairness receipts",
+        "native jobserver comparison"
+      ],
+      "evidence_required": [
+        "PID reuse",
+        "aging",
+        "FIFO",
+        "jobserver composition"
+      ]
+    },
+    {
+      "id": "SC-WP-B04",
+      "tier": "B",
+      "title": "Required FUSE mode",
+      "depends_on": [
+        "SC-WP-A03",
+        "SC-WP-A05"
+      ],
+      "merge_gate": "BLOCKED",
+      "blocked_by": [
+        "dependent journey",
+        "fail-closed oracle"
+      ],
+      "evidence_required": [
+        "required-unavailable",
+        "optional-degraded"
+      ]
+    },
+    {
+      "id": "SC-WP-A06",
+      "tier": "A",
+      "title": "Workload resource scheduling domain",
+      "depends_on": [
+        "SC-WP-A01",
+        "SC-WP-A03"
+      ],
+      "merge_gate": "READY",
+      "critical": [
+        "WorkItem identity survives replanning",
+        "Unknown resource demand is not zero",
+        "SchedulePlan is not execution evidence"
+      ],
+      "evidence_required": [
+        "resource-vector fixtures",
+        "plan-vs-placement fixture",
+        "unknown-demand fixture"
+      ]
+    },
+    {
+      "id": "SC-WP-B05",
+      "tier": "B",
+      "title": "Deterministic scheduling and packing vertical slice",
+      "depends_on": [
+        "SC-WP-A06",
+        "SC-WP-A05"
+      ],
+      "merge_gate": "BLOCKED",
+      "blocked_by": [
+        "scheduler/packing SOTA pass",
+        "baseline workload and metric contract"
+      ],
+      "critical": [
+        "No hard envelope violation",
+        "Scheduling correctness separate from optimization quality",
+        "Baseline and candidate use same workload/environment"
+      ],
+      "evidence_required": [
+        "naive baseline",
+        "packed schedule",
+        "peak resource receipt",
+        "completion/throughput receipt",
+        "fairness/queue receipt"
+      ]
+    },
+    {
+      "id": "SC-WP-B06",
+      "tier": "B",
+      "title": "Speculation and pressure-response strategy",
+      "depends_on": [
+        "SC-WP-A06",
+        "SC-WP-B05"
+      ],
+      "merge_gate": "BLOCKED",
+      "blocked_by": [
+        "B05 scheduling spine",
+        "speculation budget policy",
+        "pressure-response oracle"
+      ],
+      "critical": [
+        "Speculation budget explicit",
+        "Losing attempts accounted/cancelled safely",
+        "Pressure observation does not imply enforcement"
+      ],
+      "evidence_required": [
+        "speculation fixture",
+        "pressure fixture",
+        "wasted-work accounting"
+      ]
+    }
   ]
 }
