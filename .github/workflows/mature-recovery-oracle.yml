@@ -107,3 +107,23 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Naive versus bounded FIFO benchmark controls
         run: cargo test -p sharecli-ipc scheduling_benchmark::tests:: -- --nocapture
+
+  native-scheduling-pressure:
+    name: Native pressure fixture
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Compare naive and bounded native memory pressure
+        run: python scripts/recovery/scheduling_pressure_fixture.py --mib 12 --seconds 0.20
+
+  native-jobserver-discovery:
+    name: GNU jobserver discovery prototype
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Parse native jobserver transports
+        run: cargo test -p sharecli-ipc jobserver::tests:: -- --nocapture
