@@ -34,6 +34,7 @@ pub mod capability;
 pub mod handler;
 pub mod scheduling;
 pub mod pressure;
+pub mod resource_control;
 pub mod scheduling_reference;
 pub mod scheduling_benchmark;
 pub mod equivalence;
@@ -726,3 +727,5 @@ pub use scheduling_benchmark::{simulate_bounded_fifo, simulate_naive_all_at_once
 pub use jobserver::{parse_makeflags_jobserver, JobserverDescriptor, JobserverTransport};
 
 pub use pressure::{parse_linux_psi, PressureProvider, PressureSnapshot, StallWindow};
+
+pub use resource_control::{ResourceControlCapabilities, ResourceControlProvider};
