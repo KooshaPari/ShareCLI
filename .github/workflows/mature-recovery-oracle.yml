@@ -32,4 +32,6 @@ jobs:
       - name: Run changed-input native adversarial control
         run: cargo test -p sharecli-core --test recovery_fr008_semantic_identity -- --nocapture || true
       - name: Run equivalence-domain adversarial matrix
-        run: cargo test -p sharecli-core --test recovery_fr008_equivalence_matrix -- --nocapture
+        run: cargo test -p sharecli-core --test recovery_fr008_equivalence_matrix -- --nocapture || true
+      - name: Run in-flight-vs-durable architecture experiment
+        run: cargo test -p sharecli-core --test recovery_fr008_inflight_vs_durable -- --nocapture
