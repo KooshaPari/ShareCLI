@@ -37,6 +37,7 @@ pub mod scheduling_reference;
 pub mod scheduling_benchmark;
 pub mod equivalence;
 pub mod identity;
+pub mod jobserver;
 pub mod log_buffer;
 pub mod nocache;
 pub mod queue;
@@ -720,3 +721,5 @@ pub use scheduling::{PlannedPlacement, ResourceEnvelope, ResourceVector, Schedul
 pub use scheduling_reference::{bounded_fifo_pack, PackingReceipt, SchedulableWork};
 
 pub use scheduling_benchmark::{simulate_bounded_fifo, simulate_naive_all_at_once, BenchmarkMetrics, BenchmarkWork};
+
+pub use jobserver::{parse_makeflags_jobserver, JobserverDescriptor, JobserverTransport};
