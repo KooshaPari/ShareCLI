@@ -9,11 +9,15 @@
   "specification_design_complete": false,
   "completion_percent": null,
   "source_denominator": "OPEN",
-  "native_product_runs": 1,
-  "native_oracle_attempts": 3,
+  "native_product_runs": 2,
+  "native_oracle_attempts": 4,
   "native_oracle_results": {
     "SC_F01": "NATIVE_COUNTEREXAMPLE_REPRODUCED_GIT_CHANGED_BYTES",
-    "SC_EQUIVALENCE_MATRIX_V2": "QUEUED_NOT_EVIDENCE"
+    "SC_F06": "NATIVE_COUNTEREXAMPLE_REPRODUCED_GIT_CHANGED_WORKSPACE",
+    "SC_F07": "NATIVE_COUNTEREXAMPLE_REPRODUCED_TIME_EXTERNAL_INPUT",
+    "SC_F08": "NATIVE_COUNTEREXAMPLE_REPRODUCED_ARGS_ENVIRONMENT",
+    "SC_INFLIGHT_VS_DURABLE": "PENDING_EXECUTION_NOT_EVIDENCE",
+    "SC_QUEUE_PID_REUSE": "PENDING_EXECUTION_NOT_EVIDENCE"
   },
   "source_derived_model_counterexamples": 3,
   "architectural_risks_experimentally_closed": 0,
@@ -22,24 +26,27 @@
     "SC-F02",
     "SC-F03",
     "SC-F04",
-    "SC-F05"
+    "SC-F05",
+    "SC-F06",
+    "SC-F07",
+    "SC-F08"
   ],
   "gates": {
     "source_ledger_resolved": "OPEN",
     "history_alias_falsification": "OPEN",
     "sota_research": "MULTI_PASS_OPEN",
     "best_alternative_stack": "PROPOSED_NOT_VALIDATED",
-    "bootstrap_decisions": "GENERIC_GIT_MODE_DURABLE_REPLAY_FALSIFIED; BROADER ADAPTER_MODEL_PROVISIONAL",
+    "bootstrap_decisions": "GENERIC_DURABLE_REPLAY_MODES_FALSIFIED; ADAPTER_MODEL_PROVISIONAL; FUSE_OPTIONAL_REQUIRED_MODE_PROVISIONAL; NATIVE_ADMISSION_PREFERRED_WHEN_APPLICABLE",
     "differentiation_survives_attack": "OPEN",
-    "ontology_review": "DRAFT_REFINED",
+    "ontology_review": "DRAFT_REFINED_MULTIPLE_SLICES",
     "all_accepted_obligations": "OPEN",
     "quality_overlays": "PARTIAL",
     "journeys": "DRAFT_NOT_VERIFIED",
     "stage_projections": "PROPOSED",
     "oracle_design_complete": "PARTIAL",
-    "high_risk_experiments": "SC_F01_NATIVE_REPRODUCED; EXPANDED_EQUIVALENCE_MATRIX_QUEUED; QUEUE_FUSE_OWNERSHIP_OPEN",
-    "implementation_mapping": "PARTIAL_REACHABILITY_SPLIT_ESTABLISHED",
-    "bidirectional_trace_validity": "NOT_VALIDATED",
+    "high_risk_experiments": "SC_F01_F06_F07_F08_NATIVE_REPRODUCED; INFLIGHT_QUEUE_PID_REUSE_REQUIRED_FUSE_OPEN",
+    "implementation_mapping": "PARTIAL_SEMANTIC_TRACE_SLICE_01",
+    "bidirectional_trace_validity": "SLICE_01_DRAFT_NOT_FULLY_VALIDATED",
     "registry_repo_agreement": "PARTIAL",
     "catalog_exclusion": "SEMANTICALLY_QUARANTINED_NOT_YET_TECHNICALLY_ENFORCED",
     "no_orphans": "NOT_VALIDATED",
@@ -47,13 +54,13 @@
     "no_blocking_findings": "BLOCKED",
     "independent_fresh_review": "NOT_RUN"
   },
-  "evidence_policy": "ONLY SC-F01 CURRENTLY HAS AN EXACT NATIVE COUNTEREXAMPLE RECEIPT; QUEUED MATRIX RESULTS ARE NOT EVIDENCE",
+  "evidence_policy": "EXACT NATIVE RECEIPTS EXIST FOR SC-F01/F06/F07/F08; CANCELLED/QUEUED INFLIGHT/QUEUE JOBS ARE NOT EVIDENCE",
   "next_minimal_context": [
-    "Harvest expanded Git/Time/Args/environment native matrix",
-    "Define and test in-flight-only equivalence separately from durable replay",
-    "Select first bounded tool-native/equivalence adapter prototype",
-    "SC-S07 live/orphan queue fixtures and lease/fencing semantics",
-    "FUSE required/optional capability truth experiment"
+    "Execute in-flight-vs-durable oracle on stable candidate",
+    "Execute queue aging/FIFO/PID-reuse ownership controls",
+    "Prototype native jobserver vs ProductLeaseProvider composition",
+    "Implement required-vs-optional FUSE candidate mode only after oracle contract review",
+    "Expand semantic trace graph and mature obligation denominator"
   ],
   "pilot": "DEFERRED_UNTIL_BUILT_STAGE; not a substitute for design gate"
 }
