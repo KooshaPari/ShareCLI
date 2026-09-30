@@ -33,6 +33,7 @@ pub mod cache_key;
 pub mod capability;
 pub mod handler;
 pub mod scheduling;
+pub mod scheduling_reference;
 pub mod equivalence;
 pub mod identity;
 pub mod log_buffer;
@@ -714,3 +715,5 @@ mod tests {
 }
 
 pub use scheduling::{PlannedPlacement, ResourceEnvelope, ResourceVector, ScheduleDecision, SchedulePlan, WorkItem};
+
+pub use scheduling_reference::{bounded_fifo_pack, PackingReceipt, SchedulableWork};
