@@ -35,3 +35,14 @@ jobs:
         run: cargo test -p sharecli-core --test recovery_fr008_equivalence_matrix -- --nocapture || true
       - name: Run in-flight-vs-durable architecture experiment
         run: cargo test -p sharecli-core --test recovery_fr008_inflight_vs_durable -- --nocapture
+
+
+  queue-aging-ordering:
+    name: Queue aging and FIFO adversarial oracle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run native queue adversarial controls
+        run: cargo test -p sharecli-ipc queue::tests:: -- --nocapture
