@@ -1,6 +1,6 @@
 # ShareCLI ontology v1.0 candidate — workload coordination contract
 
-Status: **V1.1 CANDIDATE / adversarial-review refinements incorporated; experiments still gate freeze**  
+Status: **V1.2 CANDIDATE / direct-user thesis correction incorporated; scheduling/resource ontology expanded**  
 Date: 2026-09-30.  
 Frozen implementation source: `4f01d0199e82b62bcf20399afcc102f58a10ad07`.
 
@@ -185,3 +185,57 @@ Final v1.0 acceptance still requires:
 - independent adversarial review.
 
 Until then this is the canonical **candidate** ontology and new requirements should use it rather than mechanism-shaped legacy vocabulary.
+
+
+## V1.2 workload/resource optimization extension
+
+Direct user authority establishes workload defragmentation/packing as the mature thesis.
+
+### WorkItem
+A schedulable unit of useful work. May map to one Invocation, a dependency group, or another adapter-defined execution unit.
+
+### WorkGraph
+Dependencies/relationships among WorkItems, including readiness and critical-path/deadline information where known.
+
+### ResourceVector
+Demand/capacity across relevant dimensions such as CPU, RAM, GPU/VRAM, disk, I/O, process slots and thermal/power constraints. Unknown dimensions remain unknown.
+
+### ResourceEnvelope
+Observed/policy-qualified capacity available to a scheduling domain over a time horizon.
+
+### SchedulingPolicy
+Versioned policy/objective describing priorities, fairness, deadlines/time horizons, resource reservations and permitted optimization strategies.
+
+### SchedulePlan
+Versioned proposed placement/order/admission decisions for WorkItems under a ResourceEnvelope and SchedulingPolicy.
+
+### Placement
+Binding of WorkItem/ExecutionAttempt to host/resource allocation/time slot/provider.
+
+### QueueEntry
+Durable waiting state with priority, arrival/aging/dependency and ownership identity.
+
+### OptimizationDecision
+Evidence-backed decision to queue, admit, delay, throttle, coalesce, share, speculate, cancel, replan or bypass.
+
+### SpeculationGroup
+Multiple attempts intentionally executed/raced/prefetched for one accepted work objective, with cost/budget and ResultSelection semantics.
+
+### PressureEvent
+Observed resource/thermal/I/O instability signal used as policy input, never itself proof of enforcement.
+
+### SchedulingReceipt
+Evidence binding input workload/resource snapshot, policy/version, decision/plan, actual execution and measured outcome.
+
+## V1.2 invariants
+
+27. Scheduling correctness is distinct from scheduling quality.
+28. Unknown resource demand/capacity is not treated as zero.
+29. Coalescing/sharing requires accepted equivalence; scheduling similarity alone is insufficient.
+30. Speculation consumes explicit budget/resources and cannot starve required work contrary to policy.
+31. Queue priority/fairness/aging are explicit policy semantics, not filename/order accidents.
+32. Resource observations used by a SchedulePlan carry freshness/provenance.
+33. A SchedulePlan is not evidence that placements/executions occurred.
+34. Replanning preserves durable WorkItem/Operation identity.
+35. Native schedulers/jobservers/caches remain composable providers where they satisfy the policy/capability contract.
+36. Optimization success requires measured outcome evidence against an appropriate baseline, not merely fewer launched processes.
