@@ -8,7 +8,7 @@
   "status": "INCOMPLETE_BLOCKED",
   "specification_design_complete": false,
   "completion_percent": null,
-  "source_denominator": "OPEN",
+  "source_denominator": "PASS_3_OPEN",
   "native_product_runs": 2,
   "native_oracle_attempts": 4,
   "native_oracle_results": {
@@ -19,8 +19,6 @@
     "SC_INFLIGHT_VS_DURABLE": "PENDING_EXECUTION_NOT_EVIDENCE",
     "SC_QUEUE_PID_REUSE": "PENDING_EXECUTION_NOT_EVIDENCE"
   },
-  "source_derived_model_counterexamples": 3,
-  "architectural_risks_experimentally_closed": 0,
   "blocking_findings": [
     "SC-F01",
     "SC-F02",
@@ -32,35 +30,36 @@
     "SC-F08"
   ],
   "gates": {
-    "source_ledger_resolved": "OPEN",
-    "history_alias_falsification": "OPEN",
+    "source_ledger_resolved": "PASS_3_OPEN",
+    "history_alias_falsification": "MULTI_PASS_OPEN",
     "sota_research": "MULTI_PASS_OPEN",
     "best_alternative_stack": "PROPOSED_NOT_VALIDATED",
-    "bootstrap_decisions": "GENERIC_DURABLE_REPLAY_MODES_FALSIFIED; ADAPTER_MODEL_PROVISIONAL; FUSE_OPTIONAL_REQUIRED_MODE_PROVISIONAL; NATIVE_ADMISSION_PREFERRED_WHEN_APPLICABLE",
+    "bootstrap_decisions": "ADAPTER_EQUIVALENCE + NATIVE_ADMISSION + EXPLICIT_FUSE_MODE + LOCAL_COORDINATION BOUNDARY PROVISIONAL",
     "differentiation_survives_attack": "OPEN",
-    "ontology_review": "DRAFT_REFINED_MULTIPLE_SLICES",
-    "all_accepted_obligations": "OPEN",
-    "quality_overlays": "PARTIAL",
-    "journeys": "DRAFT_NOT_VERIFIED",
+    "ontology_review": "V1_1_CANDIDATE_INTERNAL_ADVERSARIAL_PASS_COMPLETE",
+    "all_accepted_obligations": "OPEN_MULTIPLE_SEMANTIC_SLICES",
+    "quality_overlays": "PARTIAL_NO_INVENTED_NUMERIC_SLOS",
+    "journeys": "DRAFT_IMPLEMENTATION_MAPPING_STARTED",
     "stage_projections": "PROPOSED",
     "oracle_design_complete": "PARTIAL",
-    "high_risk_experiments": "SC_F01_F06_F07_F08_NATIVE_REPRODUCED; INFLIGHT_QUEUE_PID_REUSE_REQUIRED_FUSE_OPEN",
-    "implementation_mapping": "PARTIAL_SEMANTIC_TRACE_SLICE_01",
+    "high_risk_experiments": "SC_F01_F06_F07_F08_NATIVE_REPRODUCED; INFLIGHT_QUEUE_PID_REUSE_JOBSERVER_REQUIRED_FUSE_OPEN",
+    "implementation_mapping": "PASS_2_MOUNTED_SURFACES_PLUS_TRACE_SLICE_01",
     "bidirectional_trace_validity": "SLICE_01_DRAFT_NOT_FULLY_VALIDATED",
     "registry_repo_agreement": "PARTIAL",
     "catalog_exclusion": "SEMANTICALLY_QUARANTINED_NOT_YET_TECHNICALLY_ENFORCED",
-    "no_orphans": "NOT_VALIDATED",
-    "no_contradictions": "OPEN",
+    "no_orphans": "ORPHAN_SCOPE_CANDIDATES_IDENTIFIED_FLEET_CAST_SOAK_AND_BROAD_ORCHESTRATION_PRESENTATION",
+    "no_contradictions": "OPEN_PRESENTATION_AND_REMOTE_SCOPE_DRIFT_IDENTIFIED",
     "no_blocking_findings": "BLOCKED",
     "independent_fresh_review": "NOT_RUN"
   },
   "evidence_policy": "EXACT NATIVE RECEIPTS EXIST FOR SC-F01/F06/F07/F08; CANCELLED/QUEUED INFLIGHT/QUEUE JOBS ARE NOT EVIDENCE",
   "next_minimal_context": [
-    "Execute in-flight-vs-durable oracle on stable candidate",
-    "Execute queue aging/FIFO/PID-reuse ownership controls",
-    "Prototype native jobserver vs ProductLeaseProvider composition",
-    "Implement required-vs-optional FUSE candidate mode only after oracle contract review",
-    "Expand semantic trace graph and mature obligation denominator"
+    "Execute in-flight-vs-durable and queue/PID-reuse controls",
+    "Prototype native jobserver vs ProductLeaseProvider",
+    "Map resource/serve/session public journey truth",
+    "Resolve Fleet/Cast remote scope authority",
+    "Implement catalog/trace qualification validator",
+    "Run fresh independent review after denominator closes"
   ],
   "pilot": "DEFERRED_UNTIL_BUILT_STAGE; not a substitute for design gate"
 }
