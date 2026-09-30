@@ -32,6 +32,7 @@
 pub mod cache_key;
 pub mod capability;
 pub mod handler;
+pub mod scheduling;
 pub mod equivalence;
 pub mod identity;
 pub mod log_buffer;
@@ -711,3 +712,5 @@ mod tests {
         drop(holder);
     }
 }
+
+pub use scheduling::{PlannedPlacement, ResourceEnvelope, ResourceVector, ScheduleDecision, SchedulePlan, WorkItem};
