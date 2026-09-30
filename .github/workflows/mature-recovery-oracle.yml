@@ -1,5 +1,4 @@
 name: Mature Recovery Oracle
-# recovery-pass: 2026-09-30-final-wp4-rerun
 # recovery-pass: 2026-09-30-inflight-rerun
 
 on:
@@ -52,3 +51,5 @@ jobs:
         run: cargo test -p sharecli-ipc queue::tests:: -- --nocapture
       - name: Run PID-reuse ownership adversary
         run: cargo test -p sharecli-ipc --test recovery_queue_pid_reuse -- --nocapture
+
+# execution-freeze-trigger: 2026-09-30T13
