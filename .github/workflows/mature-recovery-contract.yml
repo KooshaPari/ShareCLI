@@ -1,0 +1,29 @@
+name: Mature Recovery Contract Integrity
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/specs/mature-recovery/**"
+      - "scripts/recovery/**"
+      - ".github/workflows/mature-recovery-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mature-recovery-contract-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  work-packages:
+    name: Validate work-package DAG
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Validate
+        run: python scripts/recovery/validate_work_packages.py docs/specs/mature-recovery/2026-09-29/work-packages.json
