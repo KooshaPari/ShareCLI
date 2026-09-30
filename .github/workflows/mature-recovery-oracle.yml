@@ -136,3 +136,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Linux PSI pressure semantics
         run: cargo test -p sharecli-ipc pressure::tests:: -- --nocapture
+
+  resource-control-domain:
+    name: SC-WP-A06 resource control capabilities
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Observation versus enforcement controls
+        run: cargo test -p sharecli-ipc resource_control::tests:: -- --nocapture
