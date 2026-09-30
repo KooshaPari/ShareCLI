@@ -8,6 +8,24 @@ pub struct BenchmarkWork {
     pub item: WorkItem,
     pub demand: ResourceVector,
     pub duration_ms: u64,
+
+    #[test]
+    fn fit_scan_reduces_fragmentation_vs_strict_fifo_on_complementary_shapes() {
+        let env=ResourceEnvelope{id:"host".into(),observed_at_unix_ms:1,source:"fixture".into(),capacity:rv(4.0,4_000)};
+        let work=vec![
+            wi("cpu-a",100,3.0,1_000),
+            wi("cpu-b",100,3.0,1_000),
+            wi("mem-a",100,1.0,3_000),
+            wi("mem-b",100,1.0,3_000),
+        ];
+        let fifo=simulate_bounded_fifo(&env,&work);
+        let fit=simulate_bounded_fit_scan(&env,&work);
+        assert_eq!(fifo.hard_envelope_violations,0);
+        assert_eq!(fit.hard_envelope_violations,0);
+        assert_eq!(fit.completed,4);
+        assert!(fit.makespan_ms < fifo.makespan_ms, "fit={:?} fifo={:?}",fit,fifo);
+    }
+
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -34,6 +52,56 @@ pub fn simulate_naive_all_at_once(envelope: &ResourceEnvelope, work: &[Benchmark
         peak_memory_bytes,
         hard_envelope_violations: u64::from(peak_cpu > cap_cpu || peak_memory_bytes > cap_mem),
         completed: work.len(),
+    }
+}
+
+
+pub fn simulate_bounded_fit_scan(envelope: &ResourceEnvelope, work: &[BenchmarkWork]) -> BenchmarkMetrics {
+    let cap_cpu = envelope.capacity.cpu.unwrap_or(0.0);
+    let cap_mem = envelope.capacity.memory_bytes.unwrap_or(0);
+    let mut now = 0u64;
+    let mut waiting: Vec<usize> = (0..work.len()).collect();
+    let mut running: Vec<(usize,u64)> = Vec::new();
+    let mut completed = 0usize;
+    let mut peak_cpu = 0.0f64;
+    let mut peak_mem = 0u64;
+
+    while completed < work.len() {
+        let mut used_cpu = 0.0;
+        let mut used_mem = 0u64;
+        for (idx,_) in &running {
+            if let Some((cpu,mem)) = demand(&work[*idx]) { used_cpu += cpu; used_mem += mem; }
+        }
+
+        let mut admitted = Vec::new();
+        for (pos,idx) in waiting.iter().enumerate() {
+            let Some((cpu,mem)) = demand(&work[*idx]) else { continue };
+            if used_cpu + cpu <= cap_cpu && used_mem.saturating_add(mem) <= cap_mem {
+                used_cpu += cpu; used_mem += mem;
+                running.push((*idx, now + work[*idx].duration_ms));
+                admitted.push(pos);
+            }
+        }
+        for pos in admitted.into_iter().rev() { waiting.remove(pos); }
+
+        peak_cpu = peak_cpu.max(used_cpu);
+        peak_mem = peak_mem.max(used_mem);
+
+        if running.is_empty() { break; }
+
+        let next = running.iter().map(|(_,finish)| *finish).min().unwrap();
+        now = next;
+        let before = running.len();
+        running.retain(|(_,finish)| *finish > now);
+        completed += before - running.len();
+    }
+
+    BenchmarkMetrics {
+        makespan_ms: now,
+        peak_cpu,
+        peak_memory_bytes: peak_mem,
+        hard_envelope_violations: 0,
+        completed,
     }
 }
 
