@@ -127,3 +127,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Parse native jobserver transports
         run: cargo test -p sharecli-ipc jobserver::tests:: -- --nocapture
+
+  pressure-domain:
+    name: SC-WP-A06 pressure parser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Linux PSI pressure semantics
+        run: cargo test -p sharecli-ipc pressure::tests:: -- --nocapture
