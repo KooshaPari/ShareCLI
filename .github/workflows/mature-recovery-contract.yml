@@ -56,5 +56,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Recovery subject model
         run: cargo test -p sharecli-session mature_recovery::tests:: -- --nocapture
-      - name: Capability and equivalence contracts
-        run: cargo test -p sharecli-ipc capability::tests:: equivalence::tests:: -- --nocapture
+      - name: Capability contract
+        run: cargo test -p sharecli-ipc capability::tests:: -- --nocapture
+      - name: Equivalence contract
+        run: cargo test -p sharecli-ipc equivalence::tests:: -- --nocapture
