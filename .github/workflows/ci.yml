@@ -335,6 +335,7 @@ jobs:
           cargo test -p sharecli-ipc scheduling_reference::tests:: -- --nocapture
           cargo test -p sharecli-ipc scheduling_benchmark::tests:: -- --nocapture
           cargo test -p sharecli-ipc scheduling_policy::tests:: -- --nocapture
+          cargo test -p sharecli-ipc speculation_policy::tests:: -- --nocapture
           cargo test -p sharecli-ipc jobserver::tests:: -- --nocapture
           cargo test -p sharecli-ipc pressure::tests:: -- --nocapture
           cargo test -p sharecli-ipc pressure_policy::tests:: -- --nocapture
