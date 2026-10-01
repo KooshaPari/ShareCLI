@@ -78,8 +78,5 @@ async fn fr008_git_mode_must_not_reuse_output_after_content_changes() {
         second.stdout, b"second edit\n",
         "FR-008 false green: Git-mode cache reused output although input bytes changed"
     );
-    assert!(
-        !second.from_cache,
-        "changed input bytes must invalidate the result-equivalence class"
-    );
+    assert!(!second.from_cache, "changed input bytes must invalidate the result-equivalence class");
 }
