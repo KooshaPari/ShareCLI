@@ -18,3 +18,16 @@ Date: 2026-09-30.
 | dashboard/tray breadth | presentation | PROJECTION CANDIDATE | capability-truth mapping + usability/accessibility evidence |
 
 No row is deleted by this ledger.
+
+
+## v1.2 final sweep — 2026-10-01
+
+Reclassification after direct thesis correction:
+- generic scheduling/queueing/packing/coalescing/speculation/resource-pressure code is NOT orphan breadth merely because it was previously underweighted; it is core if it traces to v1.2 obligations.
+- Fleet/Cast remain scope candidates because multi-host/distributed scheduling is not yet directly authorized.
+- mesh remains split: local workload/worktree coordination may be core; autonomous agent planning/consensus remains outside.
+- session/surface recovery is supporting core infrastructure, not product thesis substitute.
+- cache modes remain transition code until an EquivalenceAdapter qualifies them.
+- soak/evaluation may be internal benchmark machinery even when not user-facing product behavior.
+
+No unexplained mounted surface is permitted to count toward mature completion solely by existence.
