@@ -465,6 +465,15 @@ pub struct HypervisorConfig {
     pub semantic: bool,
 }
 
+/// Optional provider-specific setup for a child process.
+///
+/// This seam is intentionally transport-neutral. Native admission providers
+/// such as GNU make's jobserver can use it to propagate inherited coordination
+/// state without making the Hypervisor own that provider's protocol.
+pub trait ChildCommandConfigurator: Send + Sync {
+    fn configure(&self, command: &mut std::process::Command);
+}
+
 /// A request to spawn a managed process.
 #[derive(Debug, Clone)]
 pub struct SpawnRequest {
@@ -733,6 +742,26 @@ impl Hypervisor {
     /// Skips coalesce cache lookup regardless of argv. Used by harness-native
     /// strategies that must serialize on the nocache lane (FR-008 AC-008.16).
     pub async fn run_queued(&self, req: SpawnRequest, lane: &str) -> Result<SpawnOutcome> {
+        self.run_queued_configured(req, lane, None).await
+    }
+
+    /// Run the queue lane while allowing a native provider to configure the
+    /// exact child command before spawn.
+    pub async fn run_queued_with_command_configurator(
+        &self,
+        req: SpawnRequest,
+        lane: &str,
+        configurator: &dyn ChildCommandConfigurator,
+    ) -> Result<SpawnOutcome> {
+        self.run_queued_configured(req, lane, Some(configurator)).await
+    }
+
+    async fn run_queued_configured(
+        &self,
+        req: SpawnRequest,
+        lane: &str,
+        configurator: Option<&dyn ChildCommandConfigurator>,
+    ) -> Result<SpawnOutcome> {
         self.thermal_gate_check().await?;
 
         let watch = ResourceWatchSample::capture()?;
@@ -740,7 +769,7 @@ impl Hypervisor {
         debug!(lane, argv = ?req.argv, "hypervisor::run_queued — queue lane");
         record_nocache_run();
         let outcome =
-            self.queue.with_slot(lane, req.queue_priority, || spawn_process_sync(&req))?;
+            self.queue.with_slot(lane, req.queue_priority, || spawn_process_sync(&req, configurator))?;
         Ok(SpawnOutcome {
             exit_code: outcome.exit_code,
             stdout: outcome.stdout,
@@ -791,6 +820,24 @@ impl Hypervisor {
     /// the background task pre-executes high-probability commands into the
     /// coalesce cache during idle periods.
     pub async fn run(&self, req: SpawnRequest) -> Result<SpawnOutcome> {
+        self.run_configured(req, None).await
+    }
+
+    /// Run a managed spawn and let an external admission provider configure
+    /// the exact child command while retaining the Hypervisor execution path.
+    pub async fn run_with_command_configurator(
+        &self,
+        req: SpawnRequest,
+        configurator: &dyn ChildCommandConfigurator,
+    ) -> Result<SpawnOutcome> {
+        self.run_configured(req, Some(configurator)).await
+    }
+
+    async fn run_configured(
+        &self,
+        req: SpawnRequest,
+        configurator: Option<&dyn ChildCommandConfigurator>,
+    ) -> Result<SpawnOutcome> {
         // ── Thermal gate ─────────────────────────────────────────────────────
         self.thermal_gate_check().await?;
 
@@ -818,7 +865,7 @@ impl Hypervisor {
         if has_nocache_arg(&req.argv, &self.nocache_args) {
             let lane = queue_lane_from_argv(&req.argv).to_string();
             debug!(lane = %lane, argv = ?req.argv, "hypervisor::run — nocache → queue");
-            return self.run_queued(req, &lane).await;
+            return self.run_queued_configured(req, &lane, configurator).await;
         }
 
         // ── Cache lookup ─────────────────────────────────────────────────────
@@ -886,7 +933,8 @@ impl Hypervisor {
         // Lock-Wait-Cache: spawn is the closure called only on a cache miss.
         // We use `effective_req` (with a potentially FUSE-wrapped cwd)
         // inside the closure to avoid any borrow conflict with `req`.
-        let (cached, hit_kind) = self.coalesce_via_lock(&key, &effective_req)?;
+        let (cached, hit_kind) =
+            self.coalesce_via_lock(&key, &effective_req, configurator)?;
 
         // FR-008: record speculation hit when the lock-wait cache was shared.
         if hit_kind.shared_from_cache() {
@@ -916,9 +964,10 @@ impl Hypervisor {
         &self,
         key: &sharecli_ipc::CommandKey,
         effective_req: &SpawnRequest,
+        configurator: Option<&dyn ChildCommandConfigurator>,
     ) -> Result<(CachedResult, CoalesceHitKind)> {
         self.cache.with_lock_detailed(key, || {
-            let outcome = spawn_process_sync(effective_req)?;
+            let outcome = spawn_process_sync(effective_req, configurator)?;
             Ok(CachedResult {
                 exit_code: outcome.exit_code,
                 stdout: outcome.stdout,
@@ -984,14 +1033,23 @@ fn queue_lane_from_argv(argv: &[String]) -> &str {
 /// Spawn `req.argv` synchronously (blocking) and capture its output.
 ///
 /// Used inside `CoalesceCache::with_lock` which takes a synchronous closure.
-fn spawn_process_sync(req: &SpawnRequest) -> Result<SpawnOutcome> {
+fn spawn_process_sync(
+    req: &SpawnRequest,
+    configurator: Option<&dyn ChildCommandConfigurator>,
+) -> Result<SpawnOutcome> {
     let (program, args) =
         req.argv.split_first().with_context(|| "spawn_process_sync: argv is empty")?;
 
-    let output = std::process::Command::new(program)
+    let mut command = std::process::Command::new(program);
+    command
         .args(args)
         .current_dir(&req.cwd)
-        .envs(req.env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+        .envs(req.env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+    if let Some(configurator) = configurator {
+        configurator.configure(&mut command);
+    }
+
+    let output = command
         .output()
         .with_context(|| format!("failed to spawn {:?}", req.argv))?;
 
