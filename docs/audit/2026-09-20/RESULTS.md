@@ -652,6 +652,116 @@ per-call-connection finding, and its per-call design is the documented thread-sa
 mechanism for a 754-line client covered by 5 Swift test files. It is staged second and
 reported separately.
 
+## Phase 1 task 1.6b — one long-lived Swift IPC connection (2026-10-01)
+
+**Provenance, stated plainly.** The item is `PLAN.md:162-166`: "`IPCClient.swift` —
+single long-lived connection with id→continuation map and per-request cancellation.
+Validate by feeding a 1 MB line; second connection attempt rejected." It is **not** a
+`FINDINGS.md` defect; `FINDINGS.md` has no per-call-connection entry, and the per-call
+design was the client's documented thread-safety mechanism ("each call creates its own
+socket connection"). What the same rewrite *does* close is a real, still-open finding:
+`FINDINGS.md:61` `[HIGH]` — `while true { Darwin.read(fd, &byte, 1) }`, one `read(2)`
+per byte and 10⁵+ syscalls per 1 Hz `monitoring.report`.
+
+**Before:** `IPCClient.call` opened a socket, wrote, read byte-at-a-time to `\n`, closed —
+once per call. `IPCClient.swift` was 754 lines.
+
+### Red — against the original client
+
+`IPCClientConnectionReuseTests.testThreeCallsRideOneConnection` talks to **`IPCClient`**,
+not to the new type, precisely so it still compiles and runs against pre-refactor code.
+It was executed against a package copy rebuilt from `HEAD` (`IPCClient.swift` restored
+via `git show HEAD:…`, `IPCConnection.swift`/`IPCConnectionTests.swift` excluded):
+
+```
+XCTAssertEqual failed: ("3") is not equal to ("1")
+- three calls must reuse one connection; the per-call client accepts once per call
+RED_EXIT=1
+```
+
+**Red: 1 test, 1 failure — three calls, three accepts.** The same test in the working
+tree passes with `acceptCount == 1`.
+
+### Design
+
+New `Sources/ShareCLICore/IPCConnection.swift` (313 lines):
+
+* **One serial `DispatchQueue` owns the fd.** Reader and every write run on it, so there
+  is one close path and no operation is inside a syscall on an fd another path is
+  closing. `pending` is only touched on that queue and needs no lock.
+* **id → `CheckedContinuation<Data, Error>`.** The map holds *raw* reply lines, not a
+  typed value, which is what lets one map serve every `T` the caller asks for; decoding
+  stays in `IPCClient.call`. Concurrent calls therefore stay concurrent instead of
+  queueing behind one socket.
+* **Per-request cancellation.** Each `send` schedules its own timeout with
+  `queue.asyncAfter`. A late reply finds no entry and is dropped rather than delivered
+  to an unrelated caller. The timer captures `self`, so a continuation can never be
+  dropped along with its owner — every registered continuation is guaranteed to resume.
+* **Buffered read (closes `FINDINGS.md:61`).** The fd is non-blocking and drained
+  64 KiB at a time.
+* **`connect()` refuses a second attempt** with the new `IPCError.alreadyConnected` —
+  the plan's "second connection attempt rejected". Normal traffic goes through `send`,
+  which reuses the live connection.
+* **`SO_NOSIGPIPE`** is set on the fd. The old path had no protection: writing to a
+  peer that had already gone would raise SIGPIPE and terminate the tray. A connection
+  that now outlives sidecar restarts meets that case far more often.
+* **Reader is a 10 ms `DispatchSourceTimer`, not a source bound to the fd.** An
+  fd-backed source signalled against an already-closed descriptor is the classic crash;
+  a timer cannot be. Cost: one `read(2)` returning `EAGAIN` per tick while idle.
+  Benefit, and the reason it runs unconditionally: a sidecar restart is noticed within
+  10 ms, so the next call reconnects instead of writing into a dead socket — the
+  property the per-call connection had for free.
+
+**Removed with the per-call socket:** `probeSlots` / `maxConcurrentProbes` (cap 64) and
+`openUnixSocket`. The semaphore existed to stop *blocking closures on the global utility
+queue* from wedging it; the new path issues no blocking closure on that pool at all, so
+keeping it would be a shim. `IPCClient` 754 → **640** lines; its header comment, which
+documented the per-call design as the thread-safety mechanism, was rewritten to match.
+
+### Green gates
+
+| gate | observed |
+|---|---|
+| `swift build --package-path desktop/ShareCLITray` | exit 0, whole package incl. the tray app |
+| `swift test` (no sidecar) | **33 executed / 0 failures / 7 UDS-gated skipped**, exit 0 |
+| `swift test` **with a live isolated `sharecli-ipc`** | **33 executed / 0 failures / 0 skipped**, exit 0 |
+| baseline before this task | 26 executed / 0 failures / 7 skipped, exit 0 |
+
+The live run is the end-to-end receipt: `ConfigClientTests` and
+`IPCClientRealPathTests` stop skipping and pass against the real Rust sidecar,
+including `test_real_sidecar_spawn_then_kill_round_trip`, which kills the sidecar
+mid-session — the case a long-lived connection has to survive. Existing coverage is
+unbroken: the audit-0.7 suite (`IPCClientDeadlineTests`, 70 concurrent wedged probes
+all resolving `.timeout` and the pool serving follow-up work afterwards) passes
+unchanged against the new connection.
+
+**Six new tests** in `IPCConnectionTests`: second `connect()` rejected; five calls on one
+accept; a 300 KiB reply delivered intact; a timeout cancelling one request while the same
+connection keeps serving; eight concurrent requests each cancelling on their own deadline;
+and replies routing by id so an unanswered request never inherits another's reply.
+
+**The 1 MB line** from the plan's validation clause is a *server* contract and is
+exercised end-to-end by the Rust `ipc_line_limit` suite against the real binary
+(1.6a above), not re-tested on the Swift side.
+
+### Harness note — a bug in my own test server, found and fixed
+
+Three of the six tests failed on the first run. The cause was in `LineSidecarServer`,
+not in the product: the listener is `O_NONBLOCK` so its accept loop can poll for
+`stopped`, and the accepted socket came back non-blocking too, so `serve`'s
+`if n <= 0 { return }` treated `EAGAIN` as end-of-stream and exited **after the first
+request** — every later request on that connection went unanswered. That reproduces
+exactly what was observed (`request 2 never got a reply`, while the single-request
+large-response test passed). Fixed by normalising the accepted fd back to blocking
+*and* handling `EAGAIN`/`EINTR` explicitly. The existing `HealthyConfigServer` in
+`IPCClientDeadlineTests` has the same shape and never noticed because it only ever
+answers one request per connection.
+
+Two smaller test fixes were also required: `connect()` returns from the kernel handshake
+before the accept loop has dequeued it, so the accept count needs a bounded wait
+(`waitUntilAccepted`); and one `Data("\(body)\n").utf8` argument-order slip failed to
+compile.
+
 ## Verdict
 
 Phases 0.5–0.7 are verified green on every gate that completed honestly, including the

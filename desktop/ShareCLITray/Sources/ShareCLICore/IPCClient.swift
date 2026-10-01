@@ -1,8 +1,9 @@
 /// IPCClient.swift — Unix socket NDJSON-RPC client for the sharecli IPC server.
 ///
 /// All calls are async; the caller awaits on a background Task.
-/// Thread-safety: each call creates its own socket connection (stateless from
-/// the Swift side — the Rust server handles concurrent connections).
+/// Thread-safety: one long-lived connection owned by `IPCConnection`. Replies
+/// are routed by request id, so concurrent calls stay concurrent; every request
+/// carries its own deadline and can be cancelled without disturbing the others.
 
 import Foundation
 import Network
@@ -372,21 +373,19 @@ public actor IPCClient {
     public nonisolated var socketPath: String { _socketPath }
     private var nextId: Int = 1
 
-    /// Cap on concurrent blocking probes — the measured width of the global
-    /// utility queue (audit 0.7, lane-2 BLOCKER). Shared by every client so a
-    /// burst of wedged probes can never occupy the whole pool and starve the
-    /// supervisor's recovery probe.
-    private static let maxConcurrentProbes = 64
-    private static let probeSlots = DispatchSemaphore(value: maxConcurrentProbes)
-
-    /// Deadline for one request (connect + write + read). A sidecar that
-    /// accepts but never answers must fail with `IPCError.timeout` instead of
-    /// pinning a dispatch-pool closure forever (audit 0.7).
-    private let requestTimeout: TimeInterval
+    /// One connection for the life of this client. `IPCClient` is an actor and
+    /// this is a `let`, so the reference never changes; all mutation of the
+    /// socket happens inside `IPCConnection` on its own serial queue.
+    ///
+    /// The per-request deadline (audit 0.7) lives there as well: every `send`
+    /// schedules its own timeout on that queue, so a sidecar that accepts but
+    /// never answers still fails with `IPCError.timeout` rather than pinning
+    /// anything.
+    private let connection: IPCConnection
 
     public init(socketPath: String, timeout: TimeInterval = 5.0) {
         self._socketPath = socketPath
-        self.requestTimeout = timeout
+        self.connection = IPCConnection(socketPath: socketPath, timeout: timeout)
     }
 
     public static func defaultClient() -> IPCClient {
@@ -549,138 +548,21 @@ public actor IPCClient {
         var payload = try JSONEncoder().encode(req)
         payload.append(contentsOf: [UInt8(ascii: "\n")])
 
-        let sock = socketPath
-        let timeout = requestTimeout
-        return try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .utility).async {
-                Self.probeSlots.wait()
-                defer { Self.probeSlots.signal() }
-                do {
-                    let fd = try Self.openUnixSocket(path: sock, timeout: timeout)
-                    defer { Darwin.close(fd) }
-                    // One deadline covers write + read (audit 0.7).
-                    let deadline = Date().addingTimeInterval(timeout)
+        // One connection for every call: `IPCConnection` keeps the socket open
+        // and hands back the raw reply matched to `id`, so this only has to
+        // decode it. Decoding here rather than in the connection is what keeps
+        // one id->continuation map usable for every `T` a caller asks for.
+        let raw = try await connection.send(id: id, frame: payload)
+        let decoded = try JSONDecoder().decode(IPCResponse<T>.self, from: raw)
 
-                    // Write request. A blocking write to a peer that never
-                    // drains would pin this utility-pool slot forever — the
-                    // read loop below is bounded, but an unbounded write
-                    // reintroduces the same starvation the read deadline fixes.
-                    // Poll for writability and give up when the shared deadline
-                    // is spent, so a stalled peer fails with .timeout instead.
-                    try payload.withUnsafeBytes { buf in
-                        var written = 0
-                        while written < buf.count {
-                            let remaining = deadline.timeIntervalSinceNow
-                            if remaining <= 0 { throw IPCError.timeout }
-                            var pfd = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
-                            let waitMs = Int32(max(1, min(remaining * 1000, Double(Int32.max))))
-                            let ready = poll(&pfd, 1, waitMs)
-                            if ready == 0 { continue }
-                            if ready < 0 {
-                                if errno == EINTR { continue }
-                                throw IPCError.writeFailed
-                            }
-                            let n = Darwin.write(
-                                fd, buf.baseAddress!.advanced(by: written), buf.count - written
-                            )
-                            if n > 0 {
-                                written += n
-                                continue
-                            }
-                            if errno == EINTR { continue }
-                            if errno == EAGAIN || errno == EWOULDBLOCK { throw IPCError.timeout }
-                            throw IPCError.writeFailed
-                        }
-                    }
-
-                    // Read until newline, bounded by the deadline: poll(2)
-                    // waits at most the remaining time, so a sidecar that
-                    // accepts but never answers fails with .timeout and
-                    // releases its pool slot instead of blocking forever
-                    // (lane-2 BLOCKER: unbounded Darwin.read wedged the
-                    // global utility queue and supervisor recovery stopped
-                    // running after 64 wedged reads).
-                    var response = Data()
-                    var byte = UInt8(0)
-                    while true {
-                        let remaining = deadline.timeIntervalSinceNow
-                        if remaining <= 0 { throw IPCError.timeout }
-                        var pfd = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
-                        let waitMs = Int32(max(1, min(remaining * 1000, Double(Int32.max))))
-                        let ready = poll(&pfd, 1, waitMs)
-                        if ready == 0 { continue }
-                        if ready < 0 {
-                            if errno == EINTR { continue }
-                            throw IPCError.readFailed
-                        }
-                        let n = Darwin.read(fd, &byte, 1)
-                        if n > 0 {
-                            if byte == UInt8(ascii: "\n") { break }
-                            response.append(byte)
-                            continue
-                        }
-                        if n == 0 { throw IPCError.readFailed }
-                        if errno == EINTR { continue }
-                        if errno == EAGAIN || errno == EWOULDBLOCK { throw IPCError.timeout }
-                        throw IPCError.readFailed
-                    }
-
-                    let decoded = try JSONDecoder().decode(IPCResponse<T>.self, from: response)
-
-                    // The daemon reports refusals (for example a rejected
-                    // config patch) in `error` with a null result. Surface it
-                    // as a thrown error, otherwise callers treat the refusal as
-                    // success and the tray shows a false "Applied" toast for a
-                    // write that never happened.
-                    if let message = decoded.error {
-                        throw IPCError.server(message)
-                    }
-
-                    continuation.resume(returning: decoded)
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
+        // The daemon reports refusals (for example a rejected config patch) in
+        // `error` with a null result. Surface it as a thrown error, otherwise
+        // callers treat the refusal as success and the tray shows a false
+        // "Applied" toast for a write that never happened.
+        if let message = decoded.error {
+            throw IPCError.server(message)
         }
-    }
-
-    private static func openUnixSocket(path: String, timeout: TimeInterval) throws -> Int32 {
-        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard fd >= 0 else { throw IPCError.socketCreate }
-
-        var addr = sockaddr_un()
-        addr.sun_family = sa_family_t(AF_UNIX)
-        let pathCap = MemoryLayout.size(ofValue: addr.sun_path)
-        path.withCString { cstr in
-            withUnsafeMutableBytes(of: &addr.sun_path) { raw in
-                guard let base = raw.baseAddress else { return }
-                let dest = base.assumingMemoryBound(to: CChar.self)
-                let n = min(pathCap, raw.count)
-                memset(dest, 0, n)
-                strncpy(dest, cstr, n > 0 ? n - 1 : 0)
-            }
-        }
-
-        let connectResult = withUnsafePointer(to: &addr) { ptr in
-            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sap in
-                connect(fd, sap, socklen_t(MemoryLayout<sockaddr_un>.size))
-            }
-        }
-
-        guard connectResult == 0 else {
-            Darwin.close(fd)
-            throw IPCError.connectFailed(path)
-        }
-
-        // Belt and braces for the deadline (audit 0.7): even a read that
-        // slips past poll(2) cannot block longer than `timeout`.
-        var tv = timeval(
-            tv_sec: Int(timeout),
-            tv_usec: numericCast(Int((timeout - Double(Int(timeout))) * 1_000_000))
-        )
-        _ = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
-        _ = setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
-        return fd
+        return decoded
     }
 }
 
@@ -697,6 +579,9 @@ public enum IPCError: LocalizedError {
     /// The daemon accepted the connection but did not answer within the
     /// configured deadline (lane-2 BLOCKER fix, audit 0.7).
     case timeout
+    /// A connection is already live. `IPCConnection.connect()` refuses to open
+    /// a second one (PLAN.md:166).
+    case alreadyConnected
     /// The daemon answered with a populated `error` field.
     case server(String)
 
@@ -707,6 +592,7 @@ public enum IPCError: LocalizedError {
         case .writeFailed: return "Socket write failed"
         case .readFailed: return "Socket read failed"
         case .timeout: return "IPC request timed out"
+        case .alreadyConnected: return "An IPC connection is already open"
         case .nilResult(let m): return "Nil result from \(m)"
         case .server(let m): return m
         }
