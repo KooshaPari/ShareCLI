@@ -730,7 +730,10 @@ pub use scheduling_policy::{
     QueueEntry as SchedulingQueueEntry, Reservation, ResourceFeasibility,
 };
 
-pub use jobserver::{parse_makeflags_jobserver, JobserverDescriptor, JobserverTransport};
+pub use jobserver::{
+    extra_tokens_for_total_parallelism, parse_makeflags_jobserver, JobserverDescriptor,
+    JobserverTransport, NativeJobserverClient, NativeJobserverLease,
+};
 
 pub use pressure::{parse_linux_psi, PressureProvider, PressureSnapshot, StallWindow};
 
