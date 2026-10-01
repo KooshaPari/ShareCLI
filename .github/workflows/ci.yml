@@ -337,6 +337,7 @@ jobs:
           cargo test -p sharecli-ipc scheduling_policy::tests:: -- --nocapture
           cargo test -p sharecli-ipc jobserver::tests:: -- --nocapture
           cargo test -p sharecli-ipc pressure::tests:: -- --nocapture
+          cargo test -p sharecli-ipc pressure_policy::tests:: -- --nocapture
           cargo test -p sharecli-ipc resource_control::tests:: -- --nocapture
           cargo test -p sharecli-session mature_recovery::tests:: -- --nocapture
       - name: Native memory-pressure comparison
