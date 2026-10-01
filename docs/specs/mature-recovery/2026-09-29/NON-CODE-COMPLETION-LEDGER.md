@@ -116,3 +116,16 @@ A future reviewer may reopen this non-code contract only by supplying:
 - empirical evidence falsifying an assumption.
 
 “More requirements could be written” is not sufficient.
+
+
+## Pass-4 source closure update
+
+SOURCE-COVERAGE-LEDGER-PASS-4 resolves every currently available non-code source family. The only unavailable archaeology family is the user-identified Claude corpus.
+
+Therefore the current non-code state is:
+- **document/spec/research/test-design completeness: FINAL FOR AVAILABLE EVIDENCE**;
+- **absolute historical completeness: BLOCKED BY CLAUDE CORPUS**;
+- **architecture acceptance: BLOCKED BY ENUMERATED EMPIRICAL RECEIPTS**;
+- **global completion: BLOCKED BY FRESH INDEPENDENT REVIEW**.
+
+Do not reopen broad documentation work absent a concrete falsifier.
