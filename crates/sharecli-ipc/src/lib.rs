@@ -34,6 +34,7 @@ pub mod capability;
 pub mod handler;
 pub mod scheduling;
 pub mod pressure;
+pub mod pressure_policy;
 pub mod resource_control;
 pub mod scheduling_reference;
 pub mod scheduling_benchmark;
