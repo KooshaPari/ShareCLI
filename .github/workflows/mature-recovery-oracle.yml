@@ -145,3 +145,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Observation versus enforcement controls
         run: cargo test -p sharecli-ipc resource_control::tests:: -- --nocapture
+
+  scheduling-packing-reference:
+    name: B05 deterministic packing reference
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Naive overcommit vs bounded packing controls
+        run: cargo test -p sharecli-ipc scheduling::fixture_scheduler::tests:: -- --nocapture
