@@ -37,6 +37,7 @@ pub mod pressure;
 pub mod resource_control;
 pub mod scheduling_reference;
 pub mod scheduling_benchmark;
+pub mod scheduling_policy;
 pub mod equivalence;
 pub mod identity;
 pub mod jobserver;
@@ -723,6 +724,11 @@ pub use scheduling::{PlannedPlacement, ResourceEnvelope, ResourceVector, Schedul
 pub use scheduling_reference::{bounded_fifo_pack, PackingReceipt, SchedulableWork};
 
 pub use scheduling_benchmark::{simulate_bounded_fifo, simulate_naive_all_at_once, BenchmarkMetrics, BenchmarkWork};
+pub use scheduling_policy::{
+    conservative_backfill_eligibility, dependency_readiness, effective_priority,
+    ranked_ready_ids, resource_feasibility, BackfillEligibility, DependencyReadiness,
+    QueueEntry as SchedulingQueueEntry, Reservation, ResourceFeasibility,
+};
 
 pub use jobserver::{parse_makeflags_jobserver, JobserverDescriptor, JobserverTransport};
 
