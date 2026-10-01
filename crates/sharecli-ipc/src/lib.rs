@@ -30,6 +30,7 @@
 //! see `sharecli_core::Hypervisor::{queue, run}`.
 
 pub mod cache_key;
+pub mod config_revision;
 pub mod handler;
 pub mod log_buffer;
 pub mod nocache;

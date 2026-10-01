@@ -469,6 +469,95 @@ line. Left as-is rather than folded into an unrelated commit.
 **Size:** `src/config.rs` is now 1231 lines (pre-existing over-limit: 1170 at branch start,
 1195 after 1.3).
 
+### 1.5 — `config.set` gained an `if_revision` guard (2026-10-01)
+
+**Lane 3 HIGH.** `config.set` was a blind read-modify-write: the tray's ConfigPage
+and the CLI patch the same file, so whichever wrote second silently clobbered the
+first. A search of `src/` for `revision` returned nothing at all — the repo had no
+concept of a config version, so the fix had to introduce one rather than wire up an
+existing one.
+
+**Design.** RFC 9110 `If-Match` semantics without the HTTP machinery: a new
+`config.revision` method returns a fingerprint of the current config, and
+`config.set` accepts an optional `if_revision` that must match it. The fingerprint
+is a **content hash, not a counter** — SHA-256 over the canonical JSON encoding —
+so it needs no persisted state, cannot drift across a sidecar restart, and any
+client that serializes the config the same way can reproduce it and compare. A
+mismatch reports `CONFLICT: ... current revision is <hex>`; the *winner's* revision
+is what a client needs in order to refetch and retry rather than guess.
+
+**The canonicalization is the whole trick.** `Config` stores its maps as
+`std::collections::HashMap`, whose iteration order is randomized per process, so
+serializing the struct directly would emit different bytes for the same config on
+every run. Round-tripping through `serde_json::Value` first fixes that: this
+workspace builds `serde_json` without `preserve_order` (verified by grepping every
+`Cargo.toml`), so `serde_json::Map` is a `BTreeMap` and every object key is sorted
+at every nesting depth — `Value` is canonical by construction, and `revision_of`
+hashes `to_string(to_value(&config))`.
+
+The guard is evaluated while the write lock is held, so check and mutation cannot
+be interleaved by a concurrent writer. A non-string `if_revision` is a loud error
+instead of a silently absent guard: a client that believes it is guarded must never
+have its guard dropped.
+
+**Red evidence** (every row measured against the original handler, with the fix
+stashed via `git stash push -- crates/sharecli-ipc/src/handler.rs`):
+
+| Test | Red against original | Observed message |
+|---|---|---|
+| `config_revision_is_exposed_and_stable_while_unchanged` | 4 failed / 0 passed (as a set) | `unknown method: config.revision` |
+| `config_set_with_a_stale_if_revision_returns_conflict` | same run | `a stale if_revision must be rejected` |
+| `config_set_rejects_a_non_string_if_revision` | 1 failed / 0 passed | `a non-string if_revision must be rejected` |
+
+The stale-write assertion is deliberately built on a literal `"stale-revision"`
+rather than on a value read through `config.revision`, so its red proves the
+*guard* was missing and not merely that the read helper did not exist. An earlier
+formulation of that test read the revision first and therefore proved only
+`unknown method`; it was rewritten before the fix rather than reported as evidence.
+
+**Green gates (observed 2026-10-01):**
+
+| Gate | Result |
+|---|---|
+| `cargo test -p sharecli-ipc` (6 targets) | **168 passed / 0 failed / 2 ignored** (`A_exit=0`) |
+| `sharecli-ipc` unit tier, `config_revision::tests` | **5 passed / 0 failed** |
+| `tests/config_revision_dispatch.rs` | **5 passed / 0 failed** (red 0/4 → green 5/0) |
+| `cargo test -p sharecli --test config_defaults --test config_atomic_write` | **9 passed / 0 failed** (`B_exit=0`) |
+| `cargo test -p sharecli --lib` | **572 passed / 0 failed** |
+| `cargo clippy --all-targets` | **exit 0**, only the 2 pre-existing warnings (`sharecli-ipc/src/queue.rs:164`, `commands/proc/tests.rs:1`) |
+| `rustfmt --check` | clean on `config_revision.rs`, the new test, `cache_key.rs`; `handler.rs` shows **the same 3 hunks as `HEAD`** (verified by formatting the `HEAD` blob in-tree), so this change adds none |
+
+**Harness notes:**
+
+* The dispatch tests mutate `SHARECLI_CONFIG_PATH`, which is process-wide. Run in
+  parallel they tripped over each other — one fixture's temp directory was removed
+  while another still pointed at it, surfacing as `replace .../config.toml` inside
+  a `config.set` error rather than as an obvious race. All five are marked
+  `#[serial_test::serial]`, the pattern already used elsewhere for env mutation.
+* `cargo test` intermittently prints `error: duplicate key` pointing at
+  `~/.cargo/git/checkouts/phenoshared-.../agileplus-cache/Cargo.toml:15`. It is
+  **outside this repository** and non-fatal (`A_exit=0`, `step2_exit=0`), but it is
+  reached through the unpinned `substrate = { git = "https://github.com/KooshaPari/PhenoShared" }`
+  dependency in the root `Cargo.toml`, which has no `rev`. Not introduced by this
+  branch and not fixed here; recorded because an unpinned git dependency whose
+  workspace carries a malformed manifest is a reproducibility risk.
+* The host's data volume hit 0 bytes free during a `clippy --all-targets` run
+  (`failed to write ... dep-graph.part.bin: No space left on device`), which is why
+  the gate had to be re-run. `target/debug/incremental` (6.7 GB, regenerable) was
+  dropped to recover ~5.4 GB; free space is 15 GB of 926 GB at time of writing.
+
+**Size:** `crates/sharecli-ipc/src/handler.rs` goes 1205 → 1243 lines — still over
+the 500-line target, pre-existing and unchanged in kind. The new
+`config_revision.rs` is 115 lines and the new test file 150.
+
+**Side change:** `hex = "0.4"` was added to `sharecli-ipc`; `cache_key.rs` already
+carried a private 4-line `mod hex` doing the same lowercase encoding, which was
+removed so the crate has one implementation instead of two.
+
+**Not in scope:** the Swift tray still calls `config.set` without `if_revision`, so
+it keeps last-writer-wins behaviour until `IPCClient`/`ConfigPage` adopt
+`config.revision`. The IPC surface for that now exists and is tested.
+
 ## Verdict
 
 Phases 0.5–0.7 are verified green on every gate that completed honestly, including the

@@ -11,7 +11,9 @@
 //!   pool.effectiveness  → { coalesce, slot_queue, sampled_at }
 //!   status.snapshot     → StatusSnapshot
 //!   config.get          → Config
-//!   config.set          → { key, value }  (dot-path into TOML)
+//!   config.revision     → { revision: hex sha256 of the canonical config }
+//!   config.set          → { key, value, if_revision? }  (dot-path into TOML;
+//!                          a stale if_revision is refused with CONFLICT)
 //!   monitoring.report   → MonitoringReportSnapshot
 //!   log.tail            → { lines: [LogEntry], last_id: u64 } (since_id)
 //!
@@ -50,6 +52,7 @@ use sharecli_session::{
 };
 use tokio::sync::RwLock;
 
+use crate::config_revision;
 use crate::log_buffer::global as global_log_buffer;
 
 // ---------------------------------------------------------------------------
@@ -645,11 +648,23 @@ impl Handler {
                 Ok(serde_json::to_value(cfg)?)
             }
 
+            "config.revision" => {
+                let cfg = self.config.read().await;
+                Ok(serde_json::json!({ "revision": config_revision::revision_of(&cfg)? }))
+            }
+
             "config.set" => {
                 let key =
                     req.params["key"].as_str().ok_or_else(|| anyhow::anyhow!("missing key"))?;
                 let value = &req.params["value"];
-                self.apply_config_patch(key, value).await?;
+                let if_revision = match req.params.get("if_revision") {
+                    None | Some(Value::Null) => None,
+                    Some(Value::String(revision)) => Some(revision.as_str()),
+                    Some(other) => {
+                        anyhow::bail!("if_revision must be a string, got {other}");
+                    }
+                };
+                self.apply_config_patch(key, value, if_revision).await?;
                 Ok(Value::Bool(true))
             }
 
@@ -719,8 +734,31 @@ impl Handler {
     /// `Config::save` only serialises and `validate_config` previously ran at
     /// CLI startup only. Rejecting here leaves both the in-memory config and
     /// the file untouched, and the failure surfaces to the caller as an error.
-    async fn apply_config_patch(&self, key: &str, value: &Value) -> Result<()> {
+    /// Persist `key = value` into the in-memory config and onto disk.
+    ///
+    /// `if_revision` is the RFC 9110 `If-Match` guard: when present it is
+    /// compared against the revision of the config currently held under the
+    /// write lock, so the check and the mutation cannot be interleaved by a
+    /// concurrent writer. A mismatch is reported as `CONFLICT` naming the
+    /// revision that won, which the client needs in order to refetch and retry.
+    async fn apply_config_patch(
+        &self,
+        key: &str,
+        value: &Value,
+        if_revision: Option<&str>,
+    ) -> Result<()> {
         let mut cfg = self.config.write().await;
+
+        if let Some(expected) = if_revision {
+            let current = config_revision::revision_of(&cfg)?;
+            if current != expected {
+                anyhow::bail!(
+                    "CONFLICT: config.set {key} refused; if_revision {expected} is stale, \
+                     current revision is {current}"
+                );
+            }
+        }
+
         let mut raw = serde_json::to_value(&*cfg)?;
 
         let parts: Vec<&str> = key.split('.').collect();
