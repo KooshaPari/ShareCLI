@@ -29,6 +29,23 @@ fn inherited_descriptor() -> Option<String> {
     None
 }
 
+fn validate_requested_auth(requested: &str, inherited: Option<&str>) -> Result<(), String> {
+    if requested.is_empty() {
+        return Ok(());
+    }
+    match inherited {
+        Some(auth) if auth == requested => Ok(()),
+        Some(auth) => Err(format!(
+            "jobserver_auth mismatch: rule requested {:?}, inherited provider is {:?}",
+            requested, auth
+        )),
+        None => Err(
+            "jobserver_auth was configured but no inherited native provider is available"
+                .to_string(),
+        ),
+    }
+}
+
 /// Execute a command under ShareCLI's normal Hypervisor while interoperating
 /// with an inherited GNU-make/Cargo jobserver when policy enables borrowing.
 ///
@@ -47,23 +64,8 @@ pub fn run(
         return process::run_status(harness_home, real_cmd, args, opts);
     }
 
-    if !opts.jobserver_auth.is_empty() {
-        match inherited_descriptor() {
-            Some(auth) if auth == opts.jobserver_auth => {}
-            Some(auth) => {
-                return Err(format!(
-                    "jobserver_auth mismatch: rule requested {:?}, inherited provider is {:?}",
-                    opts.jobserver_auth, auth
-                ));
-            }
-            None => {
-                return Err(
-                    "jobserver_auth was configured but no inherited native provider is available"
-                        .to_string(),
-                );
-            }
-        }
-    }
+    let inherited_auth = inherited_descriptor();
+    validate_requested_auth(&opts.jobserver_auth, inherited_auth.as_deref())?;
 
     // SAFETY: dispatcher strategy execution happens before it opens provider-
     // specific jobserver handles. The opt-in jobserver_borrow gate prevents
@@ -102,40 +104,14 @@ mod tests {
     }
 
     #[test]
-    fn explicit_auth_without_inherited_provider_fails_closed_when_environment_is_clean() {
-        let saved_make = env::var_os("MAKEFLAGS");
-        let saved_cargo = env::var_os("CARGO_MAKEFLAGS");
-        let saved_m = env::var_os("MFLAGS");
-        unsafe {
-            env::remove_var("MAKEFLAGS");
-            env::remove_var("CARGO_MAKEFLAGS");
-            env::remove_var("MFLAGS");
-        }
-
-        let opts = RuleOpts {
-            jobserver_borrow: true,
-            jobserver_auth: "fifo:/tmp/not-present".into(),
-            ..RuleOpts::default()
-        };
-        let dir = tempfile::TempDir::new().expect("tempdir");
-        let err = run(dir.path(), Path::new("/bin/echo"), &["should-not-run"], &opts)
-            .expect_err("configured auth without inherited provider must fail");
-
-        unsafe {
-            match saved_make {
-                Some(value) => env::set_var("MAKEFLAGS", value),
-                None => env::remove_var("MAKEFLAGS"),
-            }
-            match saved_cargo {
-                Some(value) => env::set_var("CARGO_MAKEFLAGS", value),
-                None => env::remove_var("CARGO_MAKEFLAGS"),
-            }
-            match saved_m {
-                Some(value) => env::set_var("MFLAGS", value),
-                None => env::remove_var("MFLAGS"),
-            }
-        }
-
-        assert!(err.contains("no inherited native provider"), "{err}");
+    fn explicit_auth_validation_fails_closed_without_matching_provider() {
+        assert!(validate_requested_auth("fifo:/tmp/a", None)
+            .expect_err("missing provider must fail")
+            .contains("no inherited native provider"));
+        assert!(validate_requested_auth("fifo:/tmp/a", Some("fifo:/tmp/b"))
+            .expect_err("wrong provider must fail")
+            .contains("mismatch"));
+        validate_requested_auth("fifo:/tmp/a", Some("fifo:/tmp/a"))
+            .expect("exact inherited provider should pass");
     }
 }
