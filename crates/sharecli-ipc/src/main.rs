@@ -8,7 +8,9 @@
 //! Set SHARECLI_SESSION_DB to a nonempty file path to isolate durable session state.
 //! Invalid database overrides fail startup without falling back to the default.
 //!
-//! Protocol: newline-delimited JSON (NDJSON).
+//! Protocol: newline-delimited JSON (NDJSON), one frame capped at
+//! `framing::MAX_REQUEST_LINE_BYTES` (256 KiB) so a peer cannot grow the
+//! heap without bound.
 //! Request:  `{"id": N, "method": "...", "params": {...}}`
 //! Response: `{"id": N, "result": ..., "error": null}` or `{"id": N, "result": null, "error": "..."}`
 
@@ -16,13 +18,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Result;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tracing::{error, info};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
 
 mod config_revision;
+mod framing;
 mod handler;
 mod log_buffer;
 
@@ -115,42 +117,14 @@ async fn serve_unix_connection(
         }
     }
 
-    let (reader, mut writer) = stream.into_split();
-    let mut lines = BufReader::new(reader).lines();
-
-    while let Some(line) = lines.next_line().await? {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        let response = handler.dispatch(trimmed).await;
-        let mut payload = serde_json::to_string(&response)?;
-        payload.push('\n');
-        writer.write_all(payload.as_bytes()).await?;
-    }
-
-    Ok(())
+    let (reader, writer) = stream.into_split();
+    framing::serve_framed(reader, writer, &handler).await
 }
 
 #[cfg(windows)]
 async fn serve_tcp_connection(stream: tokio::net::TcpStream, handler: Arc<Handler>) -> Result<()> {
-    let (reader, mut writer) = stream.into_split();
-    let mut lines = BufReader::new(reader).lines();
-
-    while let Some(line) = lines.next_line().await? {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        let response = handler.dispatch(trimmed).await;
-        let mut payload = serde_json::to_string(&response)?;
-        payload.push('\n');
-        writer.write_all(payload.as_bytes()).await?;
-    }
-
-    Ok(())
+    let (reader, writer) = stream.into_split();
+    framing::serve_framed(reader, writer, &handler).await
 }
 
 #[cfg(unix)]

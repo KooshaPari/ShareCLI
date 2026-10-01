@@ -558,6 +558,100 @@ removed so the crate has one implementation instead of two.
 it keeps last-writer-wins behaviour until `IPCClient`/`ConfigPage` adopt
 `config.revision`. The IPC surface for that now exists and is tested.
 
+## Phase 1 task 1.6a — capped IPC line length (2026-10-01)
+
+**Finding:** `FINDINGS.md:58` `[HIGH] main.rs:96-107,116-127` — "`BufReader::lines()` with
+no max line length; no request-size bound, no response-size bound — local memory DoS."
+Prescribed fix: `tokio_util::codec::LinesCodec::new_with_max_length(N)`.
+
+**Observed before:** `main.rs` carried two byte-identical connection loops
+(`serve_unix_connection`, `serve_tcp_connection`), both built on `BufReader::lines()`.
+`lines()` yields a record only on `\n`, so a local peer that connects and streams bytes
+with no newline grows the sidecar's heap without bound for as long as it keeps writing.
+`tokio-util` was already declared in `Cargo.toml` with `features = ["codec"]` and was
+referenced nowhere — the declared fix had never been applied.
+
+### Red — real binary, unmodified server
+
+`crates/sharecli-ipc/tests/ipc_line_limit.rs` spawns the **real** `sharecli-ipc` binary
+(`CARGO_BIN_EXE_sharecli-ipc`), not a mocked reader:
+
+| test | result against original `main.rs` |
+|---|---|
+| `a_request_just_under_the_cap_is_answered` | pass |
+| `a_huge_frame_is_refused_but_the_connection_still_serves` | pass |
+| `oversized_frame_is_rejected_without_a_response` | **fail** |
+
+The failure is the defect itself: the original server buffered all 1 048 576 bytes of the
+oversized frame and then *answered* with an 80-byte JSON body
+(`parse error: expected value at line 1 column 1`) instead of refusing the frame. No
+response is the required behaviour — a frame over the cap must never reach the handler.
+**Red: 2 passed / 1 failed.**
+
+The three codec-level unit tests in `framing.rs` cannot produce red against the original,
+because `framing.rs` did not exist; the integration test above carries the red for the
+behaviour, and the unit tests pin the mechanism.
+
+### Fix
+
+New `crates/sharecli-ipc/src/framing.rs` (116 lines):
+
+* `pub const MAX_REQUEST_LINE_BYTES: usize = 256 * 1024` — far above the largest frame on
+  the wire (`process.spawn` carries only `name`/`command`/`args`/`project`/`harness`/`cwd`)
+  and far below the 1 MiB frame the test uses to exercise the cap.
+* `serve_framed<R: AsyncRead, W: AsyncWrite>(reader, writer, handler)` wraps the split
+  halves in `Framed::new(.., LinesCodec::new_with_max_length(MAX_REQUEST_LINE_BYTES))` and
+  dispatches each frame. `line?` propagates `MaxLineLengthExceeded` out of the loop to the
+  accept loop, which logs it and closes **that one connection** — the bound is on a frame,
+  not on a peer; every other client keeps serving.
+* `serve_unix_connection` and `serve_tcp_connection` in `main.rs` are now `into_split()` +
+  a delegate call. This removed the duplicated loop outright: `main.rs` 282 → **256**
+  lines. Modules declared in both `lib.rs` (`pub mod framing;`) and `main.rs` (`mod framing;`).
+
+**Response size, and why it is not separately bounded:** responses are derived from
+dispatched handler state plus request params — a peer does not stream bytes into them. With
+the request cap in place, any response that echoes request content is itself bounded by
+256 KiB plus encoding overhead, so the unbounded-peer-write vector named in the finding is
+closed on the request side. No separate response cap was added, and none is claimed.
+
+### Green gates
+
+| gate | observed |
+|---|---|
+| `ipc_line_limit` (real-binary integration) | **3 passed / 0 failed** |
+| `framing` unit (in `sharecli_ipc` lib target) | **3 passed / 0 failed** |
+| `cargo test -p sharecli-ipc` (7 targets) | **177 passed / 0 failed / 2 ignored**, `A2_exit=0` — run twice, identical |
+| `cargo clippy --all-targets` | `B_exit=0`; exactly the 2 pre-existing warnings (`commands/proc/tests.rs` module-name, `queue.rs:164` `saturating_add`) |
+| `rustfmt --check` | clean on `framing.rs`, `ipc_line_limit.rs`; `main.rs` contributes **0** own hunks (the 3 reported are the pre-existing `handler.rs` ones, reached by rustfmt's module recursion) |
+
+Target breakdown of the 177: lib 104 · main 47 · `c01_climb2_ipc` 4 · `config_revision_dispatch`
+5 · `handler_dispatch` 13 · `ipc_line_limit` 3 · doc-tests 1. New in this task: **+6**
+(3 framing unit + 3 integration).
+
+**Clippy correction during the gate:** the first full run flagged one warning I had
+introduced — `unused import: LinesCodecError` at `framing.rs:16`, because `LinesCodecError`
+is named only inside `#[cfg(test)] mod tests`. `B_exit` was still 0 (warnings do not fail
+the gate), but the accepted baseline is *exactly the 2 pre-existing warnings*, so the import
+was scoped into the test module and the whole gate re-run rather than shipped.
+
+### Harness notes
+
+* Isolation is **child-only env** — `SHARECLI_IPC_SOCK`, `SHARECLI_CONFIG_PATH`,
+  `SHARECLI_SESSION_DB` are passed with `Command::env(...)`. No `std::env::set_var`, so the
+  test cannot mutate process state for its siblings.
+* The `Sidecar` fixture declares `child` **before** the temp directory so Swift's
+  declaration-order drop kills the server before the directory it lives in disappears.
+* `read_frame` and the oversized-frame write both tolerate the post-fix failure shape: the
+  server now hangs up mid-write, so `write_all` can surface `BrokenPipe`. The test accepts
+  `write_refused || hung_up` and maps `BrokenPipe`/`ConnectionReset`/`NotConnected` in the
+  reader — both are the same refusal, reached at different moments.
+
+**Not in scope:** 1.6b — a single long-lived Swift connection with an id→continuation map.
+That item originates at `PLAN.md:165`, **not** in `FINDINGS.md`; `IPCClient.swift` has no
+per-call-connection finding, and its per-call design is the documented thread-safety
+mechanism for a 754-line client covered by 5 Swift test files. It is staged second and
+reported separately.
+
 ## Verdict
 
 Phases 0.5–0.7 are verified green on every gate that completed honestly, including the
