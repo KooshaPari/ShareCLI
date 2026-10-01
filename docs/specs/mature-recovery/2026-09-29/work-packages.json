@@ -194,8 +194,11 @@
       ],
       "merge_gate": "BLOCKED",
       "blocked_by": [
-        "exact scheduling reference/benchmark receipt",
-        "native workload/pressure fixture before production scheduling integration"
+        "dependency/priority-aware scheduler fixture",
+        "same-workload naive baseline receipt",
+        "GPU/capability feasibility fixture",
+        "fairness/aging policy fixture",
+        "scheduler overhead measurement"
       ],
       "critical": [
         "No hard envelope violation",
