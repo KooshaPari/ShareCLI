@@ -306,6 +306,42 @@ jobs:
       - name: Netblock hermetic check (offline compile)
         run: bash scripts/ci/netblock_check.sh
 
+
+  mature-recovery-reference:
+    name: Mature recovery reference qualification
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Zig required by transitive native build
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
+      - uses: Swatinem/rust-cache@v2
+      - name: Validate recovery control-plane contracts
+        run: |
+          python scripts/recovery/validate_work_packages.py docs/specs/mature-recovery/2026-09-29/work-packages.json
+          python scripts/recovery/validate_evidence.py docs/specs/mature-recovery/2026-09-29/evidence/example-not-run.json
+          python scripts/recovery/validate_trace.py docs/specs/mature-recovery/2026-09-29/trace-slice.json
+      - name: Qualify additive semantic and scheduling domains
+        run: |
+          cargo test -p sharecli-ipc identity::tests:: -- --nocapture
+          cargo test -p sharecli-ipc capability::tests:: -- --nocapture
+          cargo test -p sharecli-ipc equivalence::tests:: -- --nocapture
+          cargo test -p sharecli-ipc scheduling::tests:: -- --nocapture
+          cargo test -p sharecli-ipc scheduling_reference::tests:: -- --nocapture
+          cargo test -p sharecli-ipc scheduling_benchmark::tests:: -- --nocapture
+          cargo test -p sharecli-ipc jobserver::tests:: -- --nocapture
+          cargo test -p sharecli-ipc pressure::tests:: -- --nocapture
+          cargo test -p sharecli-ipc resource_control::tests:: -- --nocapture
+          cargo test -p sharecli-session mature_recovery::tests:: -- --nocapture
+      - name: Native memory-pressure comparison
+        run: python scripts/recovery/scheduling_pressure_fixture.py --mib 12 --seconds 0.20
+
+
   lint:
     name: ci / lint
     if: always()
