@@ -107,3 +107,6 @@ mod tests {
         assert!(w.estimate_provenance.is_some());
     }
 }
+
+#[cfg(test)]
+mod fixture_scheduler;
