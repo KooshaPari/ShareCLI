@@ -39,6 +39,7 @@ pub mod resource_control;
 pub mod scheduling_reference;
 pub mod scheduling_benchmark;
 pub mod scheduling_policy;
+pub mod speculation_policy;
 pub mod equivalence;
 pub mod identity;
 pub mod jobserver;
