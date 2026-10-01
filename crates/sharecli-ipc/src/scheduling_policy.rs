@@ -169,12 +169,7 @@ pub fn ranked_ready_ids(
 
     ready.sort_by(|a, b| {
         effective_priority(&b.item, b.enqueued_at_ms, now_ms, aging_interval_ms)
-            .cmp(&effective_priority(
-                &a.item,
-                a.enqueued_at_ms,
-                now_ms,
-                aging_interval_ms,
-            ))
+            .cmp(&effective_priority(&a.item, a.enqueued_at_ms, now_ms, aging_interval_ms))
             .then_with(|| a.enqueued_at_ms.cmp(&b.enqueued_at_ms))
             .then_with(|| a.sequence.cmp(&b.sequence))
     });
