@@ -224,9 +224,10 @@
       ],
       "merge_gate": "BLOCKED",
       "blocked_by": [
-        "B05 scheduling spine",
-        "speculation budget policy",
-        "pressure-response oracle"
+        "B05 exact-candidate qualification and production scheduling spine",
+        "speculation budget/eligibility/cancellation/wasted-work reference oracle",
+        "exact CI receipt for capability-bounded pressure response policy",
+        "native pressure-response enforcement receipt on a provider with declared controls"
       ],
       "critical": [
         "Speculation budget explicit",
@@ -237,7 +238,8 @@
         "speculation fixture",
         "pressure fixture",
         "wasted-work accounting"
-      ]
+      ],
+      "qualification": "Pressure observation/parser and capability-bounded response policy implemented as pure reference semantics; no runtime enforcement or speculation strategy qualified"
     }
   ]
 }
