@@ -5166,6 +5166,7 @@ dependencies = [
  "dirs",
  "fs2",
  "futures-util",
+ "jobserver",
  "libc",
  "serde",
  "serde_json",
