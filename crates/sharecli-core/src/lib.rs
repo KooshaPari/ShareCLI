@@ -1737,4 +1737,32 @@ mod tests {
         assert_eq!(hv.nocache_args(), &["--force", "--clean"]);
         assert_ne!(hv.nocache_args().len(), original_len);
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn child_command_configurator_reaches_actual_spawn() {
+        struct EnvConfigurator;
+
+        impl ChildCommandConfigurator for EnvConfigurator {
+            fn configure(&self, command: &mut std::process::Command) {
+                command.env("SHARECLI_CHILD_CONFIGURATOR_TEST", "configured");
+            }
+        }
+
+        let cwd = std::env::current_dir().expect("cwd");
+        let req = SpawnRequest::new(
+            vec![
+                "sh".into(),
+                "-c".into(),
+                "printf %s \"$SHARECLI_CHILD_CONFIGURATOR_TEST\"".into(),
+            ],
+            cwd,
+            vec![],
+        );
+        let outcome =
+            spawn_process_sync(&req, Some(&EnvConfigurator)).expect("configured child spawn");
+        assert_eq!(outcome.exit_code, 0);
+        assert_eq!(outcome.stdout, b"configured");
+    }
+
 }
