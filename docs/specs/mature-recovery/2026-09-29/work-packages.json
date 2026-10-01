@@ -137,7 +137,8 @@
       "merge_gate": "BLOCKED",
       "blocked_by": [
         "queue PID-reuse/fairness exact receipts",
-        "inherited native jobserver provider/composition receipt"
+        "exact CI receipt for owned native jobserver lease + Hypervisor child propagation",
+        "true inherited-environment jobserver discovery/composition receipt"
       ],
       "evidence_required": [
         "PID reuse",
@@ -145,7 +146,7 @@
         "FIFO",
         "jobserver composition"
       ],
-      "qualification": "GNU jobserver discovery plus maintained-crate token acquisition/release, RAII cleanup, nested child propagation and implicit-slot accounting implemented; inherited-provider evidence pending"
+      "qualification": "GNU jobserver discovery, maintained-crate acquisition/release, RAII cleanup, implicit-slot accounting and actual Hypervisor child propagation implemented; exact CI and inherited-environment evidence pending"
     },
     {
       "id": "SC-WP-B04",
@@ -196,9 +197,10 @@
       "merge_gate": "BLOCKED",
       "blocked_by": [
         "exact registered CI receipt for dependency/device/fairness/backfill reference policy",
+        "exact registered CI receipt for plan-to-Hypervisor runtime vertical",
         "same-workload native naive-vs-bounded resource receipt on exact candidate",
         "scheduler overhead receipt on exact candidate; threshold remains benchmark-derived",
-        "production scheduler integration remains unauthorized until reference evidence qualifies"
+        "production scheduler integration remains unauthorized until reference/runtime evidence qualifies"
       ],
       "critical": [
         "No hard envelope violation",
@@ -212,7 +214,7 @@
         "completion/throughput receipt",
         "fairness/queue receipt"
       ],
-      "qualification": "SOTA passes 3-6 + benchmark contract complete; dependency/device/fairness/backfill policy oracle and native pressure fixture implemented; exact registered CI receipt pending"
+      "qualification": "Reference policy plus real-subprocess plan-to-Hypervisor execution oracle implemented; exact registered qualification pending"
     },
     {
       "id": "SC-WP-B06",
