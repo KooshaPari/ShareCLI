@@ -191,7 +191,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn same_workload_reports_policy_cost_without_inventing_an_optimality_threshold() {
         let env=ResourceEnvelope{id:"host".into(),observed_at_unix_ms:1,source:"fixture".into(),capacity:rv(4.0,4_000)};
         let work=vec![
@@ -220,6 +219,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn fit_scan_reduces_fragmentation_vs_strict_fifo_on_complementary_shapes() {
         let env=ResourceEnvelope{id:"host".into(),observed_at_unix_ms:1,source:"fixture".into(),capacity:rv(4.0,4_000)};
         let work=vec![
