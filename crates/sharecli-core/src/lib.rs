@@ -72,6 +72,7 @@ use tracing::{debug, error, warn};
 pub mod detect;
 pub mod proc_scan;
 pub mod speculation;
+pub mod resource_admission;
 pub use detect::{match_known_agent, KNOWN_AGENT_FAMILIES};
 pub use proc_scan::{
     agent_label_for_pid, detect_caller_agent, is_under_agent, scan_agents, scan_host_agents,
@@ -88,6 +89,7 @@ pub use sharecli_ipc::{
     DEFAULT_NOCACHE_ARGS, QUEUE_PRIORITY_ENV,
 };
 pub use speculation::{SpeculationTracker, SPECULATION_THRESHOLD, SPECULATION_WINDOW};
+pub use resource_admission::{AdmissionRejection, ResourceAdmissionLease, ResourceAdmissionPool};
 
 // ---------------------------------------------------------------------------
 // Thermal gate — trait + decisions
@@ -743,6 +745,24 @@ impl Hypervisor {
     /// strategies that must serialize on the nocache lane (FR-008 AC-008.16).
     pub async fn run_queued(&self, req: SpawnRequest, lane: &str) -> Result<SpawnOutcome> {
         self.run_queued_configured(req, lane, None).await
+    }
+
+    /// Execute one queue-routed spawn while holding an explicit
+    /// multidimensional resource reservation for the entire subprocess
+    /// lifetime. This is opt-in mature-recovery wiring; default run() remains
+    /// unchanged until admission evidence qualifies.
+    pub async fn run_admitted_queued(
+        &self,
+        req: SpawnRequest,
+        lane: &str,
+        admission: &ResourceAdmissionPool,
+        work_item_id: &str,
+        demand: &sharecli_ipc::scheduling::ResourceVector,
+    ) -> Result<SpawnOutcome> {
+        let _lease = admission
+            .try_acquire(work_item_id, demand)
+            .map_err(|err| anyhow!("resource admission rejected {work_item_id}: {err}"))?;
+        self.run_queued(req, lane).await
     }
 
     /// Run the queue lane while allowing a native provider to configure the
