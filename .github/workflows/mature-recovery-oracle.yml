@@ -51,7 +51,7 @@ jobs:
       - name: Run positive queue crash-recovery control
         run: cargo test -p sharecli-ipc --test recovery_queue_crash -- --nocapture
       - name: Run native queue aging/FIFO adversarial controls
-        run: cargo test -p sharecli-ipc queue::tests:: -- --nocapture
+        run: "cargo test -p sharecli-ipc queue::tests:: -- --nocapture"
       - name: Run PID-reuse ownership adversary
         run: cargo test -p sharecli-ipc --test recovery_queue_pid_reuse -- --nocapture
 
@@ -73,13 +73,13 @@ jobs:
       - name: Validate semantic trace
         run: python scripts/recovery/validate_trace.py docs/specs/mature-recovery/2026-09-29/trace-slice.json
       - name: SC-WP-A01 identities
-        run: cargo test -p sharecli-ipc identity::tests:: -- --nocapture
+        run: "cargo test -p sharecli-ipc identity::tests:: -- --nocapture"
       - name: SC-WP-A02 recovery model
-        run: cargo test -p sharecli-session mature_recovery::tests:: -- --nocapture
+        run: "cargo test -p sharecli-session mature_recovery::tests:: -- --nocapture"
       - name: SC-WP-A03 capability truth
-        run: cargo test -p sharecli-ipc capability::tests:: -- --nocapture
+        run: "cargo test -p sharecli-ipc capability::tests:: -- --nocapture"
       - name: SC-WP-A04 equivalence adapter
-        run: cargo test -p sharecli-ipc equivalence::tests:: -- --nocapture
+        run: "cargo test -p sharecli-ipc equivalence::tests:: -- --nocapture"
 
   scheduling-domain:
     name: SC-WP-A06 scheduling domain
@@ -88,7 +88,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Resource and schedule identity controls
-        run: cargo test -p sharecli-ipc scheduling::tests:: -- --nocapture
+        run: "cargo test -p sharecli-ipc scheduling::tests:: -- --nocapture"
 
   scheduling-reference-model:
     name: B05 scheduling reference model
@@ -97,7 +97,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Envelope-safe baseline model
-        run: cargo test -p sharecli-ipc scheduling_reference::tests:: -- --nocapture
+        run: "cargo test -p sharecli-ipc scheduling_reference::tests:: -- --nocapture"
 
   scheduling-benchmark-simulator:
     name: B05 scheduling benchmark simulator
@@ -106,7 +106,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Naive versus bounded FIFO benchmark controls
-        run: cargo test -p sharecli-ipc scheduling_benchmark::tests:: -- --nocapture
+        run: "cargo test -p sharecli-ipc scheduling_benchmark::tests:: -- --nocapture"
 
   native-scheduling-pressure:
     name: Native pressure fixture
@@ -126,7 +126,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Parse native jobserver transports
-        run: cargo test -p sharecli-ipc jobserver::tests:: -- --nocapture
+        run: "cargo test -p sharecli-ipc jobserver::tests:: -- --nocapture"
 
   pressure-domain:
     name: SC-WP-A06 pressure parser
@@ -135,7 +135,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Linux PSI pressure semantics
-        run: cargo test -p sharecli-ipc pressure::tests:: -- --nocapture
+        run: "cargo test -p sharecli-ipc pressure::tests:: -- --nocapture"
 
   resource-control-domain:
     name: SC-WP-A06 resource control capabilities
@@ -144,7 +144,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Observation versus enforcement controls
-        run: cargo test -p sharecli-ipc resource_control::tests:: -- --nocapture
+        run: "cargo test -p sharecli-ipc resource_control::tests:: -- --nocapture"
 
   scheduling-packing-reference:
     name: B05 deterministic packing reference
@@ -153,4 +153,4 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Naive overcommit vs bounded packing controls
-        run: cargo test -p sharecli-ipc scheduling::fixture_scheduler::tests:: -- --nocapture
+        run: "cargo test -p sharecli-ipc scheduling::fixture_scheduler::tests:: -- --nocapture"
