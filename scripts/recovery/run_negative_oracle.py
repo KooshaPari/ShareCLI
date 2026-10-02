@@ -129,11 +129,16 @@ def main() -> int:
         dirty = subprocess.check_output(["git", "diff", "HEAD", "--name-only"], text=True)
         if dirty.strip():
             raise ValueError("tracked source differs from the recorded candidate")
-        for tool in ("cargo", "rustc", "zig"):
+        for tool in ("cargo", "rustc"):
             code, output, timed_out = invoke([tool, "--version"], args.output / f"{tool}.log", 30)
             if code != 0 or timed_out:
                 raise ValueError(f"required verifier tool unavailable: {tool}")
             receipt["environment"][tool] = output.strip()
+        # Zig is a transitive build tool for spawn-core-sys, not the oracle
+        # verifier itself. Record it when available, but let the exact cargo
+        # build determine whether its absence is actually relevant.
+        code, output, timed_out = invoke(["zig", "version"], args.output / "zig.log", 30)
+        receipt["environment"]["zig"] = output.strip() if code == 0 and not timed_out else None
         command = ["cargo", "test", "-p", "sharecli-core", "--test", args.target, "--no-run", "--message-format=json"]
         receipt["build_command"] = command
         code, output, timed_out = invoke(command, args.output / "build.log", 900)
