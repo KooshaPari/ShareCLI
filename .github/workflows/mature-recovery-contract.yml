@@ -45,6 +45,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Zig required by spawn-core-sys build
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
       - name: Test additive semantic identities
         run: "cargo test -p sharecli-ipc identity::tests:: -- --nocapture"
 
@@ -54,6 +58,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Zig required by spawn-core-sys build
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
       - name: Recovery subject model
         run: "cargo test -p sharecli-session mature_recovery::tests:: -- --nocapture"
       - name: Capability contract
