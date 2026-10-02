@@ -65,12 +65,18 @@ fn scalar_f64(name: &str, demand: Option<f64>, capacity: Option<f64>) -> Resourc
     let Some(demand) = demand else {
         return ResourceFeasibility::Unknown(format!("{name} demand unknown"));
     };
-    if demand <= 0.0 {
+    if !demand.is_finite() || demand < 0.0 {
+        return ResourceFeasibility::Unknown(format!("{name} demand invalid"));
+    }
+    if demand == 0.0 {
         return ResourceFeasibility::Fits;
     }
     let Some(capacity) = capacity else {
         return ResourceFeasibility::Unknown(format!("{name} capacity unknown"));
     };
+    if !capacity.is_finite() || capacity < 0.0 {
+        return ResourceFeasibility::Unknown(format!("{name} capacity invalid"));
+    }
     if demand <= capacity {
         ResourceFeasibility::Fits
     } else {
@@ -275,6 +281,32 @@ mod tests {
             resource_feasibility(&env, &rv(2.0, 8_000, 1, 20_000, &["rocm"])),
             ResourceFeasibility::DoesNotFit(_)
         ));
+    }
+
+    #[test]
+    fn invalid_float_demand_or_capacity_is_not_schedulable() {
+        let env = ResourceEnvelope {
+            id: "host".into(),
+            observed_at_unix_ms: 1,
+            source: "fixture".into(),
+            capacity: rv(8.0, 64_000, 0, 0, &[]),
+        };
+
+        for invalid in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -1.0] {
+            let mut demand = rv(1.0, 1_000, 0, 0, &[]);
+            demand.cpu = Some(invalid);
+            assert!(matches!(
+                resource_feasibility(&env, &demand),
+                ResourceFeasibility::Unknown(_)
+            ));
+
+            let mut invalid_env = env.clone();
+            invalid_env.capacity.cpu = Some(invalid);
+            assert!(matches!(
+                resource_feasibility(&invalid_env, &rv(1.0, 1_000, 0, 0, &[])),
+                ResourceFeasibility::Unknown(_)
+            ));
+        }
     }
 
     #[test]
