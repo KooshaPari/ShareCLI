@@ -211,8 +211,7 @@
       ],
       "merge_gate": "BLOCKED",
       "blocked_by": [
-        "exact CI receipt for RAII resource-admission + real subprocess fixture",
-        "exact CI receipt for native 50-process same-workload envelope comparison",
+        "exact CI receipt for planner-to-runtime admission vertical after numeric hardening",
         "exact CI receipt for inherited GNU make jobserver discovery/reuse",
         "default Hypervisor run path remains unchanged pending qualification"
       ],
@@ -228,7 +227,7 @@
         "completion/throughput receipt",
         "fairness/queue receipt"
       ],
-      "qualification": "Reference scheduling, plan-to-Hypervisor execution, inherited jobserver oracle, 50-process native envelope fixture, and opt-in RAII multidimensional admission spine implemented; exact current-candidate qualification pending"
+      "qualification": "Reference scheduling is now bound to opt-in runtime ResourceAdmissionPool execution; stale plans are rechecked against the current runtime envelope; invalid/non-representable resource arithmetic and invalid PSI observations fail closed. Exact current-candidate CI pending."
     },
     {
       "id": "SC-WP-B06",
