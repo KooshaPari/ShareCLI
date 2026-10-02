@@ -144,8 +144,8 @@
       ],
       "merge_gate": "BLOCKED",
       "blocked_by": [
-        "queue PID-reuse/fairness exact receipts",
-        "exact CI receipt for externally inherited GNU jobserver discovery/acquisition/propagation"
+        "exact CI receipt for inherited GNU make jobserver discovery/reuse",
+        "queue PID-reuse/fairness exact receipts"
       ],
       "evidence_required": [
         "PID reuse",
@@ -153,7 +153,7 @@
         "FIFO",
         "jobserver composition"
       ],
-      "qualification": "Owned native jobserver lease + actual Hypervisor child propagation passed in run 36990039958 on fe05a23dcf2b655dbb307a0982508fcc0dad5de5; externally inherited GNU-make provider oracle added and pending",
+      "qualification": "Owned-provider lease + Hypervisor child propagation implemented; true GNU make inherited-provider discovery/nested propagation oracle now implemented and pending exact CI",
       "critical": [
         "Admission must not rely on PID identity",
         "Native provider composition must not double-throttle"
@@ -211,9 +211,8 @@
       ],
       "merge_gate": "BLOCKED",
       "blocked_by": [
-        "native pressure comparison exact receipt after /proc exit-race repair",
-        "same-workload naive-vs-bounded-vs-multidimensional benchmark receipt",
-        "scheduler overhead receipt with benchmark-derived interpretation",
+        "exact CI receipt after fit-scan benchmark test annotation repair",
+        "native pressure comparison exact receipt",
         "production admission integration remains separate from qualified reference/runtime oracle"
       ],
       "critical": [
@@ -228,7 +227,7 @@
         "completion/throughput receipt",
         "fairness/queue receipt"
       ],
-      "qualification": "Reference policy plus real plan-to-Hypervisor execution passed in run 36990039958 on fe05a23dcf2b655dbb307a0982508fcc0dad5de5; pressure fixture failed only on /proc process-exit observation race and is repaired on later candidate"
+      "qualification": "Reference policy and real plan-to-Hypervisor execution previously reached/passed before pressure/fixture follow-on; same-workload naive/FIFO/fit-scan and native pressure receipts are implemented, with exact current-candidate CI pending"
     },
     {
       "id": "SC-WP-B06",
