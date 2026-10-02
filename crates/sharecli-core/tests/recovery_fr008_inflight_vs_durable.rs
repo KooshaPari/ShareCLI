@@ -1,3 +1,4 @@
+// FR: FR-008 mature-recovery in-flight vs durable reuse oracle
 //! Architecture experiment: distinguish useful in-flight duplicate suppression
 //! from unsafe durable replay under the current coupled Lock-Wait-Cache path.
 //!
