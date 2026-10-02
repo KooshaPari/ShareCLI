@@ -1,3 +1,4 @@
+// FR: FR-008 mature-recovery semantic identity oracle
 //! Mature-recovery adversarial proof for FR-008 semantic cache identity.
 //!
 //! This is intentionally a product test, not an implementation fix.  It proves
