@@ -38,7 +38,17 @@ jobs:
       - name: Run equivalence-domain adversarial matrix
         run: cargo test -p sharecli-core --test recovery_fr008_equivalence_matrix -- --nocapture || true
       - name: Run in-flight-vs-durable architecture experiment
-        run: cargo test -p sharecli-core --test recovery_fr008_inflight_vs_durable -- --nocapture
+        shell: bash
+        run: |
+          set +e
+          cargo test -p sharecli-core --test recovery_fr008_inflight_vs_durable -- --nocapture
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo "::error::FR-008 negative control unexpectedly passed; durable replay remains unsafely coupled to in-flight equivalence"
+            exit 1
+          fi
+          echo "Expected native counterexample reproduced: in-flight sharing is not durable-replay authority."
 
 
   queue-aging-ordering:
