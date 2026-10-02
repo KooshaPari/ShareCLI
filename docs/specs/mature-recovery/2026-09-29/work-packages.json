@@ -211,9 +211,10 @@
       ],
       "merge_gate": "BLOCKED",
       "blocked_by": [
-        "exact CI receipt after fit-scan benchmark test annotation repair",
-        "native pressure comparison exact receipt",
-        "production admission integration remains separate from qualified reference/runtime oracle"
+        "exact CI receipt for RAII resource-admission + real subprocess fixture",
+        "exact CI receipt for native 50-process same-workload envelope comparison",
+        "exact CI receipt for inherited GNU make jobserver discovery/reuse",
+        "default Hypervisor run path remains unchanged pending qualification"
       ],
       "critical": [
         "No hard envelope violation",
@@ -227,7 +228,7 @@
         "completion/throughput receipt",
         "fairness/queue receipt"
       ],
-      "qualification": "Reference policy and real plan-to-Hypervisor execution previously reached/passed before pressure/fixture follow-on; same-workload naive/FIFO/fit-scan and native pressure receipts are implemented, with exact current-candidate CI pending"
+      "qualification": "Reference scheduling, plan-to-Hypervisor execution, inherited jobserver oracle, 50-process native envelope fixture, and opt-in RAII multidimensional admission spine implemented; exact current-candidate qualification pending"
     },
     {
       "id": "SC-WP-B06",
