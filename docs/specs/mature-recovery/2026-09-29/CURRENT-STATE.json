@@ -19,16 +19,7 @@
     "SC_INFLIGHT_VS_DURABLE": "PENDING_EXECUTION_NOT_EVIDENCE",
     "SC_QUEUE_PID_REUSE": "PENDING_EXECUTION_NOT_EVIDENCE"
   },
-  "blocking_findings": [
-    "SC-F01",
-    "SC-F02",
-    "SC-F03",
-    "SC-F04",
-    "SC-F05",
-    "SC-F06",
-    "SC-F07",
-    "SC-F08"
-  ],
+  "blocking_findings": ["SC-F01", "SC-F02", "SC-F03", "SC-F04", "SC-F05", "SC-F06", "SC-F07", "SC-F08"],
   "gates": {
     "source_ledger_resolved": "PASS_3_OPEN",
     "history_alias_falsification": "MULTI_PASS_OPEN",
@@ -61,5 +52,19 @@
     "Extend fit-scan reference into explicit backfill/fairness strategies only after baseline receipt",
     "Run fresh independent review after denominator closes"
   ],
-  "pilot": "DEFERRED_UNTIL_BUILT_STAGE; not a substitute for design gate"
+  "pilot": "DEFERRED_UNTIL_BUILT_STAGE; not a substitute for design gate",
+  "latest_repair_review": {
+    "observed_on": "2026-10-02",
+    "reviewed_head": "542c29bd587f0e1bea13ad17eb58b2957f157944",
+    "run_id": 36995062186,
+    "job_id": 110810403546,
+    "actual_tested_checkout": "a58558c6ebe702746d9b604a08528d45db1ca80b",
+    "checkout_kind": "PR_MERGE_NOT_HEAD",
+    "qualification_status": "BLOCKED",
+    "inherited_jobserver": "FAILED_BAD_FD; recursive recipe and environment isolation repair awaiting Rust CI",
+    "pressure_and_50_process_fixtures": "SKIPPED_NOT_QUALIFIED",
+    "numeric_admission": "negative/nonfinite inputs and saturating overflow repaired; new native Rust tests awaiting CI",
+    "ci_maintenance": "scoped cancellation workflow added; offline safety tests passed; remote cancellation not yet observed",
+    "report": "REPAIR-2026-10-02.md"
+  }
 }

@@ -11,30 +11,32 @@ fn inherited_make_jobserver_is_discovered_and_reused_by_nested_child() {
                 .expect("inherited jobserver must be discovered")
         };
 
-        // One implicit GNU-make slot exists already. Acquire exactly one extra
-        // slot for total parallelism two, then prove nested propagation.
+        // The recursive make recipe already owns its implicit slot. Borrow
+        // exactly one extra token, return it, and verify it is reusable.
+        let before = client.available_tokens().expect("inherited token count");
         let lease = client
             .acquire_extra_tokens(sharecli_ipc::extra_tokens_for_total_parallelism(2))
             .expect("acquire inherited extra slot");
         assert_eq!(lease.token_count(), 1);
+        assert_eq!(client.available_tokens().expect("leased token count") + 1, before);
 
         let mut nested = Command::new("sh");
-        nested.args([
-            "-c",
-            r#"test -n "$MAKEFLAGS$CARGO_MAKEFLAGS""#,
-        ]);
+        nested.args(["-c", r#"test -n "$MAKEFLAGS$CARGO_MAKEFLAGS""#]);
         client.configure_make_child(&mut nested);
         let status = nested.status().expect("nested make-compatible child");
         assert!(status.success(), "nested child did not inherit jobserver state");
+        drop(lease);
+        assert_eq!(client.available_tokens().expect("returned token count"), before);
+        let returned = client.acquire_extra_tokens(1).expect("returned token reusable");
+        assert_eq!(returned.token_count(), 1);
         return;
     }
 
-    // GNU make owns the real jobserver. The recipe launches this same test
-    // binary as a child so NativeJobserverClient::from_environment observes an
-    // externally supplied provider rather than a ShareCLI-owned pool.
     let exe = std::env::current_exe().expect("current test executable");
+    // '+' marks this recipe recursive, so GNU make preserves pipe jobserver
+    // descriptors. Without it MAKEFLAGS can advertise closed descriptors.
     let makefile = format!(
-        "all:\n\tSHARECLI_INHERITED_JOBSERVER_CHILD=1 '{}' --exact inherited_make_jobserver_is_discovered_and_reused_by_nested_child --nocapture\n",
+        "all:\n\t+SHARECLI_INHERITED_JOBSERVER_CHILD=1 '{}' --exact inherited_make_jobserver_is_discovered_and_reused_by_nested_child --nocapture\n",
         exe.display()
     );
     let dir = tempfile::TempDir::new().expect("tempdir");
@@ -42,6 +44,12 @@ fn inherited_make_jobserver_is_discovered_and_reused_by_nested_child() {
     std::fs::write(&path, makefile).expect("write Makefile");
 
     let output = Command::new("make")
+        // The outer cargo test harness may advertise its own unavailable FDs.
+        // This fixture must test the NEW make-owned provider, not those FDs.
+        .env_remove("CARGO_MAKEFLAGS")
+        .env_remove("MAKEFLAGS")
+        .env_remove("MFLAGS")
+        .env_remove("MAKELEVEL")
         .arg("-j2")
         .arg("-f")
         .arg(&path)
