@@ -211,8 +211,8 @@
       ],
       "merge_gate": "BLOCKED",
       "blocked_by": [
-        "exact CI receipt after recovery collector Zig provisioning repair",
-        "exact CI receipt for plan-to-runtime admission and stale-plan controls",
+        "exact CI receipt for repaired queue aging/FIFO/dead-waiter controls",
+        "exact CI receipt for negative-oracle collector after Zig preflight correction",
         "default Hypervisor run path remains unchanged pending qualification"
       ],
       "critical": [
@@ -227,7 +227,7 @@
         "completion/throughput receipt",
         "fairness/queue receipt"
       ],
-      "qualification": "Candidate implementation includes reference scheduling, plan-to-runtime ResourceAdmissionPool execution, stale-plan runtime recheck, inherited jobserver reuse, native pressure and 50-process envelope fixtures. Prior exact recovery run 37020262698 is COLLECTOR_FAILURE for B05 because most Rust recovery jobs lacked Zig required by spawn-core-sys; FR-008 native negative controls did execute and reproduced unsafe legacy durable-replay semantics as expected counterexamples. Recovery collectors are repaired; rerun pending."
+      "qualification": "Current candidate fixes native defects observed on c1835aea: queue aging saturates rather than wrapping at 256 steps, equal-priority FIFO uses numeric sequence order, dead-PID waiters are removed, transient missing VmRSS remains UNKNOWN, and negative-oracle cargo compilation—not a separate Zig probe—is authoritative. Exact candidate b75f6eb155bd6f40b82bbcc5e980e74b4867eea0 pending."
     },
     {
       "id": "SC-WP-B06",
