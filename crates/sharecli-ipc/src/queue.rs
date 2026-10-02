@@ -160,8 +160,40 @@ impl SlotQueue {
     const AGING_STEP_MS: u128 = 1_000;
 
     fn effective_rank(_ticket: &str, base_priority: QueuePriority, waited: Duration) -> u8 {
-        let decay_steps = (waited.as_millis() / Self::AGING_STEP_MS) as u8;
-        base_priority.as_u8().saturating_add(decay_steps).min(u8::MAX)
+        let decay_steps =
+            (waited.as_millis() / Self::AGING_STEP_MS).min(u128::from(u8::MAX)) as u8;
+        base_priority.as_u8().saturating_add(decay_steps)
+    }
+
+    fn ticket_pid(ticket: &str) -> Option<u32> {
+        ticket.split('.').nth(2)?.parse().ok()
+    }
+
+    fn ticket_fifo_key(ticket: &str) -> (u64, u64, u32, &str) {
+        let mut parts = ticket.split('.');
+        let _rank = parts.next();
+        let secs = parts.next().and_then(|value| value.parse().ok()).unwrap_or(u64::MAX);
+        let pid = parts.next().and_then(|value| value.parse().ok()).unwrap_or(u32::MAX);
+        let seq = parts.next().and_then(|value| value.parse().ok()).unwrap_or(u64::MAX);
+        (secs, seq, pid, ticket)
+    }
+
+    #[cfg(unix)]
+    fn waiter_process_alive(pid: u32) -> bool {
+        if pid > i32::MAX as u32 {
+            return false;
+        }
+        let rc = unsafe { libc::kill(pid as libc::pid_t, 0) };
+        if rc == 0 {
+            return true;
+        }
+        std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
+    }
+
+    #[cfg(not(unix))]
+    fn waiter_process_alive(_pid: u32) -> bool {
+        // Without a native liveness primitive, do not fabricate death.
+        true
     }
 
     /// True when this ticket is next among equal-or-highest-priority waiters (FIFO by ticket name).
@@ -208,6 +240,14 @@ impl SlotQueue {
             let ticket = entry.file_name().to_string_lossy().into_owned();
             if ticket.starts_with('.') {
                 continue;
+            }
+            if ticket != my_ticket {
+                if let Some(pid) = Self::ticket_pid(&ticket) {
+                    if !Self::waiter_process_alive(pid) {
+                        let _ = fs::remove_file(entry.path());
+                        continue;
+                    }
+                }
             }
             let base_rank = Self::ticket_priority(&ticket);
 
@@ -269,7 +309,7 @@ impl SlotQueue {
 
         let winner = tickets_at_best
             .iter()
-            .min()
+            .min_by_key(|ticket| Self::ticket_fifo_key(ticket))
             .map(String::as_str)
             .unwrap_or(my_ticket);
         Ok(winner == my_ticket)
