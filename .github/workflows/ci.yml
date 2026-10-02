@@ -343,6 +343,7 @@ jobs:
           cargo test -p sharecli-session mature_recovery::tests:: -- --nocapture
           cargo test -p sharecli-core --test recovery_scheduling_runtime_vertical -- --nocapture
           cargo test -p sharecli-core --test recovery_jobserver_hypervisor -- --nocapture
+          cargo test -p sharecli-core --test recovery_resource_admission -- --nocapture
           cargo test -p sharecli-ipc --test recovery_inherited_jobserver -- --nocapture
       - name: Native memory-pressure comparison
         run: python scripts/recovery/scheduling_pressure_fixture.py --mib 12 --seconds 0.20
