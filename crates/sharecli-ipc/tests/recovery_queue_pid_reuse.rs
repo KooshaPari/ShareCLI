@@ -1,3 +1,4 @@
+// FR: FR-008 mature-recovery queue identity safety
 //! Mature-recovery adversarial control for queue ownership.
 //!
 //! A stale ticket can name a PID that is currently live again. PID liveness
