@@ -53,7 +53,7 @@ fn spawn_for(id: &str, order_file: &std::path::Path) -> SpawnRequest {
         vec![
             "sh".into(),
             "-c".into(),
-            "printf '%s\n' "$WORK_ID" >> "$ORDER_FILE"".into(),
+            r#"printf '%s\n' "$WORK_ID" >> "$ORDER_FILE""#.into(),
         ],
         std::env::current_dir().expect("cwd"),
         vec![
