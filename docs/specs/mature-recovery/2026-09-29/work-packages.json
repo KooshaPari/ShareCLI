@@ -240,8 +240,9 @@
       "merge_gate": "BLOCKED",
       "blocked_by": [
         "SC-WP-B05 exact qualification",
-        "exact CI receipt for current/revocable speculation eligibility and expiry",
-        "pressure observation-to-policy action contract remains incomplete",
+        "exact CI receipt for revocable/expiring speculation authority",
+        "exact CI receipt for capability-bounded pressure response",
+        "runtime wiring from pressure decision to admission/control provider remains separate",
         "loser cancellation and wasted-work accounting remain incomplete"
       ],
       "critical": [
@@ -254,7 +255,7 @@
         "pressure fixture",
         "wasted-work accounting"
       ],
-      "qualification": "Candidate B06 policy now requires current explicit read-only authority, allows later ineligible classification to revoke it, expires both frequency evidence and replay authority after the window, and retains explicit per-cycle budget/accounting. Exact current-candidate CI pending; no default speculation routing."
+      "qualification": "Candidate B06 policy now requires current explicit read-only speculation authority, revokes it on later ineligible classification, expires stale evidence/authority, bounds speculative executions per cycle, and accounts attempted/completed/failed/budget-skipped work. Existing pressure policy is now exact-oracle selected and fails closed on invalid thresholds; observation-only providers can only defer admissions, while pause/cpu-weight/terminate actions require explicit provider capability and cancellation authority. No default runtime routing promoted."
     }
   ]
 }
