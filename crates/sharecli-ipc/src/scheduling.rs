@@ -21,7 +21,12 @@ impl ResourceVector {
     }
 
     pub fn has_unknown_scalar(&self) -> bool {
-        self.cpu.is_none() || self.memory_bytes.is_none()
+        self.cpu.is_none()
+            || self.memory_bytes.is_none()
+            || self.gpu_count.is_none()
+            || self.vram_bytes.is_none()
+            || self.disk_bytes.is_none()
+            || self.io_weight.is_none()
     }
 }
 
@@ -75,6 +80,10 @@ mod tests {
         let r = ResourceVector::unknown();
         assert!(r.cpu.is_none());
         assert!(r.memory_bytes.is_none());
+        assert!(r.gpu_count.is_none());
+        assert!(r.vram_bytes.is_none());
+        assert!(r.disk_bytes.is_none());
+        assert!(r.io_weight.is_none());
         assert!(r.has_unknown_scalar());
     }
 
