@@ -18,12 +18,17 @@ import time
 from dataclasses import dataclass
 
 
-def rss_bytes(pid: int) -> int:
-    with open(f"/proc/{pid}/status", "r", encoding="utf-8") as f:
-        for line in f:
-            if line.startswith("VmRSS:"):
-                return int(line.split()[1]) * 1024
-    raise RuntimeError(f"VmRSS unavailable for pid {pid}")
+def rss_bytes(pid: int) -> int | None:
+    try:
+        with open(f"/proc/{pid}/status", "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1]) * 1024
+    except FileNotFoundError:
+        # The process can exit between poll() and opening /proc/<pid>/status.
+        # That is an observation race, not a zero-RSS measurement.
+        return None
+    raise RuntimeError(f"VmRSS unavailable for live pid {pid}")
 
 
 def child(mib: int, seconds: float) -> int:
@@ -63,7 +68,9 @@ def sample_group(group: list[subprocess.Popen[str]]) -> int:
     total = 0
     for p in group:
         if p.poll() is None:
-            total += rss_bytes(p.pid)
+            rss = rss_bytes(p.pid)
+            if rss is not None:
+                total += rss
     return total
 
 
@@ -111,7 +118,9 @@ def calibrate(mib: int) -> int:
         wait_ready(p)
         peak = 0
         while p.poll() is None:
-            peak = max(peak, rss_bytes(p.pid))
+            rss = rss_bytes(p.pid)
+            if rss is not None:
+                peak = max(peak, rss)
             time.sleep(0.01)
         if p.returncode != 0:
             raise RuntimeError("calibration child failed")
