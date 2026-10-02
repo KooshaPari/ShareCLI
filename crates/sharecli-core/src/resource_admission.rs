@@ -37,7 +37,11 @@ impl KnownResources {
     fn checked_add(self, rhs: Self) -> Option<Self> {
         let cpu = self.cpu + rhs.cpu;
         let io_weight = self.io_weight + rhs.io_weight;
-        if !cpu.is_finite() || !io_weight.is_finite() {
+        if !cpu.is_finite()
+            || !io_weight.is_finite()
+            || (rhs.cpu > 0.0 && cpu <= self.cpu)
+            || (rhs.io_weight > 0.0 && io_weight <= self.io_weight)
+        {
             return None;
         }
         Some(Self {
@@ -48,17 +52,6 @@ impl KnownResources {
             disk_bytes: self.disk_bytes.checked_add(rhs.disk_bytes)?,
             io_weight,
         })
-    }
-
-    fn sub(self, rhs: Self) -> Self {
-        Self {
-            cpu: (self.cpu - rhs.cpu).max(0.0),
-            memory_bytes: self.memory_bytes.saturating_sub(rhs.memory_bytes),
-            gpu_count: self.gpu_count.saturating_sub(rhs.gpu_count),
-            vram_bytes: self.vram_bytes.saturating_sub(rhs.vram_bytes),
-            disk_bytes: self.disk_bytes.saturating_sub(rhs.disk_bytes),
-            io_weight: (self.io_weight - rhs.io_weight).max(0.0),
-        }
     }
 
     fn exceeds(self, cap: Self) -> Option<&'static str> {
@@ -131,6 +124,9 @@ impl ResourceAdmissionPool {
         work_item_id: &str,
         demand: &ResourceVector,
     ) -> Result<ResourceAdmissionLease, AdmissionRejection> {
+        if work_item_id.trim().is_empty() {
+            return Err(AdmissionRejection::Invalid("work_item_id".into()));
+        }
         let demand_known = KnownResources::from_vector(demand)?;
         for capability in &demand.capabilities {
             if !self.capabilities.iter().any(|value| value == capability) {
@@ -178,7 +174,12 @@ impl ResourceAdmissionLease {
         if self.released { return; }
         let mut state = self.state.lock().expect("resource admission mutex poisoned");
         if state.active.remove(&self.reservation_id).is_some() {
-            state.used = state.used.sub(self.demand);
+            state.used = state
+                .active
+                .values()
+                .copied()
+                .try_fold(KnownResources::default(), |used, demand| used.checked_add(demand))
+                .expect("active reservations must remain representable");
         }
         self.released = true;
     }
@@ -255,6 +256,41 @@ mod tests {
         drop(first);
         assert!(pool.try_acquire("returned", &vector(0.0, u64::MAX, 0, 0, &[])).is_ok());
     }
+    #[test]
+    fn positive_float_demand_that_cannot_be_represented_is_rejected() {
+        let mut env = envelope();
+        env.capacity.cpu = Some(1.0e20);
+        let pool = ResourceAdmissionPool::new(&env).unwrap();
+        let _large = pool.try_acquire("large", &vector(1.0e20, 0, 0, 0, &[])).unwrap();
+        assert!(matches!(
+            pool.try_acquire("tiny", &vector(1.0, 0, 0, 0, &[])),
+            Err(AdmissionRejection::WouldExceed(_))
+        ));
+    }
+
+    #[test]
+    fn release_recomputes_usage_from_surviving_leases() {
+        let mut env = envelope();
+        env.capacity.cpu = Some(10.0);
+        let pool = ResourceAdmissionPool::new(&env).unwrap();
+        let first = pool.try_acquire("first", &vector(6.0, 0, 0, 0, &[])).unwrap();
+        let second = pool.try_acquire("second", &vector(4.0, 0, 0, 0, &[])).unwrap();
+        drop(first);
+        assert_eq!(pool.active_count(), 1);
+        assert!(pool.try_acquire("replacement", &vector(6.0, 0, 0, 0, &[])).is_ok());
+        drop(second);
+    }
+
+    #[test]
+    fn blank_work_identity_is_rejected_before_reservation() {
+        let pool = ResourceAdmissionPool::new(&envelope()).unwrap();
+        assert!(matches!(
+            pool.try_acquire("   ", &vector(1.0, 1_000, 0, 0, &[])),
+            Err(AdmissionRejection::Invalid(_))
+        ));
+        assert_eq!(pool.active_count(), 0);
+    }
+
     #[test]
     fn simultaneous_callers_share_one_atomic_budget() {
         let pool = ResourceAdmissionPool::new(&envelope()).unwrap();
