@@ -145,8 +145,7 @@
       "merge_gate": "BLOCKED",
       "blocked_by": [
         "queue PID-reuse/fairness exact receipts",
-        "exact CI receipt for owned native jobserver lease + Hypervisor child propagation",
-        "true inherited-environment jobserver discovery/composition receipt"
+        "exact CI receipt for externally inherited GNU jobserver discovery/acquisition/propagation"
       ],
       "evidence_required": [
         "PID reuse",
@@ -154,7 +153,7 @@
         "FIFO",
         "jobserver composition"
       ],
-      "qualification": "GNU jobserver discovery, maintained-crate acquisition/release, RAII cleanup, implicit-slot accounting and actual Hypervisor child propagation implemented; exact CI and inherited-environment evidence pending",
+      "qualification": "Owned native jobserver lease + actual Hypervisor child propagation passed in run 36990039958 on fe05a23dcf2b655dbb307a0982508fcc0dad5de5; externally inherited GNU-make provider oracle added and pending",
       "critical": [
         "Admission must not rely on PID identity",
         "Native provider composition must not double-throttle"
@@ -212,11 +211,10 @@
       ],
       "merge_gate": "BLOCKED",
       "blocked_by": [
-        "exact registered CI receipt for dependency/device/fairness/backfill reference policy",
-        "exact registered CI receipt for plan-to-Hypervisor runtime vertical",
-        "same-workload native naive-vs-bounded resource receipt on exact candidate",
-        "scheduler overhead receipt on exact candidate; threshold remains benchmark-derived",
-        "production scheduler integration remains unauthorized until reference/runtime evidence qualifies"
+        "native pressure comparison exact receipt after /proc exit-race repair",
+        "same-workload naive-vs-bounded-vs-multidimensional benchmark receipt",
+        "scheduler overhead receipt with benchmark-derived interpretation",
+        "production admission integration remains separate from qualified reference/runtime oracle"
       ],
       "critical": [
         "No hard envelope violation",
@@ -230,7 +228,7 @@
         "completion/throughput receipt",
         "fairness/queue receipt"
       ],
-      "qualification": "Reference policy plus real-subprocess plan-to-Hypervisor execution oracle implemented; exact registered qualification pending"
+      "qualification": "Reference policy plus real plan-to-Hypervisor execution passed in run 36990039958 on fe05a23dcf2b655dbb307a0982508fcc0dad5de5; pressure fixture failed only on /proc process-exit observation race and is repaired on later candidate"
     },
     {
       "id": "SC-WP-B06",
