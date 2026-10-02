@@ -46,15 +46,23 @@ fn parse_line(line: &str) -> Result<(&str, StallWindow), String> {
         }
     }
 
-    Ok((
-        kind,
-        StallWindow {
-            avg10: avg10.ok_or_else(|| "missing avg10".to_string())?,
-            avg60: avg60.ok_or_else(|| "missing avg60".to_string())?,
-            avg300: avg300.ok_or_else(|| "missing avg300".to_string())?,
-            total_micros: total.ok_or_else(|| "missing total".to_string())?,
-        },
-    ))
+    let window = StallWindow {
+        avg10: avg10.ok_or_else(|| "missing avg10".to_string())?,
+        avg60: avg60.ok_or_else(|| "missing avg60".to_string())?,
+        avg300: avg300.ok_or_else(|| "missing avg300".to_string())?,
+        total_micros: total.ok_or_else(|| "missing total".to_string())?,
+    };
+    for (name, value) in [
+        ("avg10", window.avg10),
+        ("avg60", window.avg60),
+        ("avg300", window.avg300),
+    ] {
+        if !value.is_finite() || value < 0.0 {
+            return Err(format!("invalid pressure {name}={value}"));
+        }
+    }
+
+    Ok((kind, window))
 }
 
 pub fn parse_linux_psi(
@@ -124,6 +132,16 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.contains("missing some"));
+    }
+
+    #[test]
+    fn rejects_nonfinite_or_negative_pressure_values() {
+        for invalid in ["NaN", "inf", "-1.0"] {
+            let raw = format!(
+                "some avg10={invalid} avg60=0 avg300=0 total=1\n"
+            );
+            assert!(parse_linux_psi("memory", "/proc/pressure/memory", 123, &raw).is_err());
+        }
     }
 
     #[test]
