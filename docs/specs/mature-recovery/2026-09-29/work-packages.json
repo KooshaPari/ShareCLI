@@ -211,8 +211,8 @@
       ],
       "merge_gate": "BLOCKED",
       "blocked_by": [
-        "exact CI receipt for planner-to-runtime admission vertical after numeric hardening",
-        "exact CI receipt for inherited GNU make jobserver discovery/reuse",
+        "exact CI receipt after recovery collector Zig provisioning repair",
+        "exact CI receipt for plan-to-runtime admission and stale-plan controls",
         "default Hypervisor run path remains unchanged pending qualification"
       ],
       "critical": [
@@ -227,7 +227,7 @@
         "completion/throughput receipt",
         "fairness/queue receipt"
       ],
-      "qualification": "Reference scheduling is now bound to opt-in runtime ResourceAdmissionPool execution; stale plans are rechecked against the current runtime envelope; invalid/non-representable resource arithmetic and invalid PSI observations fail closed. Exact current-candidate CI pending."
+      "qualification": "Candidate implementation includes reference scheduling, plan-to-runtime ResourceAdmissionPool execution, stale-plan runtime recheck, inherited jobserver reuse, native pressure and 50-process envelope fixtures. Prior exact recovery run 37020262698 is COLLECTOR_FAILURE for B05 because most Rust recovery jobs lacked Zig required by spawn-core-sys; FR-008 native negative controls did execute and reproduced unsafe legacy durable-replay semantics as expected counterexamples. Recovery collectors are repaired; rerun pending."
     },
     {
       "id": "SC-WP-B06",
@@ -239,10 +239,10 @@
       ],
       "merge_gate": "BLOCKED",
       "blocked_by": [
-        "B05 exact-candidate qualification and production scheduling spine",
-        "exact CI receipt for speculation eligibility/budget/wasted-work oracle",
-        "exact CI receipt for capability-bounded pressure response policy",
-        "runtime loser cancellation and pressure enforcement receipts on declared providers"
+        "SC-WP-B05 exact qualification",
+        "exact CI receipt for explicit speculation eligibility and budget",
+        "pressure observation-to-policy action contract remains incomplete",
+        "cancellation/wasted-work accounting beyond completed/failed/skipped budget remains incomplete"
       ],
       "critical": [
         "Speculation budget explicit",
@@ -254,7 +254,7 @@
         "pressure fixture",
         "wasted-work accounting"
       ],
-      "qualification": "Pure reference semantics implemented for explicit speculation eligibility/budget/delay/wasted-work accounting and capability-bounded pressure response; no runtime execution/enforcement integration qualified"
+      "qualification": "Candidate policy hardening started: ordinary cache hits are not speculation authority; only explicitly read-only candidates qualify; per-cycle execution budget is explicit; attempted/completed/failed/budget-skipped speculation is accounted. No default routing promotion."
     }
   ]
 }
