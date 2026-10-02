@@ -106,6 +106,10 @@
       ],
       "evidence_required": [
         "SC-VS-S01..S12"
+      ],
+      "critical": [
+        "Exited-state recovery authority must be explicit",
+        "Recovery must preserve exact subject/generation identity"
       ]
     },
     {
@@ -123,6 +127,10 @@
       ],
       "evidence_required": [
         "recovery_fr008_inflight_vs_durable"
+      ],
+      "critical": [
+        "In-flight sharing is not durable reuse",
+        "Durable reuse requires adapter-qualified equivalence"
       ]
     },
     {
@@ -146,7 +154,11 @@
         "FIFO",
         "jobserver composition"
       ],
-      "qualification": "GNU jobserver discovery, maintained-crate acquisition/release, RAII cleanup, implicit-slot accounting and actual Hypervisor child propagation implemented; exact CI and inherited-environment evidence pending"
+      "qualification": "GNU jobserver discovery, maintained-crate acquisition/release, RAII cleanup, implicit-slot accounting and actual Hypervisor child propagation implemented; exact CI and inherited-environment evidence pending",
+      "critical": [
+        "Admission must not rely on PID identity",
+        "Native provider composition must not double-throttle"
+      ]
     },
     {
       "id": "SC-WP-B04",
@@ -164,6 +176,10 @@
       "evidence_required": [
         "required-unavailable",
         "optional-degraded"
+      ],
+      "critical": [
+        "Required interception must fail closed when unavailable",
+        "Optional degradation must remain explicit"
       ]
     },
     {
