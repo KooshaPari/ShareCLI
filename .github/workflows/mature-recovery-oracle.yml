@@ -212,6 +212,20 @@ jobs:
       - name: Naive overcommit vs bounded packing controls
         run: "cargo test -p sharecli-ipc scheduling::fixture_scheduler::tests:: -- --nocapture"
 
+  b06-pressure-policy:
+    name: B06 pressure response policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Zig required by spawn-core-sys build
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
+      - uses: Swatinem/rust-cache@v2
+      - name: Capability-bounded pressure response controls
+        run: "cargo test -p sharecli-ipc pressure_policy::tests:: -- --nocapture"
+
   b06-speculation-policy:
     name: B06 bounded speculation policy
     runs-on: ubuntu-latest
