@@ -176,6 +176,21 @@ impl SpeculationTracker {
         let mut inner = self.inner.lock().await;
         let now = Instant::now();
 
+        // Expiry revokes both frequency evidence and replay authority. Keeping
+        // the request after its evidence window expires would allow stale
+        // commands to accumulate indefinitely and potentially be reactivated
+        // without fresh classification.
+        let expired: Vec<String> = inner
+            .hits
+            .iter()
+            .filter(|(_, (_, first))| now.duration_since(*first) > SPECULATION_WINDOW)
+            .map(|(key, _)| key.clone())
+            .collect();
+        for key in expired {
+            inner.hits.remove(&key);
+            inner.requests.remove(&key);
+        }
+
         // Filter to candidates above threshold within the sliding window.
         let mut scored: Vec<(u32, String)> = inner
             .hits
@@ -664,6 +679,35 @@ mod tests {
         assert!(
             tracker.drain_candidates().await.is_empty(),
             "later ineligible classification failed to revoke speculation authority"
+        );
+    }
+
+    #[tokio::test]
+    async fn expired_window_revokes_frequency_and_request_authority() {
+        let tracker = SpeculationTracker::new();
+        let cwd = std::path::PathBuf::from("/tmp");
+        let key = CommandKey("expired".into());
+        for _ in 0..SPECULATION_THRESHOLD {
+            tracker
+                .record_eligible_hit(
+                    &key,
+                    &["echo".into()],
+                    &cwd,
+                    &[],
+                    SpeculationEligibility::ExplicitlyReadOnly,
+                )
+                .await;
+        }
+        {
+            let mut inner = tracker.inner.lock().await;
+            let entry = inner.hits.get_mut(&key.0).expect("tracked hit");
+            entry.1 = Instant::now() - SPECULATION_WINDOW - Duration::from_secs(1);
+        }
+        assert!(tracker.drain_candidates().await.is_empty());
+        assert!(tracker.is_empty().await, "expired frequency evidence was retained");
+        assert!(
+            !tracker.inner.lock().await.requests.contains_key(&key.0),
+            "expired request authority was retained"
         );
     }
 
