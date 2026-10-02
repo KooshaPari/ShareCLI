@@ -4,7 +4,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::time::Duration;
 
-use sharecli_core::{FakeThermalGate, Hypervisor, HypervisorConfig, SpawnRequest, ThermalDecision};
+use sharecli_core::{
+    FakeThermalGate, Hypervisor, HypervisorConfig, ResourceAdmissionPool, SpawnRequest,
+    ThermalDecision,
+};
 use sharecli_ipc::scheduling::{ResourceEnvelope, ResourceVector, ScheduleDecision, WorkItem};
 use sharecli_ipc::scheduling_policy::{ranked_ready_ids, QueueEntry};
 use sharecli_ipc::scheduling_reference::{bounded_fifo_pack, SchedulableWork};
@@ -98,6 +101,7 @@ async fn planned_dependency_ready_work_reaches_real_hypervisor_execution() {
         source: "runtime-fixture".into(),
         capacity: resources(1.0, 2_000),
     };
+    let admission = ResourceAdmissionPool::new(&envelope).expect("known runtime envelope");
 
     let mut completed = BTreeSet::new();
     let mut iterations = 0usize;
@@ -133,12 +137,20 @@ async fn planned_dependency_ready_work_reaches_real_hypervisor_execution() {
         assert!(!admitted.is_empty(), "ready work produced no executable placement");
 
         for id in admitted {
+            let demand = &by_id.get(&id).expect("admitted entry exists").demand;
             let outcome = hv
-                .run_queued(spawn_for(&id, &order_file), "b05-runtime-fixture")
+                .run_admitted_queued(
+                    spawn_for(&id, &order_file),
+                    "b05-runtime-fixture",
+                    &admission,
+                    &id,
+                    demand,
+                )
                 .await
-                .expect("scheduled Hypervisor execution");
+                .expect("scheduled Hypervisor execution with runtime admission");
             assert_eq!(outcome.exit_code, 0);
             assert!(!outcome.from_cache);
+            assert_eq!(admission.active_count(), 0, "completed work leaked reservation");
             completed.insert(id);
         }
     }
