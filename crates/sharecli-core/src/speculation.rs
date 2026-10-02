@@ -152,14 +152,19 @@ impl SpeculationTracker {
         let entry = inner.hits.entry(key.0.clone()).or_insert((0, now));
         entry.0 = entry.0.saturating_add(1);
 
-        // Store request details if not already present (first hit).
-        inner.requests.entry(key.0.clone()).or_insert_with(|| SpeculationCandidate {
-            key: key.clone(),
-            argv: argv.to_vec(),
-            cwd: cwd.to_path_buf(),
-            env: env.to_vec(),
-            eligibility,
-        });
+        // Eligibility is current authority, not a sticky property of the
+        // first hit. A later ineligible classification must revoke an earlier
+        // read-only classification for the same semantic key.
+        inner.requests.insert(
+            key.0.clone(),
+            SpeculationCandidate {
+                key: key.clone(),
+                argv: argv.to_vec(),
+                cwd: cwd.to_path_buf(),
+                env: env.to_vec(),
+                eligibility,
+            },
+        );
     }
 
     /// Drain the top-N speculation candidates whose hit count ≥ threshold
@@ -631,11 +636,34 @@ mod tests {
         let cwd = std::path::PathBuf::from("/tmp");
         let key = CommandKey("cacheable-not-authorized".into());
         for _ in 0..SPECULATION_THRESHOLD {
-            tracker.record_eligible_hit(&key, &["echo".into()], &cwd, &[], SpeculationEligibility::ExplicitlyReadOnly).await;
+            tracker.record_hit(&key, &["echo".into()], &cwd, &[]).await;
         }
         assert!(
             tracker.drain_candidates().await.is_empty(),
             "cacheability alone authorized speculative execution"
+        );
+    }
+
+    #[tokio::test]
+    async fn later_ineligible_hit_revokes_prior_speculation_authority() {
+        let tracker = SpeculationTracker::new();
+        let cwd = std::path::PathBuf::from("/tmp");
+        let key = CommandKey("revoked".into());
+        for _ in 0..SPECULATION_THRESHOLD {
+            tracker
+                .record_eligible_hit(
+                    &key,
+                    &["echo".into()],
+                    &cwd,
+                    &[],
+                    SpeculationEligibility::ExplicitlyReadOnly,
+                )
+                .await;
+        }
+        tracker.record_hit(&key, &["echo".into()], &cwd, &[]).await;
+        assert!(
+            tracker.drain_candidates().await.is_empty(),
+            "later ineligible classification failed to revoke speculation authority"
         );
     }
 
