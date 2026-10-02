@@ -1,3 +1,4 @@
+// FR: FR-008 mature-recovery semantic identity oracle
 //! Native mature-recovery adversarial controls for FR-008 semantic identity.
 //!
 //! These exercise the real Hypervisor. They are oracle-only tests: no product
