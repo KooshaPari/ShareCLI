@@ -1,3 +1,4 @@
+// FR: FR-008 mature-recovery equivalence safety oracle
 //! Mature-recovery adversarial matrix for cache equivalence domains.
 //!
 //! These are oracle tests, not product remediation. They intentionally exercise
