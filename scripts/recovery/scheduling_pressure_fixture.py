@@ -28,7 +28,10 @@ def rss_bytes(pid: int) -> int | None:
         # The process can exit between poll() and opening /proc/<pid>/status.
         # That is an observation race, not a zero-RSS measurement.
         return None
-    raise RuntimeError(f"VmRSS unavailable for live pid {pid}")
+    # /proc status can outlive or race process teardown and may omit VmRSS
+    # during that transition. Preserve this as an unknown observation; callers
+    # sample repeatedly and never reinterpret None as a zero-RSS measurement.
+    return None
 
 
 def child(mib: int, seconds: float) -> int:
