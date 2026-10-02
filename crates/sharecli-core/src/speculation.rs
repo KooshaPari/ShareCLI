@@ -539,14 +539,14 @@ mod tests {
         let key_a = CommandKey("aaa".into());
         let key_b = CommandKey("bbb".into());
 
-        tracker.record_hit(&key_a, &["echo".into()], &cwd, &[]).await;
+        tracker.record_eligible_hit(&key_a, &["echo".into()], &cwd, &[], SpeculationEligibility::ExplicitlyReadOnly).await;
         assert_eq!(tracker.len().await, 1);
 
-        tracker.record_hit(&key_b, &["ls".into()], &cwd, &[]).await;
+        tracker.record_eligible_hit(&key_b, &["ls".into()], &cwd, &[], SpeculationEligibility::ExplicitlyReadOnly).await;
         assert_eq!(tracker.len().await, 2);
 
         // Same key again doesn't increase count of distinct keys
-        tracker.record_hit(&key_a, &["echo".into()], &cwd, &[]).await;
+        tracker.record_eligible_hit(&key_a, &["echo".into()], &cwd, &[], SpeculationEligibility::ExplicitlyReadOnly).await;
         assert_eq!(tracker.len().await, 2);
     }
 
@@ -558,7 +558,7 @@ mod tests {
 
         // Exactly threshold-1 hits
         for _ in 0..(SPECULATION_THRESHOLD - 1) {
-            tracker.record_hit(&key, &["cmd".into()], &cwd, &[]).await;
+            tracker.record_eligible_hit(&key, &["cmd".into()], &cwd, &[], SpeculationEligibility::ExplicitlyReadOnly).await;
         }
         assert!(tracker.drain_candidates().await.is_empty());
     }
@@ -573,11 +573,11 @@ mod tests {
 
         // Low gets exactly threshold hits
         for _ in 0..SPECULATION_THRESHOLD {
-            tracker.record_hit(&key_low, &["low".into()], &cwd, &[]).await;
+            tracker.record_eligible_hit(&key_low, &["low".into()], &cwd, &[], SpeculationEligibility::ExplicitlyReadOnly).await;
         }
         // High gets threshold + 2
         for _ in 0..(SPECULATION_THRESHOLD + 2) {
-            tracker.record_hit(&key_high, &["high".into()], &cwd, &[]).await;
+            tracker.record_eligible_hit(&key_high, &["high".into()], &cwd, &[], SpeculationEligibility::ExplicitlyReadOnly).await;
         }
 
         let candidates = tracker.drain_candidates().await;
@@ -595,7 +595,7 @@ mod tests {
         let env = vec![("RUST_LOG".into(), "debug".into())];
 
         for _ in 0..SPECULATION_THRESHOLD {
-            tracker.record_hit(&key, &argv, &cwd, &env).await;
+            tracker.record_eligible_hit(&key, &argv, &cwd, &env, SpeculationEligibility::ExplicitlyReadOnly).await;
         }
 
         let candidates = tracker.drain_candidates().await;
@@ -614,10 +614,10 @@ mod tests {
         let key_low = CommandKey("low".into());
 
         for _ in 0..SPECULATION_THRESHOLD {
-            tracker.record_hit(&key_ok, &["ok".into()], &cwd, &[]).await;
+            tracker.record_eligible_hit(&key_ok, &["ok".into()], &cwd, &[], SpeculationEligibility::ExplicitlyReadOnly).await;
         }
         for _ in 0..(SPECULATION_THRESHOLD - 1) {
-            tracker.record_hit(&key_low, &["low".into()], &cwd, &[]).await;
+            tracker.record_eligible_hit(&key_low, &["low".into()], &cwd, &[], SpeculationEligibility::ExplicitlyReadOnly).await;
         }
 
         let candidates = tracker.drain_candidates().await;
@@ -631,7 +631,7 @@ mod tests {
         let cwd = std::path::PathBuf::from("/tmp");
         let key = CommandKey("cacheable-not-authorized".into());
         for _ in 0..SPECULATION_THRESHOLD {
-            tracker.record_hit(&key, &["echo".into()], &cwd, &[]).await;
+            tracker.record_eligible_hit(&key, &["echo".into()], &cwd, &[], SpeculationEligibility::ExplicitlyReadOnly).await;
         }
         assert!(
             tracker.drain_candidates().await.is_empty(),
@@ -681,7 +681,7 @@ mod tests {
         let key = CommandKey("drain-twice".into());
 
         for _ in 0..SPECULATION_THRESHOLD {
-            tracker.record_hit(&key, &["cmd".into()], &cwd, &[]).await;
+            tracker.record_eligible_hit(&key, &["cmd".into()], &cwd, &[], SpeculationEligibility::ExplicitlyReadOnly).await;
         }
 
         let first = tracker.drain_candidates().await;
