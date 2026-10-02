@@ -34,6 +34,18 @@ pub fn decide_pressure_response(
     controls: &ResourceControlCapabilities,
     policy: &PressurePolicy,
 ) -> PressureDecision {
+    if !policy.some_avg10_defer_threshold.is_finite()
+        || policy.some_avg10_defer_threshold < 0.0
+        || !policy.full_avg10_control_threshold.is_finite()
+        || policy.full_avg10_control_threshold < 0.0
+    {
+        return PressureDecision {
+            response: PressureResponse::DeferNewAdmissions,
+            enforceable: false,
+            reason: "invalid pressure policy thresholds; fail closed at admission".into(),
+        };
+    }
+
     let full_avg10 = snapshot.full.as_ref().map(|w| w.avg10).unwrap_or(0.0);
 
     if full_avg10 >= policy.full_avg10_control_threshold {
@@ -105,6 +117,24 @@ mod tests {
             some_avg10_defer_threshold: 2.0,
             full_avg10_control_threshold: 1.0,
             cancellation_allowed: false,
+        }
+    }
+
+    #[test]
+    fn invalid_policy_thresholds_fail_closed_at_admission() {
+        let controls = ResourceControlCapabilities::observe_only("linux-psi");
+        for invalid in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -1.0] {
+            let mut p = policy();
+            p.some_avg10_defer_threshold = invalid;
+            let d = decide_pressure_response(&snapshot(0.0, Some(0.0)), &controls, &p);
+            assert_eq!(d.response, PressureResponse::DeferNewAdmissions);
+            assert!(!d.enforceable);
+
+            let mut p = policy();
+            p.full_avg10_control_threshold = invalid;
+            let d = decide_pressure_response(&snapshot(0.0, Some(0.0)), &controls, &p);
+            assert_eq!(d.response, PressureResponse::DeferNewAdmissions);
+            assert!(!d.enforceable);
         }
     }
 
