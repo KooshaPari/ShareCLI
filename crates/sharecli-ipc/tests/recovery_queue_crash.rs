@@ -1,3 +1,4 @@
+// FR: FR-008 mature-recovery queue crash safety
 //! Positive mature-recovery control for ShareCLI local admission.
 //!
 //! A panicking owner must not leave the OS slot wedged. This distinguishes
