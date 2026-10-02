@@ -47,6 +47,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Zig required by spawn-core-sys build
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
       - uses: Swatinem/rust-cache@v2
       - name: Run positive queue crash-recovery control
         run: cargo test -p sharecli-ipc --test recovery_queue_crash -- --nocapture
@@ -66,6 +70,10 @@ jobs:
         with:
           python-version: "3.13"
       - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Zig required by spawn-core-sys build
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
       - name: Validate work-package DAG
         run: python scripts/recovery/validate_work_packages.py docs/specs/mature-recovery/2026-09-29/work-packages.json
       - name: Validate evidence semantics
@@ -87,6 +95,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Zig required by spawn-core-sys build
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
       - name: Resource and schedule identity controls
         run: "cargo test -p sharecli-ipc scheduling::tests:: -- --nocapture"
 
@@ -96,6 +108,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Zig required by spawn-core-sys build
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
       - name: Envelope-safe baseline model
         run: "cargo test -p sharecli-ipc scheduling_reference::tests:: -- --nocapture"
 
@@ -105,6 +121,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Zig required by spawn-core-sys build
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
       - name: Naive versus bounded FIFO benchmark controls
         run: "cargo test -p sharecli-ipc scheduling_benchmark::tests:: -- --nocapture"
 
@@ -125,6 +145,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Zig required by spawn-core-sys build
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
       - name: Parse native jobserver transports
         run: "cargo test -p sharecli-ipc jobserver::tests:: -- --nocapture"
 
@@ -134,6 +158,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Zig required by spawn-core-sys build
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
       - name: Linux PSI pressure semantics
         run: "cargo test -p sharecli-ipc pressure::tests:: -- --nocapture"
 
@@ -143,6 +171,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Zig required by spawn-core-sys build
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
       - name: Observation versus enforcement controls
         run: "cargo test -p sharecli-ipc resource_control::tests:: -- --nocapture"
 
@@ -152,5 +184,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Zig required by spawn-core-sys build
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
       - name: Naive overcommit vs bounded packing controls
         run: "cargo test -p sharecli-ipc scheduling::fixture_scheduler::tests:: -- --nocapture"
