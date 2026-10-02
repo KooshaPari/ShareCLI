@@ -151,7 +151,6 @@ impl ResourceAdmissionPool {
         Ok(ResourceAdmissionLease {
             reservation_id,
             work_item_id: work_item_id.to_string(),
-            demand: demand_known,
             state: Arc::clone(&self.state),
             released: false,
         })
@@ -162,7 +161,6 @@ impl ResourceAdmissionPool {
 pub struct ResourceAdmissionLease {
     reservation_id: String,
     work_item_id: String,
-    demand: KnownResources,
     state: Arc<Mutex<AdmissionState>>,
     released: bool,
 }
