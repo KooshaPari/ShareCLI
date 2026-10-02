@@ -38,10 +38,10 @@ fn hypervisor(dir: &TempDir) -> Hypervisor {
     )
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn admitted_spawn_holds_and_returns_real_resource_lease() {
     let dir = TempDir::new().expect("tempdir");
-    let hv = hypervisor(&dir);
+    let hv = Arc::new(hypervisor(&dir));
     let pool = ResourceAdmissionPool::new(&ResourceEnvelope {
         id: "host".into(),
         observed_at_unix_ms: 1,
@@ -57,30 +57,37 @@ async fn admitted_spawn_holds_and_returns_real_resource_lease() {
     );
     let demand = vector(1.0, 2_000);
 
-    let running = hv.run_admitted_queued(
-        req,
-        "resource-admission-fixture",
-        &pool,
-        "work-a",
-        &demand,
-    );
+    let run_hv = Arc::clone(&hv);
+    let run_pool = pool.clone();
+    let run_demand = demand.clone();
+    let running = tokio::spawn(async move {
+        run_hv
+            .run_admitted_queued(
+                req,
+                "resource-admission-fixture",
+                &run_pool,
+                "work-a",
+                &run_demand,
+            )
+            .await
+    });
 
-    let observe_while_running = async {
-        for _ in 0..100 {
-            if pool.active_count() == 1 {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(2)).await;
+    for _ in 0..100 {
+        if pool.active_count() == 1 {
+            break;
         }
-        assert_eq!(pool.active_count(), 1, "spawn never acquired admission lease");
-        assert!(matches!(
-            pool.try_acquire("work-b", &demand),
-            Err(AdmissionRejection::WouldExceed(_))
-        ));
-    };
+        tokio::time::sleep(Duration::from_millis(2)).await;
+    }
+    assert_eq!(pool.active_count(), 1, "spawn never acquired admission lease");
+    assert!(matches!(
+        pool.try_acquire("work-b", &demand),
+        Err(AdmissionRejection::WouldExceed(_))
+    ));
 
-    let (outcome, ()) = tokio::join!(running, observe_while_running);
-    let outcome = outcome.expect("admitted spawn");
+    let outcome = running
+        .await
+        .expect("admission task join")
+        .expect("admitted spawn");
     assert_eq!(outcome.exit_code, 0);
     assert_eq!(outcome.stdout, b"done");
     assert_eq!(pool.active_count(), 0, "lease was not returned after child exit");
