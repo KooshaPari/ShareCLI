@@ -18,7 +18,7 @@ use tempfile::TempDir;
 
 fn req(cwd: &std::path::Path, counter: &std::path::Path, input: &std::path::Path) -> SpawnRequest {
     let script = format!(
-        "n=$(cat {counter} 2>/dev/null || echo 0); n=$((n+1)); printf '%s' "$n" > {counter}; sleep 0.25; cat {input}",
+        "n=$(cat {counter} 2>/dev/null || echo 0); n=$((n+1)); printf '%s' \"$n\" > {counter}; sleep 0.25; cat {input}",
         counter = counter.display(),
         input = input.display(),
     );
