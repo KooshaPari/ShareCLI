@@ -52,7 +52,7 @@ async fn native_jobserver_token_and_child_propagation_compose_with_hypervisor() 
         vec![
             "sh".into(),
             "-c".into(),
-            "printf '%s|%s' "$MAKEFLAGS" "$CARGO_MAKEFLAGS"".into(),
+            r#"printf '%s|%s' "$MAKEFLAGS" "$CARGO_MAKEFLAGS""#.into(),
         ],
         std::env::current_dir().expect("cwd"),
         vec![],
