@@ -182,3 +182,60 @@ async fn unknown_resource_demand_never_reaches_spawn() {
     assert_eq!(receipt.plan.placements[0].decision, ScheduleDecision::Defer);
     assert!(!order_file.exists(), "deferred unknown work reached process execution");
 }
+
+
+#[tokio::test]
+async fn stale_plan_cannot_bypass_tighter_runtime_envelope() {
+    let dir = TempDir::new().expect("tempdir");
+    let marker = dir.path().join("stale-plan-spawned");
+    let hv = hypervisor(&dir);
+
+    let planning_envelope = ResourceEnvelope {
+        id: "planning-host".into(),
+        observed_at_unix_ms: 1,
+        source: "planning-fixture".into(),
+        capacity: resources(1.0, 2_000),
+    };
+    let work = SchedulableWork {
+        item: item("stale-plan-work", &[]),
+        demand: resources(1.0, 1_000),
+    };
+    let plan = bounded_fifo_pack(
+        "stale-plan",
+        "runtime-fixture-policy-v1",
+        &planning_envelope,
+        std::slice::from_ref(&work),
+    );
+    assert_eq!(plan.plan.placements[0].decision, ScheduleDecision::Admit);
+
+    let runtime_envelope = ResourceEnvelope {
+        id: "runtime-host".into(),
+        observed_at_unix_ms: 2,
+        source: "runtime-fixture".into(),
+        capacity: resources(0.5, 2_000),
+    };
+    let admission = ResourceAdmissionPool::new(&runtime_envelope).expect("runtime envelope");
+    let req = SpawnRequest::new(
+        vec![
+            "sh".into(),
+            "-c".into(),
+            format!("touch '{}'", marker.display()),
+        ],
+        std::env::current_dir().expect("cwd"),
+        vec![],
+    );
+
+    let result = hv
+        .run_admitted_queued(
+            req,
+            "b05-stale-plan-fixture",
+            &admission,
+            &work.item.id,
+            &work.demand,
+        )
+        .await;
+
+    assert!(result.is_err(), "stale plan bypassed tighter runtime capacity");
+    assert!(!marker.exists(), "runtime-rejected stale plan reached process spawn");
+    assert_eq!(admission.active_count(), 0);
+}
