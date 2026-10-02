@@ -266,12 +266,10 @@ public final class AppState: ObservableObject {
     public func startPolling() {
         guard !isPaused else { return }
         pollTask?.cancel()
-        pollTask = Task { [weak self] in
-            while !Task.isCancelled {
-                await self?.refresh()
-                try? await Task.sleep(nanoseconds: TrayPoll.intervalNanoseconds)
-            }
+        let loop = PollLoop(interval: .seconds(TrayPoll.intervalSeconds)) { [weak self] in
+            await self?.refresh()
         }
+        pollTask = Task { await loop.run() }
     }
 
     public func stopPolling() {

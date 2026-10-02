@@ -762,6 +762,114 @@ before the accept loop has dequeued it, so the accept count needs a bounded wait
 (`waitUntilAccepted`); and one `Data("\(body)\n").utf8` argument-order slip failed to
 compile.
 
+### 1.7 — Effective cadence in Swift polling (lane 2) (2026-10-02)
+
+**Provenance.** `PLAN.md:169-171` — "### 1.7 Effective cadence in Swift polling
+(lane 2)", pinning `AppState.swift:273-278` — deadline loop on `ContinuousClock`.
+
+**Problem.** The Swift tray's poll loop slept for `interval` *after each poll finished*,
+so the effective period was `interval + work` and the tray drifted past its configured
+cadence under load. The fix schedules each poll from the previous poll's *scheduled*
+start, so the effective period equals the interval.
+
+**Code change.** NEW `desktop/ShareCLITray/Sources/ShareCLICore/PollLoop.swift`:
+`PollCadence.deadline(previous:interval:now:)` (pure) plus a `PollLoop` struct with an
+injected `PollClock`; the loop schedules from the previous poll's SCHEDULED start, so
+effective period == interval, not interval + work. `AppState.startPolling()`
+(AppState.swift:266-275) now builds `PollLoop(interval: .seconds(TrayPoll.intervalSeconds))`
+at AppState.swift:269 and runs it in `pollTask`. `TrayPoll.swift`: dead
+`intervalNanoseconds` removed; the contract now asserts `intervalSeconds`.
+
+#### Red evidence
+
+Captured twice with the final shipped params, both exit 1:
+
+```
+wall-clock cadence test 1: observed 0.924 s where the effective-cadence regime
+  requires <= 0.700 s (the broken fixed-loop value is ~0.900 s + jitter) -> RED_EXIT=1
+wall-clock cadence test 2: observed 1.616 s where <= 1.300 s is required
+  (broken value ~1.600 s + jitter) -> RED_EXIT=1
+```
+
+3 pure-deadline tests + 2 deterministic manual-clock tests (`ManualClockState`, bounded
+by `maxSleeps`) were also added in `PollLoopTests.swift` (~300 lines). The thresholds
+are the MIDPOINT between the two regimes; they were widened after a first red run took
+136 s under host load — that measurement is the reason the thresholds are sound.
+
+#### Green gates (observed pre-directive)
+
+| gate | observed |
+|---|---|
+| `swift test --package-path desktop/ShareCLITray` (no sidecar) | **42 executed / 0 failures / 7 skipped**, exit 0 |
+| baseline before this task | 33 executed / 0 failures / 7 skipped |
+
+#### Contract interaction (observed, red then fixed)
+
+`tests/fr007_tray_swift_poll_interval.rs:26` asserted `AppState` contains
+`TrayPoll.intervalNanoseconds`; the refactor made that symbol dead, so the contract went
+RED (exit 101), captured. The assertion was aligned to `TrayPoll.intervalSeconds`,
+mirroring the Windows sibling contract pattern — this strengthens the gate rather than
+weakening it. fr007 then green 2/2. `docs/specs/TRACEABILITY.md` AC-007.53 evidence row
+updated (commit 8101160e).
+
+#### L1 rust gate — observed directly (2026-10-02)
+
+The background fr007 suite log (`.jcode/scratch/fr007_all.log`) ran the target; verbatim:
+
+```
+     Running tests/fr007_tray_swift_poll_interval.rs (target/debug/deps/fr007_tray_swift_poll_interval-5e3277444650a1a1)
+
+running 2 tests
+test fr007_tray_swift_poll_interval_seconds ... ok
+test fr007_tray_swift_poll_interval_wires_app_state ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+```
+
+2 executed / 2 passed / 0 failed, exit 0. The block was first observed in the log at
+22:33:07 local on 2026-10-02 (the log carries no per-line timestamps; the target's own
+reported finish time is `finished in 0.00s` above; the suite's final log write was
+22:33:39 local).
+
+**Suite-level totals at that moment — host-load observations, explicitly NOT evidence
+about task 1.7's own change:** 78 `test result:` lines (all 78 fr007 targets ran); 9
+carried `test result: FAILED`, and cargo's closing summary reads `error: 9 targets
+failed:` — `fr007_proc_csv_watch`, `fr007_proc_text_pool_status`,
+`fr007_proc_tree_watch_stderr_footer`, `fr007_proc_watch_text_stderr_silent`,
+`fr007_ps_all_watch_json_gate_host_watch`, `fr007_ps_all_watch_text_stderr_silent`,
+`fr007_report_json_pool_status`, `fr007_status_watch_json_gate_host_watch`,
+`fr007_status_watch_text_stderr_silent`. The failing test names were
+`fr007_proc_tree_csv_watch_stderr_silent_and_envelope`,
+`fr007_proc_tree_watch_text_pool_status_order`,
+`fr007_proc_tree_watch_ndjson_stdout_no_companion_leak`,
+`fr007_proc_tree_watch_text_stderr_silent`, `fr007_ps_all_watch_ndjson_gate_ordering`,
+`fr007_ps_all_watch_text_stderr_silent`,
+`fr007_report_watch_ndjson_pool_status_ordering`,
+`fr007_status_watch_ndjson_gate_ordering`, `fr007_status_watch_text_stderr_silent`.
+Load averages observed at completion: `519.18 489.32 450.40` (22:34 local), with earlier
+readings `521.11 404.09 323.75` (22:14) and `521.68 530.48 440.06` (22:25). None of the
+9 failing targets is `fr007_tray_swift_poll_interval`, which passed.
+
+#### L2 live-sidecar e2e receipts (observed, agent "hamster", 2026-10-02)
+
+* filter run `AppStatePollTests` against a real isolated sidecar: Executed 1, 0
+  failures, 0 skipped, exit 0, PASSED in 4.325 s (not skipped).
+* full suite with ONLY `SHARECLI_IPC_SOCK` exported: "Executed 43 tests, with 7 tests
+  skipped and 0 failures (0 unexpected)", exit 0. The 7 skips are `ConfigClientTests`
+  x4 + `IPCClientRealPathTests` x3, each saying "SHARECLI_TEST_IPC_SOCK not set".
+* POST-SEQUENCE diagnostic with BOTH `SHARECLI_IPC_SOCK` and `SHARECLI_TEST_IPC_SOCK`
+  exported: Executed 43 / 0 failures / 0 skipped (`skip_line_count=0`). This is the
+  end-to-end receipt: 43 executed / 0 skipped, i.e. the 1.6b receipt (33/0/0) grown by
+  the 10 new 1.7 tests.
+* cleanup verified: both sidecar PIDs dead (`kill -0` fails), no strays, no
+  `/tmp/sharecli-l2-*.sock`, default path restored absent.
+
+#### Consistency sweep (grep evidence)
+
+* `intervalNanoseconds` → 0 references repo-wide after the change.
+* `Task.sleep` → 0 occurrences inside `AppState.swift` (the loop now lives in `PollLoop`).
+* PollLoop wired: `AppState.swift:269`.
+
 ## Verdict
 
 Phases 0.5–0.7 are verified green on every gate that completed honestly, including the

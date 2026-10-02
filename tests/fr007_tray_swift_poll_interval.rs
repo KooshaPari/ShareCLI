@@ -24,8 +24,8 @@ fn fr007_tray_swift_poll_interval_seconds() {
 fn fr007_tray_swift_poll_interval_wires_app_state() {
     let app_state = include_str!("../desktop/ShareCLITray/Sources/ShareCLICore/AppState.swift");
     assert!(
-        app_state.contains("TrayPoll.intervalNanoseconds"),
-        "AppState MUST sleep via TrayPoll.intervalNanoseconds (AC-007.53)"
+        app_state.contains("TrayPoll.intervalSeconds"),
+        "AppState MUST derive its poll cadence from TrayPoll.intervalSeconds (AC-007.53)"
     );
     assert!(app_state.contains("startPolling"), "AppState MUST expose startPolling (AC-007.53)");
     assert!(
