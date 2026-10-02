@@ -240,9 +240,9 @@
       "merge_gate": "BLOCKED",
       "blocked_by": [
         "SC-WP-B05 exact qualification",
-        "exact CI receipt for explicit speculation eligibility and budget",
+        "exact CI receipt for current/revocable speculation eligibility and expiry",
         "pressure observation-to-policy action contract remains incomplete",
-        "cancellation/wasted-work accounting beyond completed/failed/skipped budget remains incomplete"
+        "loser cancellation and wasted-work accounting remain incomplete"
       ],
       "critical": [
         "Speculation budget explicit",
@@ -254,7 +254,7 @@
         "pressure fixture",
         "wasted-work accounting"
       ],
-      "qualification": "Candidate policy hardening started: ordinary cache hits are not speculation authority; only explicitly read-only candidates qualify; per-cycle execution budget is explicit; attempted/completed/failed/budget-skipped speculation is accounted. No default routing promotion."
+      "qualification": "Candidate B06 policy now requires current explicit read-only authority, allows later ineligible classification to revoke it, expires both frequency evidence and replay authority after the window, and retains explicit per-cycle budget/accounting. Exact current-candidate CI pending; no default speculation routing."
     }
   ]
 }
