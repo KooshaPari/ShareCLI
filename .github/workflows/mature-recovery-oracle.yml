@@ -27,29 +27,40 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
       - uses: dtolnay/rust-toolchain@stable
       - name: Setup Zig required by spawn-core-sys build
         uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
         with:
           version: 0.14.1
       - uses: Swatinem/rust-cache@v2
-      - name: Run changed-input native adversarial control
-        run: cargo test -p sharecli-core --test recovery_fr008_semantic_identity -- --nocapture || true
-      - name: Run equivalence-domain adversarial matrix
-        run: cargo test -p sharecli-core --test recovery_fr008_equivalence_matrix -- --nocapture || true
-      - name: Run in-flight-vs-durable architecture experiment
+      - name: Test counterexample collector rejection controls
+        run: python scripts/recovery/test_negative_oracle.py -v
+      - name: Collect named native counterexamples without masking build failures
         shell: bash
+        env:
+          RECOVERY_CANDIDATE: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          set +e
-          cargo test -p sharecli-core --test recovery_fr008_inflight_vs_durable -- --nocapture
-          rc=$?
-          set -e
-          if [ "$rc" -eq 0 ]; then
-            echo "::error::FR-008 negative control unexpectedly passed; durable replay remains unsafely coupled to in-flight equivalence"
-            exit 1
-          fi
-          echo "Expected native counterexample reproduced: in-flight sharing is not durable-replay authority."
-
+          set -euo pipefail
+          status=0
+          for target in recovery_fr008_semantic_identity recovery_fr008_equivalence_matrix recovery_fr008_inflight_vs_durable; do
+            python scripts/recovery/run_negative_oracle.py \
+              --target "$target" --candidate "$RECOVERY_CANDIDATE" \
+              --output "evidence/fr008/$target" || status=1
+          done
+          exit "$status"
+      - name: Preserve raw counterexample receipts even on collector failure
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sharecli-fr008-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/fr008/
+          if-no-files-found: error
 
   queue-aging-ordering:
     name: Queue aging and FIFO adversarial oracle
@@ -200,7 +211,6 @@ jobs:
           version: 0.14.1
       - name: Naive overcommit vs bounded packing controls
         run: "cargo test -p sharecli-ipc scheduling::fixture_scheduler::tests:: -- --nocapture"
-
 
   b06-speculation-policy:
     name: B06 bounded speculation policy
