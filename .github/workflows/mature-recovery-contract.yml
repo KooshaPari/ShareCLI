@@ -46,7 +46,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Test additive semantic identities
-        run: cargo test -p sharecli-ipc identity::tests:: -- --nocapture
+        run: "cargo test -p sharecli-ipc identity::tests:: -- --nocapture"
 
   a02-a04-contracts:
     name: SC-WP-A02-A04 additive contract tests
@@ -55,11 +55,11 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Recovery subject model
-        run: cargo test -p sharecli-session mature_recovery::tests:: -- --nocapture
+        run: "cargo test -p sharecli-session mature_recovery::tests:: -- --nocapture"
       - name: Capability contract
-        run: cargo test -p sharecli-ipc capability::tests:: -- --nocapture
+        run: "cargo test -p sharecli-ipc capability::tests:: -- --nocapture"
       - name: Equivalence contract
-        run: cargo test -p sharecli-ipc equivalence::tests:: -- --nocapture
+        run: "cargo test -p sharecli-ipc equivalence::tests:: -- --nocapture"
 
   a05-trace:
     name: SC-WP-A05 semantic trace validation
