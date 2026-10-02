@@ -19,6 +19,7 @@ pub struct BenchmarkMetrics {
     pub peak_memory_bytes: u64,
     pub hard_envelope_violations: u64,
     pub completed: usize,
+    pub planner_item_checks: u64,
 }
 
 fn demand(work: &BenchmarkWork) -> Option<(f64,u64)> {
@@ -36,6 +37,7 @@ pub fn simulate_naive_all_at_once(envelope: &ResourceEnvelope, work: &[Benchmark
         peak_memory_bytes,
         hard_envelope_violations: u64::from(peak_cpu > cap_cpu || peak_memory_bytes > cap_mem),
         completed: work.len(),
+        planner_item_checks: work.len() as u64,
     }
 }
 
@@ -49,6 +51,7 @@ pub fn simulate_bounded_fit_scan(envelope: &ResourceEnvelope, work: &[BenchmarkW
     let mut completed = 0usize;
     let mut peak_cpu = 0.0f64;
     let mut peak_mem = 0u64;
+    let mut planner_item_checks = 0u64;
 
     while completed < work.len() {
         let mut used_cpu = 0.0;
@@ -59,6 +62,7 @@ pub fn simulate_bounded_fit_scan(envelope: &ResourceEnvelope, work: &[BenchmarkW
 
         let mut admitted = Vec::new();
         for (pos,idx) in waiting.iter().enumerate() {
+            planner_item_checks += 1;
             let Some((cpu,mem)) = demand(&work[*idx]) else { continue };
             if used_cpu + cpu <= cap_cpu && used_mem.saturating_add(mem) <= cap_mem {
                 used_cpu += cpu; used_mem += mem;
@@ -86,6 +90,7 @@ pub fn simulate_bounded_fit_scan(envelope: &ResourceEnvelope, work: &[BenchmarkW
         peak_memory_bytes: peak_mem,
         hard_envelope_violations: 0,
         completed,
+        planner_item_checks,
     }
 }
 
@@ -98,6 +103,7 @@ pub fn simulate_bounded_fifo(envelope: &ResourceEnvelope, work: &[BenchmarkWork]
     let mut completed = 0usize;
     let mut peak_cpu = 0.0f64;
     let mut peak_mem = 0u64;
+    let mut planner_item_checks = 0u64;
 
     while completed < work.len() {
         let mut used_cpu = 0.0;
@@ -108,6 +114,7 @@ pub fn simulate_bounded_fifo(envelope: &ResourceEnvelope, work: &[BenchmarkWork]
 
         let mut admitted = Vec::new();
         for (pos,idx) in waiting.iter().enumerate() {
+            planner_item_checks += 1;
             let Some((cpu,mem)) = demand(&work[*idx]) else { continue };
             if used_cpu + cpu <= cap_cpu && used_mem.saturating_add(mem) <= cap_mem {
                 used_cpu += cpu; used_mem += mem;
@@ -140,6 +147,7 @@ pub fn simulate_bounded_fifo(envelope: &ResourceEnvelope, work: &[BenchmarkWork]
         peak_memory_bytes: peak_mem,
         hard_envelope_violations: 0,
         completed,
+        planner_item_checks,
     }
 }
 
@@ -183,6 +191,35 @@ mod tests {
     }
 
     #[test]
+    #[test]
+    fn same_workload_reports_policy_cost_without_inventing_an_optimality_threshold() {
+        let env=ResourceEnvelope{id:"host".into(),observed_at_unix_ms:1,source:"fixture".into(),capacity:rv(4.0,4_000)};
+        let work=vec![
+            wi("cpu-a",100,3.0,1_000),
+            wi("cpu-b",100,3.0,1_000),
+            wi("mem-a",100,1.0,3_000),
+            wi("mem-b",100,1.0,3_000),
+        ];
+        let naive=simulate_naive_all_at_once(&env,&work);
+        let fifo=simulate_bounded_fifo(&env,&work);
+        let fit=simulate_bounded_fit_scan(&env,&work);
+
+        assert_eq!(naive.completed, work.len());
+        assert_eq!(fifo.completed, work.len());
+        assert_eq!(fit.completed, work.len());
+        assert_eq!(naive.hard_envelope_violations, 1);
+        assert_eq!(fifo.hard_envelope_violations, 0);
+        assert_eq!(fit.hard_envelope_violations, 0);
+
+        // Planner work is evidence, not a pass/fail target. Fit-scan is allowed
+        // to inspect more candidates when it buys better packing.
+        assert!(fifo.planner_item_checks > 0);
+        assert!(fit.planner_item_checks >= fifo.planner_item_checks);
+        eprintln!(
+            "same_workload naive={naive:?} fifo={fifo:?} fit_scan={fit:?}"
+        );
+    }
+
     fn fit_scan_reduces_fragmentation_vs_strict_fifo_on_complementary_shapes() {
         let env=ResourceEnvelope{id:"host".into(),observed_at_unix_ms:1,source:"fixture".into(),capacity:rv(4.0,4_000)};
         let work=vec![
