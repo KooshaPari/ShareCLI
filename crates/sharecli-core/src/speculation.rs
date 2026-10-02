@@ -15,6 +15,7 @@
 //!   speculated on indefinitely.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -40,6 +41,45 @@ pub const SPECULATION_MAX_CANDIDATES: usize = 5;
 /// Interval between background speculation cycles.
 pub const SPECULATION_INTERVAL: Duration = Duration::from_secs(30);
 
+/// Explicit per-cycle speculation budget. This is a safety ceiling, not a
+/// throughput target. Production policy may choose a smaller value.
+pub const SPECULATION_MAX_EXECUTIONS_PER_CYCLE: usize = 2;
+
+/// Only commands explicitly classified as safe-to-speculate may enter the
+/// tracker. Cacheability alone is not authority for side-effect-free replay.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpeculationEligibility {
+    Ineligible,
+    ExplicitlyReadOnly,
+}
+
+#[derive(Debug, Default)]
+pub struct SpeculationAccounting {
+    attempted: AtomicU64,
+    completed: AtomicU64,
+    failed: AtomicU64,
+    skipped_budget: AtomicU64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SpeculationAccountingSnapshot {
+    pub attempted: u64,
+    pub completed: u64,
+    pub failed: u64,
+    pub skipped_budget: u64,
+}
+
+impl SpeculationAccounting {
+    pub fn snapshot(&self) -> SpeculationAccountingSnapshot {
+        SpeculationAccountingSnapshot {
+            attempted: self.attempted.load(Ordering::Relaxed),
+            completed: self.completed.load(Ordering::Relaxed),
+            failed: self.failed.load(Ordering::Relaxed),
+            skipped_budget: self.skipped_budget.load(Ordering::Relaxed),
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // SpeculationTracker
 // ---------------------------------------------------------------------------
@@ -51,6 +91,7 @@ pub struct SpeculationCandidate {
     pub argv: Vec<String>,
     pub cwd: std::path::PathBuf,
     pub env: Vec<(String, String)>,
+    pub eligibility: SpeculationEligibility,
 }
 
 /// In-memory command-frequency tracker.
@@ -88,12 +129,28 @@ impl SpeculationTracker {
         cwd: &std::path::Path,
         env: &[(String, String)],
     ) {
+        self.record_eligible_hit(
+            key,
+            argv,
+            cwd,
+            env,
+            SpeculationEligibility::Ineligible,
+        )
+        .await;
+    }
+
+    pub async fn record_eligible_hit(
+        &self,
+        key: &CommandKey,
+        argv: &[String],
+        cwd: &std::path::Path,
+        env: &[(String, String)],
+        eligibility: SpeculationEligibility,
+    ) {
         let mut inner = self.inner.lock().await;
         let now = Instant::now();
         let entry = inner.hits.entry(key.0.clone()).or_insert((0, now));
-        entry.0 += 1;
-        // Refresh window start on each hit so the counter slides.
-        entry.1 = now;
+        entry.0 = entry.0.saturating_add(1);
 
         // Store request details if not already present (first hit).
         inner.requests.entry(key.0.clone()).or_insert_with(|| SpeculationCandidate {
@@ -101,6 +158,7 @@ impl SpeculationTracker {
             argv: argv.to_vec(),
             cwd: cwd.to_path_buf(),
             env: env.to_vec(),
+            eligibility,
         });
     }
 
@@ -132,7 +190,9 @@ impl SpeculationTracker {
         let mut candidates = Vec::new();
         for (_, key) in scored {
             if let Some(candidate) = inner.requests.remove(&key) {
-                candidates.push(candidate);
+                if candidate.eligibility == SpeculationEligibility::ExplicitlyReadOnly {
+                    candidates.push(candidate);
+                }
             }
             // Reset the counter so we don't re-speculate immediately.
             inner.hits.remove(&key);
@@ -167,6 +227,20 @@ pub fn spawn_speculation_task(
     cache: CoalesceCache,
     thermal_gate: Arc<dyn crate::ThermalGate>,
 ) {
+    spawn_speculation_task_with_accounting(
+        tracker,
+        cache,
+        thermal_gate,
+        Arc::new(SpeculationAccounting::default()),
+    );
+}
+
+pub fn spawn_speculation_task_with_accounting(
+    tracker: Arc<SpeculationTracker>,
+    cache: CoalesceCache,
+    thermal_gate: Arc<dyn crate::ThermalGate>,
+    accounting: Arc<SpeculationAccounting>,
+) {
     // Best-effort background task. The hypervisor constructor may run outside
     // a Tokio runtime (sync CLI wiring, unit tests); without a reactor there
     // is nothing to spawn onto, so skip silently rather than panic.
@@ -197,7 +271,11 @@ pub fn spawn_speculation_task(
 
             info!(count = candidates.len(), "speculation: pre-executing candidates");
 
-            for candidate in candidates {
+            for (index, candidate) in candidates.into_iter().enumerate() {
+                if index >= SPECULATION_MAX_EXECUTIONS_PER_CYCLE {
+                    accounting.skipped_budget.fetch_add(1, Ordering::Relaxed);
+                    continue;
+                }
                 // Skip if the cache already has a fresh entry.
                 match cache.lookup(&candidate.key) {
                     Ok(Some(_)) => {
@@ -216,18 +294,21 @@ pub fn spawn_speculation_task(
                 let cwd = candidate.cwd.clone();
                 let env = candidate.env.clone();
 
+                accounting.attempted.fetch_add(1, Ordering::Relaxed);
                 let result =
                     tokio::task::spawn_blocking(move || speculate_execute(&argv, &cwd, &env)).await;
 
                 match result {
                     Ok(Ok(cached)) => {
                         if let Err(e) = cache.store(&candidate.key, &cached) {
+                            accounting.failed.fetch_add(1, Ordering::Relaxed);
                             warn!(
                                 key = %candidate.key.0,
                                 err = %e,
                                 "speculation: cache store failed"
                             );
                         } else {
+                            accounting.completed.fetch_add(1, Ordering::Relaxed);
                             debug!(
                                 key = %candidate.key.0,
                                 exit = cached.exit_code,
@@ -236,6 +317,7 @@ pub fn spawn_speculation_task(
                         }
                     }
                     Ok(Err(e)) => {
+                        accounting.failed.fetch_add(1, Ordering::Relaxed);
                         warn!(
                             key = %candidate.key.0,
                             err = %e,
@@ -243,6 +325,7 @@ pub fn spawn_speculation_task(
                         );
                     }
                     Err(e) => {
+                        accounting.failed.fetch_add(1, Ordering::Relaxed);
                         error!(
                             key = %candidate.key.0,
                             err = %e,
@@ -294,12 +377,26 @@ mod tests {
 
         // Below threshold — no candidates.
         for _ in 0..2 {
-            tracker.record_hit(&key, &argv, &cwd, &[]).await;
+            tracker.record_eligible_hit(
+                &key,
+                &argv,
+                &cwd,
+                &[],
+                SpeculationEligibility::ExplicitlyReadOnly,
+            )
+            .await;
         }
         assert!(tracker.drain_candidates().await.is_empty());
 
         // Cross threshold.
-        tracker.record_hit(&key, &argv, &cwd, &[]).await;
+        tracker.record_eligible_hit(
+            &key,
+            &argv,
+            &cwd,
+            &[],
+            SpeculationEligibility::ExplicitlyReadOnly,
+        )
+        .await;
         let candidates = tracker.drain_candidates().await;
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].key, key);
@@ -319,7 +416,14 @@ mod tests {
             let key = CommandKey(format!("key-{i:04}"));
             let argv = vec![format!("cmd-{i}")];
             for _ in 0..SPECULATION_THRESHOLD {
-                tracker.record_hit(&key, &argv, &cwd, &[]).await;
+                tracker.record_eligible_hit(
+                &key,
+                &argv,
+                &cwd,
+                &[],
+                SpeculationEligibility::ExplicitlyReadOnly,
+            )
+            .await;
             }
         }
 
@@ -341,7 +445,14 @@ mod tests {
         let argv = vec!["ls".into()];
 
         for _ in 0..SPECULATION_THRESHOLD {
-            tracker.record_hit(&key, &argv, &cwd, &[]).await;
+            tracker.record_eligible_hit(
+                &key,
+                &argv,
+                &cwd,
+                &[],
+                SpeculationEligibility::ExplicitlyReadOnly,
+            )
+            .await;
         }
         assert!(!tracker.is_empty().await);
 
@@ -512,6 +623,26 @@ mod tests {
         let candidates = tracker.drain_candidates().await;
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].key, key_ok);
+    }
+
+    #[tokio::test]
+    async fn ordinary_cache_hits_are_not_speculation_authority() {
+        let tracker = SpeculationTracker::new();
+        let cwd = std::path::PathBuf::from("/tmp");
+        let key = CommandKey("cacheable-not-authorized".into());
+        for _ in 0..SPECULATION_THRESHOLD {
+            tracker.record_hit(&key, &["echo".into()], &cwd, &[]).await;
+        }
+        assert!(
+            tracker.drain_candidates().await.is_empty(),
+            "cacheability alone authorized speculative execution"
+        );
+    }
+
+    #[test]
+    fn speculation_budget_is_explicit_and_bounded() {
+        assert!(SPECULATION_MAX_EXECUTIONS_PER_CYCLE > 0);
+        assert!(SPECULATION_MAX_EXECUTIONS_PER_CYCLE < SPECULATION_MAX_CANDIDATES);
     }
 
     #[tokio::test]
