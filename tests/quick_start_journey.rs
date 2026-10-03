@@ -54,10 +54,8 @@ fn quick_start_journey_maps_steps_to_frs() {
     );
 
     // Step 2 — FR-002: config surface exposes init/validate; validate reports projects.
-    let cfg_help = bin_with_config(&config_path)
-        .args(["config", "--help"])
-        .output()
-        .expect("config --help");
+    let cfg_help =
+        bin_with_config(&config_path).args(["config", "--help"]).output().expect("config --help");
     assert!(cfg_help.status.success(), "stderr: {}", stderr(&cfg_help));
     let cfg_help_out = stdout(&cfg_help).to_lowercase();
     assert!(
@@ -85,10 +83,8 @@ fn quick_start_journey_maps_steps_to_frs() {
     );
 
     // Step 3 — FR-003: project surface exposes add/list; list is readable.
-    let proj_help = bin_with_config(&config_path)
-        .args(["project", "--help"])
-        .output()
-        .expect("project --help");
+    let proj_help =
+        bin_with_config(&config_path).args(["project", "--help"]).output().expect("project --help");
     assert!(proj_help.status.success(), "stderr: {}", stderr(&proj_help));
     let proj_help_out = stdout(&proj_help).to_lowercase();
     assert!(
@@ -96,10 +92,8 @@ fn quick_start_journey_maps_steps_to_frs() {
         "FR-003 journey MUST advertise add+list; got: {proj_help_out}"
     );
 
-    let list = bin_with_config(&config_path)
-        .args(["project", "list"])
-        .output()
-        .expect("project list");
+    let list =
+        bin_with_config(&config_path).args(["project", "list"]).output().expect("project list");
     assert!(list.status.success(), "project list MUST exit 0; stderr: {}", stderr(&list));
     let list_out = stdout(&list);
     assert!(

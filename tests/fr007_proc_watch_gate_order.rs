@@ -5,8 +5,8 @@
 //! on every refresh (parity with one-shot text AC-007.21)
 
 use std::io::Read;
-use std::sync::{Arc, Mutex};
 use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -66,11 +66,7 @@ fn drain_watch_pipes(
 
     let deadline = Instant::now() + max;
     loop {
-        let count = stdout_buf
-            .lock()
-            .expect("stdout lock")
-            .matches(frame_marker)
-            .count();
+        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
         if count >= frames_needed || Instant::now() >= deadline {
             break;
         }
@@ -97,7 +93,8 @@ fn fr007_proc_watch_text_gate_ordering() {
         .spawn()
         .expect("spawn sharecli proc --watch 1");
 
-    let (stdout, _stderr) = drain_watch_pipes(&mut child, INVENTORY_HEADER, 2, Duration::from_millis(30_000));
+    let (stdout, _stderr) =
+        drain_watch_pipes(&mut child, INVENTORY_HEADER, 2, Duration::from_millis(30_000));
 
     let frame_count = stdout.matches(INVENTORY_HEADER).count();
     assert!(
@@ -127,7 +124,8 @@ fn fr007_proc_watch_ndjson_gate_ordering() {
         .spawn()
         .expect("spawn sharecli proc --json --watch 1");
 
-    let (stdout, _stderr) = drain_watch_pipes(&mut child, INVENTORY_HEADER, 2, Duration::from_millis(30_000));
+    let (stdout, _stderr) =
+        drain_watch_pipes(&mut child, INVENTORY_HEADER, 2, Duration::from_millis(30_000));
 
     let lines: Vec<&str> = stdout.lines().filter(|l| !l.is_empty()).collect();
     assert!(

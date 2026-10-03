@@ -256,10 +256,8 @@ async fn fr003_ipc_handler_persists_and_lists_validated_layouts() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fr003_ipc_handler_pool_effectiveness_returns_typed_snapshot() {
     let fixture = HandlerFixture::new();
-    let response = fixture
-        .handler
-        .dispatch(r#"{"id":24,"method":"pool.effectiveness","params":{}}"#)
-        .await;
+    let response =
+        fixture.handler.dispatch(r#"{"id":24,"method":"pool.effectiveness","params":{}}"#).await;
 
     assert!(response.error.is_none(), "pool.effectiveness error: {:?}", response.error);
     for field in ["hits", "misses", "nocache_runs"] {
@@ -301,13 +299,13 @@ async fn fr003_ipc_handler_process_spawn_retains_and_kills_child() {
 
     let listed = handler.dispatch(r#"{"id":26,"method":"process.list","params":{}}"#).await;
     assert!(listed.error.is_none(), "process.list error: {:?}", listed.error);
-    assert!(listed
-        .result
-        .as_array()
-        .is_some_and(|rows| rows.iter().any(|row| row["pid"] == pid)));
+    assert!(listed.result.as_array().is_some_and(|rows| rows.iter().any(|row| row["pid"] == pid)));
 
     let killed = handler
-        .dispatch(&serde_json::json!({"id": 27, "method": "process.kill", "params": {"pid": pid}}).to_string())
+        .dispatch(
+            &serde_json::json!({"id": 27, "method": "process.kill", "params": {"pid": pid}})
+                .to_string(),
+        )
         .await;
     assert!(killed.error.is_none(), "process.kill error: {:?}", killed.error);
     assert_eq!(killed.result, serde_json::json!(true));
@@ -321,9 +319,8 @@ async fn fr003_ipc_handler_process_spawn_validates_and_reports_failure() {
     let fixture = HandlerFixture::new();
     let handler = &fixture.handler;
 
-    let missing = handler
-        .dispatch(r#"{"id":28,"method":"process.spawn","params":{"args":[]}}"#)
-        .await;
+    let missing =
+        handler.dispatch(r#"{"id":28,"method":"process.spawn","params":{"args":[]}}"#).await;
     assert!(
         missing.error.as_deref().is_some_and(|e| e.contains("command")),
         "missing command must be rejected: {:?}",
@@ -340,7 +337,9 @@ async fn fr003_ipc_handler_process_spawn_validates_and_reports_failure() {
     );
 
     let bad_args = handler
-        .dispatch(r#"{"id":30,"method":"process.spawn","params":{"command":"/bin/echo","args":"x"}}"#)
+        .dispatch(
+            r#"{"id":30,"method":"process.spawn","params":{"command":"/bin/echo","args":"x"}}"#,
+        )
         .await;
     assert!(
         bad_args.error.as_deref().is_some_and(|e| e.contains("args")),

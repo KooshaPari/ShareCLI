@@ -37,9 +37,9 @@ mod paths;
 mod pprof_http;
 mod proc_compose;
 mod progress;
-mod rate_limiter;
 #[cfg(test)]
 mod proptest_util;
+mod rate_limiter;
 mod runtime;
 mod serve_auth;
 mod serve_lock;
@@ -437,7 +437,6 @@ enum Commands {
         #[arg(long)]
         install: bool,
     },
-
 
     /// Enumerate available CLI surfaces (cast modules + utility modules)
     List {

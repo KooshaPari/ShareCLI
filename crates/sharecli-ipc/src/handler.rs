@@ -43,8 +43,8 @@ use sharecli::runtime::SharedRuntime;
 use sharecli::{ProcessInfo, ProcessPool};
 use sharecli_fleet::thermal::ThermalGovernor;
 use sharecli_fleet::{
-    count_host_agents, gate_status_snapshot, global_coalesce_meters,
-    global_slot_queue_meters, GateStatusSnapshot,
+    count_host_agents, gate_status_snapshot, global_coalesce_meters, global_slot_queue_meters,
+    GateStatusSnapshot,
 };
 use sharecli_session::{
     LayoutSnapshot, RecoveryExecutor, SessionObservation, SessionStore,
@@ -540,7 +540,9 @@ impl Handler {
                     .and_then(Value::as_str)
                     .map(str::trim)
                     .filter(|s| !s.is_empty())
-                    .ok_or_else(|| anyhow::anyhow!("process.spawn: command must be a non-empty string"))?;
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("process.spawn: command must be a non-empty string")
+                    })?;
                 // Empty args is valid (it is the Spawn form default); a missing
                 // args key is treated the same way.
                 let args: Vec<String> = match req.params.get("args") {
@@ -565,10 +567,8 @@ impl Handler {
                         ))
                     }
                 };
-                let project =
-                    req.params.get("project").and_then(Value::as_str).map(str::to_owned);
-                let harness =
-                    req.params.get("harness").and_then(Value::as_str).map(str::to_owned);
+                let project = req.params.get("project").and_then(Value::as_str).map(str::to_owned);
+                let harness = req.params.get("harness").and_then(Value::as_str).map(str::to_owned);
                 let cwd = req
                     .params
                     .get("cwd")
