@@ -306,6 +306,88 @@ jobs:
       - name: Netblock hermetic check (offline compile)
         run: bash scripts/ci/netblock_check.sh
 
+
+  mature-recovery-reference:
+    name: Mature recovery reference qualification
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Zig required by transitive native build
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
+      - uses: Swatinem/rust-cache@v2
+      - name: Record actual candidate and effective verifier versions
+        env:
+          EXPECTED_CANDIDATE: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python - <<'PYCODE'
+          import hashlib, json, os, platform, subprocess
+          from datetime import datetime, timezone
+          from pathlib import Path
+          def command(*argv):
+              return subprocess.check_output(argv, text=True).strip()
+          actual = command("git", "rev-parse", "HEAD")
+          assert actual == os.environ["EXPECTED_CANDIDATE"], "wrong checkout candidate"
+          assert not command("git", "status", "--porcelain", "--untracked-files=no"), "tracked candidate modified"
+          receipt = {
+              "schema": "recovery-candidate/v1", "product": os.environ["GITHUB_REPOSITORY"],
+              "candidate": actual, "tree": command("git", "rev-parse", "HEAD^{tree}"),
+              "event_sha": os.environ["GITHUB_SHA"], "run": os.environ["GITHUB_RUN_ID"],
+              "attempt": os.environ["GITHUB_RUN_ATTEMPT"], "collected_at": datetime.now(timezone.utc).isoformat(),
+              "configuration": "mature-recovery-reference; cargo --locked; native Linux fixtures",
+              "environment": platform.platform(), "python": platform.python_version(),
+              "rustc": command("rustc", "--version", "--verbose"), "cargo": command("cargo", "--version"),
+              "make": command("make", "--version"),
+              "hashes": {name: hashlib.sha256(Path(name).read_bytes()).hexdigest()
+                         for name in ("Cargo.lock", "rust-toolchain.toml", ".github/workflows/ci.yml")},
+              "status": "COLLECTED_NOT_TEST_QUALIFICATION",
+          }
+          Path("recovery-candidate.json").write_text(json.dumps(receipt, indent=2) + "\n")
+          print(json.dumps(receipt, indent=2))
+          PYCODE
+      - name: Validate recovery control-plane contracts
+        run: |
+          python scripts/recovery/validate_work_packages.py docs/specs/mature-recovery/2026-09-29/work-packages.json
+          python scripts/recovery/validate_evidence.py docs/specs/mature-recovery/2026-09-29/evidence/example-not-run.json
+          python scripts/recovery/validate_trace.py docs/specs/mature-recovery/2026-09-29/trace-slice.json
+      - name: Qualify additive semantic and scheduling domains
+        run: |
+          cargo test --locked -p sharecli-ipc identity::tests:: -- --nocapture
+          cargo test --locked -p sharecli-ipc capability::tests:: -- --nocapture
+          cargo test --locked -p sharecli-ipc equivalence::tests:: -- --nocapture
+          cargo test --locked -p sharecli-ipc scheduling::tests:: -- --nocapture
+          cargo test --locked -p sharecli-ipc scheduling_reference::tests:: -- --nocapture
+          cargo test --locked -p sharecli-ipc scheduling_benchmark::tests:: -- --nocapture
+          cargo test --locked -p sharecli-ipc scheduling_policy::tests:: -- --nocapture
+          cargo test --locked -p sharecli-ipc speculation_policy::tests:: -- --nocapture
+          cargo test --locked -p sharecli-ipc jobserver::tests:: -- --nocapture
+          cargo test --locked -p sharecli-ipc pressure::tests:: -- --nocapture
+          cargo test --locked -p sharecli-ipc pressure_policy::tests:: -- --nocapture
+          cargo test --locked -p sharecli-ipc resource_control::tests:: -- --nocapture
+          cargo test --locked -p sharecli-session mature_recovery::tests:: -- --nocapture
+          cargo test --locked -p sharecli-core --test recovery_scheduling_runtime_vertical -- --nocapture
+          cargo test --locked -p sharecli-core --test recovery_jobserver_hypervisor -- --nocapture
+          cargo test --locked -p sharecli-core --lib resource_admission::tests:: -- --nocapture
+          cargo test --locked -p sharecli-core --test recovery_resource_admission -- --nocapture
+          cargo test --locked -p sharecli-ipc --test recovery_inherited_jobserver -- --nocapture
+      - name: Native memory-pressure comparison
+        run: python scripts/recovery/scheduling_pressure_fixture.py --mib 12 --seconds 0.20
+      - name: Native 50-process admission envelope
+        run: python scripts/recovery/scheduling_scale_fixture.py --processes 50 --bounded-concurrency 5 --mib 1 --hold-seconds 0.08
+
+
   lint:
     name: ci / lint
     if: always()
@@ -357,11 +439,16 @@ jobs:
   ci-success:
     name: CI Success Gate
     if: always()
-    needs: [lint, test, osv, chaos-restart-hard, netblock]
+    needs: [lint, test, osv, chaos-restart-hard, netblock, mature-recovery-reference]
     runs-on: ubuntu-latest
     steps:
       - name: Aggregate CI gate
         run: |
+          # A skipped/unknown recovery check is not acceptance evidence.
+          if [ "${{ needs.mature-recovery-reference.result }}" != "success" ]; then
+            echo "Mature recovery qualification must execute and succeed."
+            exit 1
+          fi
           failed=0
           for pair in \
             "lint:${{ needs.lint.result }}" \
@@ -369,6 +456,7 @@ jobs:
             "osv:${{ needs.osv.result }}" \
             "chaos-restart-hard:${{ needs.chaos-restart-hard.result }}" \
             "netblock:${{ needs.netblock.result }}" \
+            "mature-recovery-reference:${{ needs.mature-recovery-reference.result }}" \
             ; do
             name="${pair%%:*}"
             result="${pair#*:}"

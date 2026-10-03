@@ -1,0 +1,45 @@
+name: Recovery CI queue maintenance
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: recovery-ci-maintenance-${{ github.repository }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  cancel-superseded-readonly-ci:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'spec/mature-recovery-2026-09-29' &&
+      ((github.repository == 'KooshaPari/ShareCLI' && github.event.pull_request.number == 878) ||
+       (github.repository == 'KooshaPari/BytePort' && github.event.pull_request.number == 427))
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Validate cancellation safety without credentials
+        run: python3 -m unittest discover -s scripts/recovery -p test_ci_queue_cleanup.py -v
+      - name: Request cancellation of allowlisted superseded ancestor runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/recovery/ci_queue_cleanup.py --apply
+      - name: Publish maintenance receipt, never product qualification
+        if: always()
+        run: |
+          if test -f ci-queue-cleanup-report.json; then
+            cat ci-queue-cleanup-report.json
+          else
+            echo "No completed maintenance receipt; inspect preceding per-request events."
+          fi

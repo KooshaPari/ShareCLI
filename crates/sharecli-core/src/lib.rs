@@ -72,6 +72,7 @@ use tracing::{debug, error, warn};
 pub mod detect;
 pub mod proc_scan;
 pub mod speculation;
+pub mod resource_admission;
 pub use detect::{match_known_agent, KNOWN_AGENT_FAMILIES};
 pub use proc_scan::{
     agent_label_for_pid, detect_caller_agent, is_under_agent, scan_agents, scan_host_agents,
@@ -88,6 +89,7 @@ pub use sharecli_ipc::{
     DEFAULT_NOCACHE_ARGS, QUEUE_PRIORITY_ENV,
 };
 pub use speculation::{SpeculationTracker, SPECULATION_THRESHOLD, SPECULATION_WINDOW};
+pub use resource_admission::{AdmissionRejection, ResourceAdmissionLease, ResourceAdmissionPool};
 
 // ---------------------------------------------------------------------------
 // Thermal gate — trait + decisions
@@ -465,6 +467,15 @@ pub struct HypervisorConfig {
     pub semantic: bool,
 }
 
+/// Optional provider-specific setup for a child process.
+///
+/// This seam is intentionally transport-neutral. Native admission providers
+/// such as GNU make's jobserver can use it to propagate inherited coordination
+/// state without making the Hypervisor own that provider's protocol.
+pub trait ChildCommandConfigurator: Send + Sync {
+    fn configure(&self, command: &mut std::process::Command);
+}
+
 /// A request to spawn a managed process.
 #[derive(Debug, Clone)]
 pub struct SpawnRequest {
@@ -733,6 +744,44 @@ impl Hypervisor {
     /// Skips coalesce cache lookup regardless of argv. Used by harness-native
     /// strategies that must serialize on the nocache lane (FR-008 AC-008.16).
     pub async fn run_queued(&self, req: SpawnRequest, lane: &str) -> Result<SpawnOutcome> {
+        self.run_queued_configured(req, lane, None).await
+    }
+
+    /// Execute one queue-routed spawn while holding an explicit
+    /// multidimensional resource reservation for the entire subprocess
+    /// lifetime. This is opt-in mature-recovery wiring; default run() remains
+    /// unchanged until admission evidence qualifies.
+    pub async fn run_admitted_queued(
+        &self,
+        req: SpawnRequest,
+        lane: &str,
+        admission: &ResourceAdmissionPool,
+        work_item_id: &str,
+        demand: &sharecli_ipc::scheduling::ResourceVector,
+    ) -> Result<SpawnOutcome> {
+        let _lease = admission
+            .try_acquire(work_item_id, demand)
+            .map_err(|err| anyhow!("resource admission rejected {work_item_id}: {err}"))?;
+        self.run_queued(req, lane).await
+    }
+
+    /// Run the queue lane while allowing a native provider to configure the
+    /// exact child command before spawn.
+    pub async fn run_queued_with_command_configurator(
+        &self,
+        req: SpawnRequest,
+        lane: &str,
+        configurator: &dyn ChildCommandConfigurator,
+    ) -> Result<SpawnOutcome> {
+        self.run_queued_configured(req, lane, Some(configurator)).await
+    }
+
+    async fn run_queued_configured(
+        &self,
+        req: SpawnRequest,
+        lane: &str,
+        configurator: Option<&dyn ChildCommandConfigurator>,
+    ) -> Result<SpawnOutcome> {
         self.thermal_gate_check().await?;
 
         let watch = ResourceWatchSample::capture()?;
@@ -740,7 +789,7 @@ impl Hypervisor {
         debug!(lane, argv = ?req.argv, "hypervisor::run_queued — queue lane");
         record_nocache_run();
         let outcome =
-            self.queue.with_slot(lane, req.queue_priority, || spawn_process_sync(&req))?;
+            self.queue.with_slot(lane, req.queue_priority, || spawn_process_sync(&req, configurator))?;
         Ok(SpawnOutcome {
             exit_code: outcome.exit_code,
             stdout: outcome.stdout,
@@ -791,6 +840,24 @@ impl Hypervisor {
     /// the background task pre-executes high-probability commands into the
     /// coalesce cache during idle periods.
     pub async fn run(&self, req: SpawnRequest) -> Result<SpawnOutcome> {
+        self.run_configured(req, None).await
+    }
+
+    /// Run a managed spawn and let an external admission provider configure
+    /// the exact child command while retaining the Hypervisor execution path.
+    pub async fn run_with_command_configurator(
+        &self,
+        req: SpawnRequest,
+        configurator: &dyn ChildCommandConfigurator,
+    ) -> Result<SpawnOutcome> {
+        self.run_configured(req, Some(configurator)).await
+    }
+
+    async fn run_configured(
+        &self,
+        req: SpawnRequest,
+        configurator: Option<&dyn ChildCommandConfigurator>,
+    ) -> Result<SpawnOutcome> {
         // ── Thermal gate ─────────────────────────────────────────────────────
         self.thermal_gate_check().await?;
 
@@ -818,7 +885,7 @@ impl Hypervisor {
         if has_nocache_arg(&req.argv, &self.nocache_args) {
             let lane = queue_lane_from_argv(&req.argv).to_string();
             debug!(lane = %lane, argv = ?req.argv, "hypervisor::run — nocache → queue");
-            return self.run_queued(req, &lane).await;
+            return self.run_queued_configured(req, &lane, configurator).await;
         }
 
         // ── Cache lookup ─────────────────────────────────────────────────────
@@ -833,29 +900,12 @@ impl Hypervisor {
             command_key_with_mode(self.config.cache_key_mode, &argv_for_key, &req.cwd, &req.env);
         debug!(key = %key.0, argv = ?req.argv, "hypervisor::run");
 
-        // Check the cache before acquiring the lock so that we can
-        // accurately report `from_cache` for the caller.
-        if let Some(cached) = self.cache.lookup(&key)? {
-            debug!(key = %key.0, "hypervisor::run — cache hit");
-            record_coalesce_lookup_hit();
-            // FR-008: record hit for speculation tracker.
-            self.speculation_tracker.record_hit(&key, &req.argv, &req.cwd, &req.env).await;
-            return Ok(SpawnOutcome {
-                exit_code: cached.exit_code,
-                stdout: cached.stdout,
-                stderr: cached.stderr,
-                from_cache: true,
-                resource_watch: ResourceWatchSample::default(),
-                detected_agent: None,
-                fuse_session_id: None,
-                fuse_backing: None,
-                fuse_mountpoint: None,
-            }
-            .with_resource_watch(watch)
-            .with_detected_agent(detected_agent.clone()));
-        }
+        // Default Hypervisor execution has in-flight sharing authority only.
+        // A durable JSON result is not consulted here: cacheability is not
+        // proof that command/environment/cwd capture the complete input root.
+        // Adapter-qualified durable replay remains a separate future path.
 
-        // ── FUSE intercept (cache-miss only) ─────────────────────────────────
+        // ── FUSE intercept (first in-flight execution only) ─────────────────────────────────
         // Mount the IO-intercept layer over the child's working directory.
         // `FuseGuard::try_mount` never fails the spawn — if FUSE is unavailable
         // or readiness never appears, a loud error is reported and a no-op
@@ -886,7 +936,8 @@ impl Hypervisor {
         // Lock-Wait-Cache: spawn is the closure called only on a cache miss.
         // We use `effective_req` (with a potentially FUSE-wrapped cwd)
         // inside the closure to avoid any borrow conflict with `req`.
-        let (cached, hit_kind) = self.coalesce_via_lock(&key, &effective_req)?;
+        let (cached, hit_kind) =
+            self.coalesce_inflight(&key, &effective_req, configurator)?;
 
         // FR-008: record speculation hit when the lock-wait cache was shared.
         if hit_kind.shared_from_cache() {
@@ -912,13 +963,14 @@ impl Hypervisor {
     ///
     /// Every Hypervisor coalesce miss MUST flow through here so
     /// [`CoalesceCache::with_lock_detailed`] applies the configured debounce window.
-    fn coalesce_via_lock(
+    fn coalesce_inflight(
         &self,
         key: &sharecli_ipc::CommandKey,
         effective_req: &SpawnRequest,
+        configurator: Option<&dyn ChildCommandConfigurator>,
     ) -> Result<(CachedResult, CoalesceHitKind)> {
-        self.cache.with_lock_detailed(key, || {
-            let outcome = spawn_process_sync(effective_req)?;
+        self.cache.with_inflight_lock_detailed(key, || {
+            let outcome = spawn_process_sync(effective_req, configurator)?;
             Ok(CachedResult {
                 exit_code: outcome.exit_code,
                 stdout: outcome.stdout,
@@ -984,14 +1036,23 @@ fn queue_lane_from_argv(argv: &[String]) -> &str {
 /// Spawn `req.argv` synchronously (blocking) and capture its output.
 ///
 /// Used inside `CoalesceCache::with_lock` which takes a synchronous closure.
-fn spawn_process_sync(req: &SpawnRequest) -> Result<SpawnOutcome> {
+fn spawn_process_sync(
+    req: &SpawnRequest,
+    configurator: Option<&dyn ChildCommandConfigurator>,
+) -> Result<SpawnOutcome> {
     let (program, args) =
         req.argv.split_first().with_context(|| "spawn_process_sync: argv is empty")?;
 
-    let output = std::process::Command::new(program)
+    let mut command = std::process::Command::new(program);
+    command
         .args(args)
         .current_dir(&req.cwd)
-        .envs(req.env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+        .envs(req.env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+    if let Some(configurator) = configurator {
+        configurator.configure(&mut command);
+    }
+
+    let output = command
         .output()
         .with_context(|| format!("failed to spawn {:?}", req.argv))?;
 
@@ -1679,4 +1740,32 @@ mod tests {
         assert_eq!(hv.nocache_args(), &["--force", "--clean"]);
         assert_ne!(hv.nocache_args().len(), original_len);
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn child_command_configurator_reaches_actual_spawn() {
+        struct EnvConfigurator;
+
+        impl ChildCommandConfigurator for EnvConfigurator {
+            fn configure(&self, command: &mut std::process::Command) {
+                command.env("SHARECLI_CHILD_CONFIGURATOR_TEST", "configured");
+            }
+        }
+
+        let cwd = std::env::current_dir().expect("cwd");
+        let req = SpawnRequest::new(
+            vec![
+                "sh".into(),
+                "-c".into(),
+                "printf %s \"$SHARECLI_CHILD_CONFIGURATOR_TEST\"".into(),
+            ],
+            cwd,
+            vec![],
+        );
+        let outcome =
+            spawn_process_sync(&req, Some(&EnvConfigurator)).expect("configured child spawn");
+        assert_eq!(outcome.exit_code, 0);
+        assert_eq!(outcome.stdout, b"configured");
+    }
+
 }

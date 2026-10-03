@@ -30,7 +30,19 @@
 //! see `sharecli_core::Hypervisor::{queue, run}`.
 
 pub mod cache_key;
+pub mod capability;
 pub mod handler;
+pub mod scheduling;
+pub mod pressure;
+pub mod pressure_policy;
+pub mod resource_control;
+pub mod scheduling_reference;
+pub mod scheduling_benchmark;
+pub mod scheduling_policy;
+pub mod speculation_policy;
+pub mod equivalence;
+pub mod identity;
+pub mod jobserver;
 pub mod log_buffer;
 pub mod nocache;
 pub mod queue;
@@ -46,6 +58,9 @@ use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
 pub use cache_key::{command_key, command_key_with_mode, CacheKeyMode};
+pub use capability::{CapabilityFact, CapabilityTruth};
+pub use equivalence::{EquivalenceAdapter, EquivalenceDecision, EquivalenceEvidence, UnknownAdapter};
+pub use identity::{EvidenceReceiptId, EquivalenceAdapterId, ExecutionAttemptId, InvocationId, OwnershipClaimId, PolicyDecisionId, PolicyRevision, PolicyScopeId, ProcessGenerationId, RecoveryOperationId};
 use fs2::FileExt;
 pub use nocache::{
     has_nocache_arg, parse_nocache_args_csv, should_bypass_coalesce, DEFAULT_NOCACHE_ARGS,
@@ -301,6 +316,77 @@ impl CoalesceCache {
         T: Into<CachedResult> + From<CachedResult>,
     {
         self.with_lock_detailed(key, f).map(|(value, _)| value)
+    }
+
+    /// Share only with callers that overlap the same in-flight execution.
+    ///
+    /// This primitive deliberately does **not** read or write the durable JSON
+    /// result cache. The exclusive key lock remains the admission point; the
+    /// first caller writes a short-lived handoff file while holding the lock,
+    /// and waiters that observed the lock as busy may consume that handoff
+    /// after acquiring the lock. A caller that arrives after the execution has
+    /// completed never replays the handoff.
+    ///
+    /// Durable replay is a different authority and must be selected by an
+    /// adapter that can prove complete input identity.
+    pub fn with_inflight_lock_detailed<T>(
+        &self,
+        key: &CommandKey,
+        f: impl FnOnce() -> Result<T>,
+    ) -> Result<(T, CoalesceHitKind)>
+    where
+        T: Into<CachedResult> + From<CachedResult>,
+    {
+        self.ensure_root()?;
+        let lock_path = self.lock_path(key);
+        let lock_file = fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .open(&lock_path)
+            .with_context(|| format!("open lock file {}", lock_path.display()))?;
+
+        let overlapped = match FileExt::try_lock_exclusive(&lock_file) {
+            Ok(()) => false,
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                acquire_lock_with_deadline(&lock_file, Duration::from_secs(30))
+                    .with_context(|| format!("acquire exclusive lock on {}", lock_path.display()))?;
+                true
+            }
+            Err(e) => return Err(e.into()),
+        };
+
+        let handoff = self.root.join(format!("{}.inflight.json", key.0));
+        if overlapped {
+            let bytes = fs::read(&handoff)
+                .with_context(|| format!("read in-flight handoff {}", handoff.display()))?;
+            let cached: CachedResult = serde_json::from_slice(&bytes)
+                .with_context(|| format!("deserialise in-flight handoff {}", handoff.display()))?;
+            record_coalesce_hit_kind(CoalesceHitKind::LockRecheck);
+            return Ok((T::from(cached), CoalesceHitKind::LockRecheck));
+        }
+
+        // A non-overlapping caller owns a new generation. Remove any previous
+        // handoff before executing so a stale file cannot become authority.
+        match fs::remove_file(&handoff) {
+            Ok(()) => {}
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e).with_context(|| format!("remove stale in-flight handoff {}", handoff.display())),
+        }
+
+        let value = f()?;
+        let cached: CachedResult = value.into();
+        if cached.exit_code == 0 {
+            let bytes = serde_json::to_vec(&cached).context("serialise in-flight handoff")?;
+            let mut tmp = tempfile::NamedTempFile::new_in(&self.root)
+                .with_context(|| format!("create in-flight temp file in {}", self.root.display()))?;
+            tmp.write_all(&bytes).context("write in-flight handoff")?;
+            tmp.flush().context("flush in-flight handoff")?;
+            tmp.persist(&handoff)
+                .with_context(|| format!("persist in-flight handoff {}", handoff.display()))?;
+        }
+        record_coalesce_hit_kind(CoalesceHitKind::Miss);
+        Ok((T::from(cached), CoalesceHitKind::Miss))
     }
 
     /// Like [`with_lock`][Self::with_lock] but reports whether the result came from
@@ -705,3 +791,23 @@ mod tests {
         drop(holder);
     }
 }
+
+pub use scheduling::{PlannedPlacement, ResourceEnvelope, ResourceVector, ScheduleDecision, SchedulePlan, WorkItem};
+
+pub use scheduling_reference::{bounded_fifo_pack, PackingReceipt, SchedulableWork};
+
+pub use scheduling_benchmark::{simulate_bounded_fifo, simulate_naive_all_at_once, BenchmarkMetrics, BenchmarkWork};
+pub use scheduling_policy::{
+    conservative_backfill_eligibility, dependency_readiness, effective_priority,
+    ranked_ready_ids, resource_feasibility, BackfillEligibility, DependencyReadiness,
+    QueueEntry as SchedulingQueueEntry, Reservation, ResourceFeasibility,
+};
+
+pub use jobserver::{
+    extra_tokens_for_total_parallelism, parse_makeflags_jobserver, JobserverDescriptor,
+    JobserverTransport, NativeJobserverClient, NativeJobserverLease,
+};
+
+pub use pressure::{parse_linux_psi, PressureProvider, PressureSnapshot, StallWindow};
+
+pub use resource_control::{ResourceControlCapabilities, ResourceControlProvider};
