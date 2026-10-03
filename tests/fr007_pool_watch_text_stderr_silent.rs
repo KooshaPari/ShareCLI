@@ -6,8 +6,8 @@
 //! on stdout only (parity with AC-007.64 health text watch stderr silence).
 
 use std::io::Read;
-use std::sync::{Arc, Mutex};
 use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -64,11 +64,7 @@ fn drain_watch_pipes(
 
     let deadline = Instant::now() + max;
     loop {
-        let count = stdout_buf
-            .lock()
-            .expect("stdout lock")
-            .matches(frame_marker)
-            .count();
+        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
         if count >= frames_needed || Instant::now() >= deadline {
             break;
         }
@@ -155,7 +151,8 @@ fn fr007_pool_watch_text_stderr_silent() {
         .spawn()
         .expect("spawn sharecli pool --watch 1");
 
-    let (stdout, stderr) = drain_watch_pipes(&mut child, POOL_HEADER, 2, Duration::from_millis(30_000));
+    let (stdout, stderr) =
+        drain_watch_pipes(&mut child, POOL_HEADER, 2, Duration::from_millis(30_000));
 
     assert_stderr_silent(&stderr, "pool --watch");
     assert_stderr_no_companion_markers(&stderr, "pool --watch");

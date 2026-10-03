@@ -5,11 +5,15 @@
 //!   process.kill        → { pid }
 //!   process.kill_all    → {}
 //!   process.cmdline     → { pid } → { cmd: Vec<String> }
+//!   process.spawn       → { pid, success, error }  (validated; typed failures)
 //!   health.status       → HealthSnapshot
 //!   pool.status         → PoolSnapshot
+//!   pool.effectiveness  → { coalesce, slot_queue, sampled_at }
 //!   status.snapshot     → StatusSnapshot
 //!   config.get          → Config
-//!   config.set          → { key, value }  (dot-path into TOML)
+//!   config.revision     → { revision: hex sha256 of the canonical config }
+//!   config.set          → { key, value, if_revision? }  (dot-path into TOML;
+//!                          a stale if_revision is refused with CONFLICT)
 //!   monitoring.report   → MonitoringReportSnapshot
 //!   log.tail            → { lines: [LogEntry], last_id: u64 } (since_id)
 //!
@@ -23,6 +27,7 @@
 use std::fs;
 #[cfg(target_os = "linux")]
 use std::io::Read;
+use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
 #[cfg(target_os = "linux")]
@@ -37,13 +42,17 @@ use sharecli::monitoring::HostResourceWatchJson;
 use sharecli::runtime::SharedRuntime;
 use sharecli::{ProcessInfo, ProcessPool};
 use sharecli_fleet::thermal::ThermalGovernor;
-use sharecli_fleet::{count_host_agents, gate_status_snapshot, GateStatusSnapshot};
+use sharecli_fleet::{
+    count_host_agents, gate_status_snapshot, global_coalesce_meters, global_slot_queue_meters,
+    GateStatusSnapshot,
+};
 use sharecli_session::{
     LayoutSnapshot, RecoveryExecutor, SessionObservation, SessionStore,
     DEFAULT_RECOVERY_MAX_AGE_SECONDS,
 };
 use tokio::sync::RwLock;
 
+use crate::config_revision;
 use crate::log_buffer::global as global_log_buffer;
 
 // ---------------------------------------------------------------------------
@@ -498,8 +507,11 @@ impl Handler {
                 let pid: u32 =
                     req.params["pid"].as_u64().ok_or_else(|| anyhow::anyhow!("missing pid"))?
                         as u32;
-                self.pool.kill(pid).await?;
-                Ok(Value::Bool(true))
+                // `false` when the pid is not pool-managed — mirrors the CLI
+                // miss contract instead of acknowledging a kill that never
+                // happened (lane-4 BLOCKER).
+                let killed = self.pool.kill(pid).await?;
+                Ok(Value::Bool(killed))
             }
 
             "process.kill_all" => {
@@ -516,6 +528,70 @@ impl Handler {
                 // available" when the list is empty.
                 let cmd = read_pid_cmdline(pid).unwrap_or_default();
                 Ok(serde_json::to_value(CmdlineResponse { cmd })?)
+            }
+
+            "process.spawn" => {
+                // The current Swift Spawn form is the wire contract: it always
+                // sends name/command/args/project/harness (and now cwd). `name`
+                // is advisory — the pool derives the display name from `command`.
+                let command = req
+                    .params
+                    .get("command")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("process.spawn: command must be a non-empty string")
+                    })?;
+                // Empty args is valid (it is the Spawn form default); a missing
+                // args key is treated the same way.
+                let args: Vec<String> = match req.params.get("args") {
+                    None | Some(Value::Null) => Vec::new(),
+                    Some(Value::Array(items)) => {
+                        let mut parsed = Vec::with_capacity(items.len());
+                        for item in items {
+                            match item.as_str() {
+                                Some(s) => parsed.push(s.to_string()),
+                                None => {
+                                    return Err(anyhow::anyhow!(
+                                        "process.spawn: args must contain only strings"
+                                    ))
+                                }
+                            }
+                        }
+                        parsed
+                    }
+                    Some(_) => {
+                        return Err(anyhow::anyhow!(
+                            "process.spawn: args must be an array of strings"
+                        ))
+                    }
+                };
+                let project = req.params.get("project").and_then(Value::as_str).map(str::to_owned);
+                let harness = req.params.get("harness").and_then(Value::as_str).map(str::to_owned);
+                let cwd = req
+                    .params
+                    .get("cwd")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(PathBuf::from);
+
+                // Validation failures above surface as envelope errors; a real
+                // spawn failure (ENOENT, EPERM, …) is a typed result so the tray
+                // renders `success: false` + `error` instead of a thrown error.
+                match self.pool.spawn(command, &args, cwd, project, harness).await {
+                    Ok(info) => Ok(serde_json::json!({
+                        "pid": info.pid,
+                        "success": true,
+                        "error": Value::Null,
+                    })),
+                    Err(e) => Ok(serde_json::json!({
+                        "pid": 0,
+                        "success": false,
+                        "error": e.to_string(),
+                    })),
+                }
             }
 
             "health.status" => {
@@ -545,6 +621,21 @@ impl Handler {
                 Ok(serde_json::to_value(snap)?)
             }
 
+            "pool.effectiveness" => {
+                // Cheap process-global atomic snapshots (FR-008 / AC-008.11-12);
+                // no per-process scanning. Field names match the Swift
+                // PoolEffectivenessSnapshot decoder exactly.
+                let sampled_at = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or_default();
+                Ok(serde_json::json!({
+                    "coalesce": global_coalesce_meters(),
+                    "slot_queue": global_slot_queue_meters(),
+                    "sampled_at": sampled_at,
+                }))
+            }
+
             "status.snapshot" => {
                 let mut snap = self.capture_status_snapshot().await?;
                 let (gate, host_watch) = capture_gate_host_watch()?;
@@ -557,11 +648,23 @@ impl Handler {
                 Ok(serde_json::to_value(cfg)?)
             }
 
+            "config.revision" => {
+                let cfg = self.config.read().await;
+                Ok(serde_json::json!({ "revision": config_revision::revision_of(&cfg)? }))
+            }
+
             "config.set" => {
                 let key =
                     req.params["key"].as_str().ok_or_else(|| anyhow::anyhow!("missing key"))?;
                 let value = &req.params["value"];
-                self.apply_config_patch(key, value).await?;
+                let if_revision = match req.params.get("if_revision") {
+                    None | Some(Value::Null) => None,
+                    Some(Value::String(revision)) => Some(revision.as_str()),
+                    Some(other) => {
+                        anyhow::bail!("if_revision must be a string, got {other}");
+                    }
+                };
+                self.apply_config_patch(key, value, if_revision).await?;
                 Ok(Value::Bool(true))
             }
 
@@ -631,8 +734,31 @@ impl Handler {
     /// `Config::save` only serialises and `validate_config` previously ran at
     /// CLI startup only. Rejecting here leaves both the in-memory config and
     /// the file untouched, and the failure surfaces to the caller as an error.
-    async fn apply_config_patch(&self, key: &str, value: &Value) -> Result<()> {
+    /// Persist `key = value` into the in-memory config and onto disk.
+    ///
+    /// `if_revision` is the RFC 9110 `If-Match` guard: when present it is
+    /// compared against the revision of the config currently held under the
+    /// write lock, so the check and the mutation cannot be interleaved by a
+    /// concurrent writer. A mismatch is reported as `CONFLICT` naming the
+    /// revision that won, which the client needs in order to refetch and retry.
+    async fn apply_config_patch(
+        &self,
+        key: &str,
+        value: &Value,
+        if_revision: Option<&str>,
+    ) -> Result<()> {
         let mut cfg = self.config.write().await;
+
+        if let Some(expected) = if_revision {
+            let current = config_revision::revision_of(&cfg)?;
+            if current != expected {
+                anyhow::bail!(
+                    "CONFLICT: config.set {key} refused; if_revision {expected} is stale, \
+                     current revision is {current}"
+                );
+            }
+        }
+
         let mut raw = serde_json::to_value(&*cfg)?;
 
         let parts: Vec<&str> = key.split('.').collect();

@@ -22,6 +22,7 @@ mod commands;
 mod config;
 mod config_validator;
 mod config_watcher;
+mod config_write;
 mod dashboard_assets;
 mod error;
 mod error_envelope;
@@ -36,9 +37,9 @@ mod paths;
 mod pprof_http;
 mod proc_compose;
 mod progress;
-mod rate_limiter;
 #[cfg(test)]
 mod proptest_util;
+mod rate_limiter;
 mod runtime;
 mod serve_auth;
 mod serve_lock;
@@ -436,7 +437,6 @@ enum Commands {
         #[arg(long)]
         install: bool,
     },
-
 
     /// Enumerate available CLI surfaces (cast modules + utility modules)
     List {
@@ -1736,12 +1736,14 @@ async fn prune(idle_seconds: u64, force: bool) -> Result<()> {
 
     for proc in candidates {
         if force {
-            pool.kill(proc.pid).await?;
-            progress.inc(Some(&format!("{} ({})", proc.pid, proc.name)));
-            if line_mode {
-                println!("Pruned process {} ({})", proc.pid, proc.name);
+            // Ok(false) is unreachable: candidates came from this pool's list().
+            if pool.kill(proc.pid).await? {
+                progress.inc(Some(&format!("{} ({})", proc.pid, proc.name)));
+                if line_mode {
+                    println!("Pruned process {} ({})", proc.pid, proc.name);
+                }
+                pruned += 1;
             }
-            pruned += 1;
         } else {
             println!("Would prune: {} ({})", proc.pid, proc.name);
             pruned += 1;

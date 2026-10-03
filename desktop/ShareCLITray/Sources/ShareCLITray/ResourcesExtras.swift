@@ -4,9 +4,8 @@
 // subpage: full cmdline preview (via IPC `process.cmdline`) and open TCP
 // listening sockets (via `lsof` shell-out).
 //
-// Canonical IPC shapes (IPCClient.swift:321-325, 335-339):
+// Canonical IPC shape (IPCClient.swift, ProcessCmdline):
 //   ProcessCmdline { pid: UInt32, cmdline: String, argv: [String] }
-//   ProcessFdcountResult { pid: UInt32, fd_count: UInt32?, sampled_at, note }
 //
 // Designed to drop into ResourcesView's body (which lives inside the
 // 2090-line ProcessesPage.swift — this session avoids editing that file).

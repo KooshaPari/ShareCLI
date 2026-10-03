@@ -104,11 +104,7 @@ fn drain_watch_pipes(
 
     let deadline = Instant::now() + max;
     loop {
-        let count = stdout_buf
-            .lock()
-            .expect("stdout lock")
-            .matches(frame_marker)
-            .count();
+        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
         if count >= frames_needed || Instant::now() >= deadline {
             break;
         }
@@ -193,7 +189,8 @@ fn fr007_proc_watch_text_pool_status_order() {
         .spawn()
         .expect("spawn sharecli proc --watch 1");
 
-    let (stdout, stderr) = drain_watch_pipes(&mut child, INVENTORY_HEADER, 2, Duration::from_millis(30_000));
+    let (stdout, stderr) =
+        drain_watch_pipes(&mut child, INVENTORY_HEADER, 2, Duration::from_millis(30_000));
 
     assert_stderr_silent(stderr.as_bytes(), "proc --watch");
     assert_text_watch_stdout(&stdout, INVENTORY_HEADER, "proc --watch");
@@ -210,7 +207,8 @@ fn fr007_proc_tree_watch_text_pool_status_order() {
         .spawn()
         .expect("spawn sharecli proc --tree --watch 1");
 
-    let (stdout, stderr) = drain_watch_pipes(&mut child, TREE_HEADER, 2, Duration::from_millis(30_000));
+    let (stdout, stderr) =
+        drain_watch_pipes(&mut child, TREE_HEADER, 2, Duration::from_millis(30_000));
 
     assert_stderr_silent(stderr.as_bytes(), "proc --tree --watch");
     assert_text_watch_stdout(&stdout, TREE_HEADER, "proc --tree --watch");

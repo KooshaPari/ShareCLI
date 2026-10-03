@@ -114,12 +114,6 @@ fn git_fingerprint(cwd: &Path) -> String {
     state
 }
 
-mod hex {
-    pub fn encode(bytes: impl AsRef<[u8]>) -> String {
-        bytes.as_ref().iter().map(|b| format!("{b:02x}")).collect()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::path::Path;

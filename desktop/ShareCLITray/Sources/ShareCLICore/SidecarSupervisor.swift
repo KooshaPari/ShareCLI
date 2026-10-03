@@ -25,6 +25,7 @@
 /// Bounded retries: after `failureBoundBeforeUnavailable` consecutive failed attempts
 /// the state becomes `unavailable` and the interval pins to `maxAttemptInterval`; at
 /// that slow cadence supervision keeps retrying, so a fix can land without a restart.
+/// Tick admission is bounded and self-resetting — see `SidecarTickGate` (audit 1.8).
 
 import Foundation
 import Combine
@@ -63,7 +64,7 @@ public final class SidecarSupervisor: ObservableObject {
     private var lastHealthProbeAt: Date?
     private var unhealthyObservations = 0
 
-    private var isTicking = false
+    private lazy var tickGate = SidecarTickGate(tickSeconds: policy.tickSeconds)
 
     public init(
         client: IPCClient = IPCClient.defaultClient(),
@@ -127,9 +128,8 @@ public final class SidecarSupervisor: ObservableObject {
     // MARK: - Loop
 
     private func tick() async {
-        guard !isTicking else { return }
-        isTicking = true
-        defer { isTicking = false }
+        guard let generation = tickGate.begin() else { return }
+        defer { tickGate.exit(generation) }
 
         let now = Date()
 

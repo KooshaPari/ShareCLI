@@ -649,9 +649,12 @@ pub async fn stop(
             return Ok(());
         }
         println!("Stopping process {p}{}...", if force { " (force)" } else { "" });
-        pool.kill(p).await?;
-        println!("Process {p} stopped.");
-        return Ok(());
+        if pool.kill(p).await? {
+            println!("Process {p} stopped.");
+            return Ok(());
+        }
+        eprintln!("no such pid: {p}");
+        std::process::exit(2) // diverges: this pool never managed the pid
     }
 
     let filter = if let Some(proj) = project {
@@ -676,10 +679,12 @@ pub async fn stop(
     let progress = StepProgress::new("Stopping processes", processes.len());
     let line_mode = progress.uses_line_output();
     for proc in &processes {
-        pool.kill(proc.pid).await?;
-        progress.inc(Some(&format!("{} ({})", proc.pid, proc.name)));
-        if line_mode {
-            println!("Stopped {} ({})", proc.pid, proc.name);
+        // Ok(false) is unreachable here: pids came from this pool's find().
+        if pool.kill(proc.pid).await? {
+            progress.inc(Some(&format!("{} ({})", proc.pid, proc.name)));
+            if line_mode {
+                println!("Stopped {} ({})", proc.pid, proc.name);
+            }
         }
     }
     progress.finish("Processes stopped");
@@ -1098,12 +1103,15 @@ async fn project_group_stop(name: &str, force: bool, yes: bool) -> Result<()> {
 
     for proc in &processes {
         match pool.kill(proc.pid).await {
-            Ok(()) => {
+            Ok(true) => {
                 progress.inc(Some(&format!("{} ({})", proc.pid, proc.name)));
                 if line_mode {
                     println!("Stopped {} ({})", proc.pid, proc.name);
                 }
                 stopped += 1;
+            }
+            Ok(false) => {
+                // Pid left this pool between find() and kill(); already gone.
             }
             Err(e) => {
                 failures.push(format!("PID {} ({}): {}", proc.pid, proc.name, e));

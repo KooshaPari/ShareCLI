@@ -462,8 +462,12 @@ impl ProcessPool {
         Ok(info)
     }
 
-    /// Kill a process by PID via substrate ProcessPort
-    pub async fn kill(&self, pid: u32) -> Result<()> {
+    /// Kill a process by PID via substrate ProcessPort.
+    ///
+    /// `Ok(true)` means a pool-managed child was actually stopped;
+    /// `Ok(false)` means the pid is not managed by this pool. Callers must
+    /// never report a miss as success (lane-4 BLOCKER: `stop --pid 999999`).
+    pub async fn kill(&self, pid: u32) -> Result<bool> {
         let mut procs = self.processes.write().await;
         if let Some(managed) = procs.get(&pid) {
             let capability = spawn_capability(&managed.info.name, &managed.info.harness);
@@ -477,8 +481,9 @@ impl ProcessPool {
                 }
             }
             procs.remove(&pid);
+            return Ok(true);
         }
-        Ok(())
+        Ok(false)
     }
 
     /// Kill all managed processes
@@ -866,6 +871,17 @@ mod tests {
         let pid = insert_unowned_handle(&pool).await;
         assert!(pool.kill(pid).await.is_err());
         assert!(pool.processes.read().await.contains_key(&pid));
+    }
+
+    /// Lane-4 BLOCKER (audit 0.6): an unmanaged pid must be reported as a
+    /// miss — `stop --pid 999999` must not acknowledge a kill that never
+    /// happened. `Ok(true)` is reserved for a child this pool actually
+    /// stopped.
+    #[tokio::test]
+    async fn kill_unmanaged_pid_reports_not_found() {
+        let pool = ProcessPool::new();
+        let killed = pool.kill(999_999).await.expect("kill miss must not error");
+        assert!(!killed, "unmanaged pid must not be acknowledged as stopped");
     }
 
     #[tokio::test]

@@ -121,6 +121,8 @@ optional = true
 [dev-dependencies]
 tempfile = "3"
 serial_test = "4"
+# Router-level middleware tests drive the real stack via `ServiceExt::oneshot`.
+tower = { version = "0.5", features = ["util"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
 criterion = { version = "0.8", features = ["async_tokio", "html_reports"] }
 # Golden snapshot suite (T-250 / L30.7) needs headless thermal TUI renders.

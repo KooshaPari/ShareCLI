@@ -107,11 +107,7 @@ fn drain_watch_pipes(
 
     let deadline = Instant::now() + max;
     loop {
-        let count = stdout_buf
-            .lock()
-            .expect("stdout lock")
-            .matches(frame_marker)
-            .count();
+        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
         if count >= frames_needed || Instant::now() >= deadline {
             break;
         }
@@ -185,7 +181,8 @@ fn fr007_health_watch_text_pool_status_order() {
         .spawn()
         .expect("spawn sharecli health --watch 1");
 
-    let (stdout, stderr) = drain_watch_pipes(&mut child, HEALTH_HEADER, 2, Duration::from_millis(30_000));
+    let (stdout, stderr) =
+        drain_watch_pipes(&mut child, HEALTH_HEADER, 2, Duration::from_millis(30_000));
 
     assert_stderr_silent(stderr.as_bytes(), "health --watch");
     assert_text_watch_stdout(&stdout, HEALTH_HEADER, "health --watch");
@@ -213,7 +210,8 @@ fn fr007_pool_watch_text_pool_status_order() {
         .spawn()
         .expect("spawn sharecli pool --watch 1");
 
-    let (stdout, stderr) = drain_watch_pipes(&mut child, POOL_HEADER, 2, Duration::from_millis(30_000));
+    let (stdout, stderr) =
+        drain_watch_pipes(&mut child, POOL_HEADER, 2, Duration::from_millis(30_000));
 
     assert_stderr_silent(stderr.as_bytes(), "pool --watch");
     assert_text_watch_stdout(&stdout, POOL_HEADER, "pool --watch");
@@ -241,7 +239,8 @@ fn fr007_status_watch_text_pool_status_order() {
         .spawn()
         .expect("spawn sharecli status --watch 1");
 
-    let (stdout, stderr) = drain_watch_pipes(&mut child, STATUS_HEADER, 2, Duration::from_millis(30_000));
+    let (stdout, stderr) =
+        drain_watch_pipes(&mut child, STATUS_HEADER, 2, Duration::from_millis(30_000));
 
     assert_stderr_silent(stderr.as_bytes(), "status --watch");
     assert_text_watch_stdout(&stdout, STATUS_HEADER, "status --watch");
@@ -269,7 +268,8 @@ fn fr007_ps_all_watch_text_pool_status_order() {
         .spawn()
         .expect("spawn sharecli ps --all --watch 1");
 
-    let (stdout, stderr) = drain_watch_pipes(&mut child, PS_INVENTORY_HEADER, 2, Duration::from_millis(30_000));
+    let (stdout, stderr) =
+        drain_watch_pipes(&mut child, PS_INVENTORY_HEADER, 2, Duration::from_millis(30_000));
 
     assert_stderr_silent(stderr.as_bytes(), "ps --all --watch");
     assert_text_watch_stdout(&stdout, PS_INVENTORY_HEADER, "ps --all --watch");

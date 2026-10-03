@@ -16,6 +16,7 @@ pub mod config_loader;
 pub mod config_merger;
 pub mod config_validator;
 pub mod config_watcher;
+pub mod config_write;
 pub mod coordination;
 pub mod dashboard_assets;
 pub mod env_manager;
