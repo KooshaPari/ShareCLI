@@ -900,29 +900,12 @@ impl Hypervisor {
             command_key_with_mode(self.config.cache_key_mode, &argv_for_key, &req.cwd, &req.env);
         debug!(key = %key.0, argv = ?req.argv, "hypervisor::run");
 
-        // Check the cache before acquiring the lock so that we can
-        // accurately report `from_cache` for the caller.
-        if let Some(cached) = self.cache.lookup(&key)? {
-            debug!(key = %key.0, "hypervisor::run — cache hit");
-            record_coalesce_lookup_hit();
-            // FR-008: record hit for speculation tracker.
-            self.speculation_tracker.record_hit(&key, &req.argv, &req.cwd, &req.env).await;
-            return Ok(SpawnOutcome {
-                exit_code: cached.exit_code,
-                stdout: cached.stdout,
-                stderr: cached.stderr,
-                from_cache: true,
-                resource_watch: ResourceWatchSample::default(),
-                detected_agent: None,
-                fuse_session_id: None,
-                fuse_backing: None,
-                fuse_mountpoint: None,
-            }
-            .with_resource_watch(watch)
-            .with_detected_agent(detected_agent.clone()));
-        }
+        // Default Hypervisor execution has in-flight sharing authority only.
+        // A durable JSON result is not consulted here: cacheability is not
+        // proof that command/environment/cwd capture the complete input root.
+        // Adapter-qualified durable replay remains a separate future path.
 
-        // ── FUSE intercept (cache-miss only) ─────────────────────────────────
+        // ── FUSE intercept (first in-flight execution only) ─────────────────────────────────
         // Mount the IO-intercept layer over the child's working directory.
         // `FuseGuard::try_mount` never fails the spawn — if FUSE is unavailable
         // or readiness never appears, a loud error is reported and a no-op
@@ -954,7 +937,7 @@ impl Hypervisor {
         // We use `effective_req` (with a potentially FUSE-wrapped cwd)
         // inside the closure to avoid any borrow conflict with `req`.
         let (cached, hit_kind) =
-            self.coalesce_via_lock(&key, &effective_req, configurator)?;
+            self.coalesce_inflight(&key, &effective_req, configurator)?;
 
         // FR-008: record speculation hit when the lock-wait cache was shared.
         if hit_kind.shared_from_cache() {
@@ -980,13 +963,13 @@ impl Hypervisor {
     ///
     /// Every Hypervisor coalesce miss MUST flow through here so
     /// [`CoalesceCache::with_lock_detailed`] applies the configured debounce window.
-    fn coalesce_via_lock(
+    fn coalesce_inflight(
         &self,
         key: &sharecli_ipc::CommandKey,
         effective_req: &SpawnRequest,
         configurator: Option<&dyn ChildCommandConfigurator>,
     ) -> Result<(CachedResult, CoalesceHitKind)> {
-        self.cache.with_lock_detailed(key, || {
+        self.cache.with_inflight_lock_detailed(key, || {
             let outcome = spawn_process_sync(effective_req, configurator)?;
             Ok(CachedResult {
                 exit_code: outcome.exit_code,
