@@ -2,7 +2,7 @@
 //! Architecture experiment: distinguish useful in-flight duplicate suppression
 //! from unsafe durable replay under the current coupled Lock-Wait-Cache path.
 //!
-//! No product remediation is included.
+//! Default Hypervisor remediation: in-flight sharing is separated from durable replay authority.
 //! Recovery rerun marker: 2026-09-30 after ontology/admission slices.
 
 #![cfg(unix)]
@@ -93,4 +93,56 @@ async fn concurrent_share_is_useful_but_must_not_imply_later_replay() {
         "later invocation after changed input must execute again"
     );
     assert!(!later.from_cache);
+}
+
+
+#[tokio::test]
+async fn stale_durable_entry_cannot_poison_default_hypervisor() {
+    let dir = TempDir::new().expect("fixture");
+    let work = dir.path().join("work");
+    fs::create_dir(&work).expect("work");
+    let input = dir.path().join("input.txt");
+    let counter = dir.path().join("exec-count.txt");
+    fs::write(&input, b"fresh\n").expect("input");
+
+    let config = HypervisorConfig {
+        cache_root: dir.path().join("cache"),
+        queue_root: dir.path().join("queue"),
+        queue_max_concurrent: 1,
+        coalesce_ttl: Duration::from_secs(300),
+        coalesce_debounce: Duration::ZERO,
+        cache_key_mode: CacheKeyMode::Time,
+        semantic: false,
+    };
+    let key = sharecli_core::command_key_with_mode(
+        CacheKeyMode::Time,
+        &req(&work, &counter, &input).argv,
+        &work,
+        &[],
+    );
+    let poison = sharecli_core::CoalesceCache::with_options(
+        config.cache_root.clone(),
+        config.coalesce_ttl,
+        config.coalesce_debounce,
+    );
+    poison
+        .store(
+            &key,
+            &sharecli_core::CachedResult {
+                exit_code: 0,
+                stdout: b"poison\n".to_vec(),
+                stderr: vec![],
+            },
+        )
+        .expect("poison durable cache");
+
+    let hv = Hypervisor::with_options(
+        config,
+        Arc::new(FakeThermalGate::new(ThermalDecision::Allow)),
+        vec![],
+    );
+    let result = hv.run(req(&work, &counter, &input)).await.expect("run");
+    assert_eq!(result.stdout, b"fresh\n");
+    assert_eq!(fs::read_to_string(&counter).expect("counter"), "1");
+    assert!(!result.from_cache, "default Hypervisor replayed durable cache without adapter authority");
 }
