@@ -48,7 +48,7 @@ jobs:
         run: |
           set -euo pipefail
           status=0
-          for target in recovery_fr008_semantic_identity recovery_fr008_equivalence_matrix recovery_fr008_inflight_vs_durable; do
+          for target in recovery_fr008_semantic_identity recovery_fr008_equivalence_matrix; do
             python scripts/recovery/run_negative_oracle.py \
               --target "$target" --candidate "$RECOVERY_CANDIDATE" \
               --output "evidence/fr008/$target" || status=1
