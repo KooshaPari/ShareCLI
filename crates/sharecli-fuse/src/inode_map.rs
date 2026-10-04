@@ -69,14 +69,66 @@ impl InodeMap {
     }
 
     /// Remap an existing relative path after rename (keeps inode number).
+    ///
+    /// Task 1.13 — the destination must not survive as a stale duplicate: any
+    /// entry the destination occupied, and any subtree it used to hold, is
+    /// invalidated first. If `old` names a directory, every descendant is
+    /// re-rooted under the new path (descend) so no descendant is left
+    /// resolving to the stale pre-rename prefix.
     pub fn rename_rel(&mut self, old: &Path, new: PathBuf) {
+        // Destination entry + any subtree the destination occupied are stale.
+        self.remove_rel(new.as_path());
+        self.remove_subtree_rel(new.as_path());
+
         let Some(ino) = self.rel_to_ino.remove(old) else {
-            // Destination may still need a mapping on next lookup.
-            let _ = new;
             return;
         };
         self.ino_to_rel.insert(ino, new.clone());
-        self.rel_to_ino.insert(new, ino);
+        self.rel_to_ino.insert(new.clone(), ino);
+
+        // Descend: re-root any source subtree under the new prefix.
+        self.remap_subtree_rel(old, new.as_path());
+    }
+
+    /// Remove every mapping strictly below `prefix` (component-wise match,
+    /// so `dir` never matches `dirx`). The entry at `prefix` itself is left to
+    /// the caller.
+    fn remove_subtree_rel(&mut self, prefix: &Path) {
+        if prefix.as_os_str().is_empty() {
+            return;
+        }
+        let stale: Vec<PathBuf> = self
+            .rel_to_ino
+            .keys()
+            .filter(|rel| rel.as_path() != prefix && rel.as_path().starts_with(prefix))
+            .cloned()
+            .collect();
+        for rel in stale {
+            self.remove_rel(&rel);
+        }
+    }
+
+    /// Re-root every mapping strictly below `old` onto `new`.
+    fn remap_subtree_rel(&mut self, old: &Path, new: &Path) {
+        if old.as_os_str().is_empty() {
+            return;
+        }
+        let descendants: Vec<(PathBuf, u64)> = self
+            .rel_to_ino
+            .iter()
+            .filter(|(rel, _)| rel.as_path() != old && rel.as_path().starts_with(old))
+            .map(|(rel, &ino)| (rel.clone(), ino))
+            .collect();
+        for (rel, ino) in descendants {
+            let Ok(suffix) = rel.strip_prefix(old) else {
+                continue;
+            };
+            let new_rel = new.join(suffix);
+            if let Some(previous) = self.rel_to_ino.insert(new_rel.clone(), ino) {
+                self.ino_to_rel.remove(&previous);
+            }
+            self.ino_to_rel.insert(ino, new_rel);
+        }
     }
 
     /// Absolute path under `backing` for `ino`.
@@ -141,5 +193,68 @@ mod tests {
         map.remove_rel(Path::new("b"));
         assert!(map.resolve(ino).is_none());
         let _ = OsString::new();
+    }
+
+    /// Task 1.13 — renaming over an existing destination must not leave the
+    /// destination inode resolving to the new path.
+    ///
+    /// Plan probe expressed at the inode-map/resolve level:
+    /// `rename a.txt b.txt` -> `resolve(2)=b.txt`, `resolve(3)=undefined`.
+    #[test]
+    fn inode_map_rename_invalidates_destination() {
+        let mut map = InodeMap::new();
+        let (src_ino, _) = map.lookup_or_alloc(ROOT_INO, OsStr::new("a.txt")).expect("alloc src");
+        let (dst_ino, _) = map.lookup_or_alloc(ROOT_INO, OsStr::new("b.txt")).expect("alloc dst");
+        // Probe inode numbers: a.txt=2, b.txt=3.
+        assert_eq!(src_ino, 2);
+        assert_eq!(dst_ino, 3);
+        map.rename_rel(Path::new("a.txt"), PathBuf::from("b.txt"));
+        assert_eq!(
+            map.resolve(src_ino),
+            Some(Path::new("b.txt")),
+            "source must resolve to the new path"
+        );
+        assert_eq!(map.resolve(dst_ino), None, "stale destination inode still resolves");
+    }
+
+    /// Task 1.13 — renaming a directory must still invalidate the destination
+    /// entry and any subtree the destination previously occupied.
+    #[test]
+    fn inode_map_rename_invalidates_destination_subtree() {
+        let mut map = InodeMap::new();
+        let (src_ino, _) = map.lookup_or_alloc(ROOT_INO, OsStr::new("src.txt")).expect("src");
+        let (dst_dir, _) = map.lookup_or_alloc(ROOT_INO, OsStr::new("dst")).expect("dst");
+        let (dst_child, _) =
+            map.lookup_or_alloc(dst_dir, OsStr::new("gone.txt")).expect("dst child");
+        map.rename_rel(Path::new("src.txt"), PathBuf::from("dst"));
+        assert_eq!(map.resolve(src_ino), Some(Path::new("dst")));
+        assert_eq!(map.resolve(dst_dir), None, "overwritten destination inode still resolves");
+        assert_eq!(map.resolve(dst_child), None, "destination subtree left stale");
+    }
+
+    /// Task 1.13 — renaming a directory descends and re-roots the whole
+    /// subtree so no descendant resolves to the stale pre-rename prefix.
+    /// A sibling whose name merely shares a string prefix (`dirx` vs `dir`)
+    /// must not be touched.
+    #[test]
+    fn inode_map_rename_dir_rehomes_subtree() {
+        let mut map = InodeMap::new();
+        let (dir_ino, _) = map.lookup_or_alloc(ROOT_INO, OsStr::new("dir")).expect("dir");
+        let (child_ino, _) = map.lookup_or_alloc(dir_ino, OsStr::new("sub")).expect("child");
+        let (leaf_ino, _) = map.lookup_or_alloc(child_ino, OsStr::new("f.txt")).expect("leaf");
+        let (trap_ino, _) = map.lookup_or_alloc(ROOT_INO, OsStr::new("dirx")).expect("trap");
+        map.rename_rel(Path::new("dir"), PathBuf::from("moved"));
+        assert_eq!(map.resolve(dir_ino), Some(Path::new("moved")));
+        assert_eq!(
+            map.resolve(child_ino),
+            Some(Path::new("moved/sub")),
+            "descendant left on stale prefix"
+        );
+        assert_eq!(
+            map.resolve(leaf_ino),
+            Some(Path::new("moved/sub/f.txt")),
+            "deep descendant orphaned"
+        );
+        assert_eq!(map.resolve(trap_ino), Some(Path::new("dirx")), "prefix-trap sibling rehomed");
     }
 }
