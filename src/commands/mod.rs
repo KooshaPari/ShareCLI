@@ -653,8 +653,11 @@ pub async fn stop(
             println!("Process {p} stopped.");
             return Ok(());
         }
-        eprintln!("no such pid: {p}");
-        std::process::exit(2) // diverges: this pool never managed the pid
+        // This pool never managed the pid, so the miss is a NotFound: report it
+        // through `src/error.rs` so it carries exit 2 and
+        // `SHARECLI_ERROR_CODE=not_found` instead of an ad-hoc exit
+        // (audit task 1.10, PLAN.md:180).
+        return Err(crate::error::SharecliError::not_found(format!("no such pid: {p}")).into());
     }
 
     let filter = if let Some(proj) = project {
