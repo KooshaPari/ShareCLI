@@ -99,6 +99,8 @@ struct AppState {
     rate_limit: Arc<ServeRateLimitState>,
     /// OTel-style trace-context observability counters (inject / extract).
     metrics: Arc<MetricsRegistry>,
+    /// Shared process pool for metrics and dashboard snapshots.
+    pool: Arc<crate::runtime::ProcessPool>,
 }
 
 /// Resolve the config file the hot-reload watcher must watch.
@@ -253,6 +255,7 @@ pub async fn run(bind: &str, on_conflict: OnConflict) -> Result<()> {
         http_red: Arc::new(HttpRedMetrics::default()),
         rate_limit: Arc::new(std::sync::Mutex::new(rate_limit)),
         metrics: Arc::new(MetricsRegistry::new()),
+        pool: Arc::new(crate::runtime::ProcessPool::new()),
     };
 
     // Spawn background thermal poller (uses parse_pressure_level as the canonical parser).
@@ -607,8 +610,7 @@ async fn health_processes_handler(State(state): State<AppState>) -> impl IntoRes
 /// `GET /metrics/prometheus` — Prometheus text-format metrics for all tracked processes.
 #[instrument(skip(state))]
 async fn metrics_prometheus_handler(State(state): State<AppState>) -> impl IntoResponse {
-    let pool = ProcessPool::new();
-    let processes = pool.list().await;
+    let processes = state.pool.list().await;
     let health_map = state.health_store.lock().await;
     let mut body = render_prometheus_metrics(&processes, &health_map);
     render_http_red_metrics(&mut body, &state.http_red.snapshot());
@@ -642,11 +644,7 @@ pub fn render_prometheus_metrics(
     out.push_str("# HELP sharecli_process_memory_mb Resident memory usage in MiB per process\n");
     out.push_str("# TYPE sharecli_process_memory_mb gauge\n");
     for p in processes {
-        let name = escape_label_value(&p.name);
-        out.push_str(&format!(
-            "sharecli_process_memory_mb{{process=\"{}\"}} {}\n",
-            name, p.memory_mb
-        ));
+        out.push_str(&format!("sharecli_process_memory_mb{{pid=\"{}\"}} {}\n", p.pid, p.memory_mb));
     }
 
     // -- sharecli_process_up -------------------------------------------------
@@ -655,7 +653,6 @@ pub fn render_prometheus_metrics(
     );
     out.push_str("# TYPE sharecli_process_up gauge\n");
     for p in processes {
-        let name = escape_label_value(&p.name);
         let up = if let Some(status) = health_map.get(&p.name) {
             if status.healthy {
                 1u8
@@ -666,7 +663,7 @@ pub fn render_prometheus_metrics(
             // No health-check configured → process is running, treat as up.
             1u8
         };
-        out.push_str(&format!("sharecli_process_up{{process=\"{}\"}} {}\n", name, up));
+        out.push_str(&format!("sharecli_process_up{{pid=\"{}\"}} {}\n", p.pid, up));
     }
 
     // -- sharecli_health_check_consecutive_failures --------------------------
@@ -1067,7 +1064,7 @@ mod tests {
         healthy_map.insert("svc".to_string(), make_health(true, 0));
         let healthy_out = render_prometheus_metrics(&processes, &healthy_map);
         assert!(
-            healthy_out.contains("sharecli_process_up{process=\"svc\"} 1"),
+            healthy_out.contains("sharecli_process_up{pid=\"1234\"} 1"),
             "healthy process should have process_up=1"
         );
 
@@ -1075,7 +1072,7 @@ mod tests {
         unhealthy_map.insert("svc".to_string(), make_health(false, 3));
         let unhealthy_out = render_prometheus_metrics(&processes, &unhealthy_map);
         assert!(
-            unhealthy_out.contains("sharecli_process_up{process=\"svc\"} 0"),
+            unhealthy_out.contains("sharecli_process_up{pid=\"1234\"} 0"),
             "unhealthy process should have process_up=0"
         );
     }
@@ -1086,7 +1083,7 @@ mod tests {
         let mut hmap = std::collections::HashMap::new();
         hmap.insert("worker".to_string(), make_health(true, 7));
         let out = render_prometheus_metrics(&processes, &hmap);
-        assert!(out.contains("sharecli_process_memory_mb{process=\"worker\"} 512"));
+        assert!(out.contains("sharecli_process_memory_mb{pid=\"1234\"} 512"));
         assert!(out.contains("sharecli_health_check_consecutive_failures{process=\"worker\"} 7"));
     }
 
@@ -1094,9 +1091,10 @@ mod tests {
     fn prometheus_label_escaping_handles_special_chars() {
         // Process name with double-quote and backslash
         let processes = vec![make_process("my\"app\\test", 128)];
-        let hmap = std::collections::HashMap::new();
+        let mut hmap = std::collections::HashMap::new();
+        hmap.insert("my\"app\\test".to_string(), make_health(true, 0));
         let out = render_prometheus_metrics(&processes, &hmap);
-        // Escaped label value should appear; raw chars must not appear unescaped inside quotes
+        // Escaped label value should appear in health-series; raw chars must not appear unescaped inside quotes
         assert!(
             out.contains(r#"process="my\"app\\test""#),
             "label value not properly escaped: {out}"
@@ -1110,7 +1108,7 @@ mod tests {
         let hmap = std::collections::HashMap::new(); // empty
         let out = render_prometheus_metrics(&processes, &hmap);
         assert!(
-            out.contains("sharecli_process_up{process=\"orphan\"} 1"),
+            out.contains("sharecli_process_up{pid=\"1234\"} 1"),
             "process without health check should default to up=1"
         );
     }
@@ -1391,6 +1389,7 @@ mod tests {
             http_red: Arc::new(HttpRedMetrics::default()),
             rate_limit: Arc::new(std::sync::Mutex::new(Some(rate_limit))),
             metrics: Arc::new(MetricsRegistry::new()),
+            pool: Arc::new(crate::runtime::ProcessPool::new()),
         }
     }
 
