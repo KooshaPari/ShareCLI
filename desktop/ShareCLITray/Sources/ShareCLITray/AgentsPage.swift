@@ -20,6 +20,9 @@ import ShareCLICore
 struct AgentsPage: View {
     @ObservedObject var state: AppState
 
+    /// Reduce motion (PLAN 1.23): gates the numeric-value tween below.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @AppStorage("agents.selectedFamily") private var selectedFamilyFilter: String = "all"
     @AppStorage("agents.selectedPID") private var selectedPID: Int = 0
     @State private var filterText: String = ""
@@ -162,8 +165,8 @@ struct AgentsPage: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title).font(.caption2).foregroundStyle(.secondary)
             Text(value).font(.system(.title3, design: .monospaced)).bold().foregroundStyle(color)
-                .contentTransition(.numericText())
-                .animation(.easeOut(duration: 0.32), value: value)
+                .contentTransition(Motion.isEnabled(reduceMotion: reduceMotion) ? .numericText() : .identity)
+                .animation(Motion.animation(.easeOut(duration: 0.32), reduceMotion: reduceMotion), value: value)
             Text(sub).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

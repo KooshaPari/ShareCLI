@@ -44,6 +44,9 @@ import ShareCLICore
 struct ConfigPage: View {
     @ObservedObject var state: AppState
 
+    /// Reduce motion (PLAN 1.23): gates the toast fade below.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @AppStorage("config.subpage") private var subpageRaw: String = ConfigSubpage.runtime.rawValue
     @State private var subpage: ConfigSubpage = .runtime
     @State private var didLoadSubpage = false
@@ -156,7 +159,7 @@ struct ConfigPage: View {
                 toast = ConfigToast(level: .success, message: "Applied \(key)")
             }
             try? await Task.sleep(nanoseconds: 2_000_000_000)
-            withAnimation(.easeInOut(duration: 0.2)) { toast = nil }
+            Motion.run(.easeInOut(duration: 0.2), reduceMotion: reduceMotion) { toast = nil }
         }
     }
 }

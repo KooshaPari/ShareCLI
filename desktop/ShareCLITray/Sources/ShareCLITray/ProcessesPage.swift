@@ -322,6 +322,8 @@ struct ProjectGroupCard: View {
     let keyLabel: String
     let kill: (UInt32) -> Void
     @State private var expanded = true
+    /// Reduce motion (PLAN 1.23): gates the expand/collapse animation.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -355,7 +357,7 @@ struct ProjectGroupCard: View {
                 }
                 Spacer()
                 Button {
-                    withAnimation(.easeInOut(duration: 0.15)) { expanded.toggle() }
+                    Motion.run(.easeInOut(duration: 0.15), reduceMotion: reduceMotion) { expanded.toggle() }
                 } label: {
                     Image(systemName: expanded ? "chevron.up" : "chevron.down")
                 }

@@ -377,6 +377,8 @@ private struct LogsListView: View {
     let lines: [LogLine]
     let followTail: Bool
     let onUserScroll: () -> Void
+    /// Reduce motion (PLAN 1.23): gates the tail auto-scroll animation.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -396,7 +398,7 @@ private struct LogsListView: View {
             )
             .onChange(of: lines.last?.id) { _, newID in
                 if followTail, let id = newID {
-                    withAnimation(.linear(duration: 0.1)) {
+                    Motion.run(.linear(duration: 0.1), reduceMotion: reduceMotion) {
                         proxy.scrollTo(id, anchor: .bottom)
                     }
                 }
