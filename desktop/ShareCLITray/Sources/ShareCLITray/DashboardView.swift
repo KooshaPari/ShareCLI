@@ -143,7 +143,7 @@ struct DashboardView: View {
                 if sec.shortcutIndex > 0 {
                     Text("⌘\(sec.shortcutIndex)")
                         .font(.caption2.monospaced())
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Color.statusForeground)
                 }
             }
         }

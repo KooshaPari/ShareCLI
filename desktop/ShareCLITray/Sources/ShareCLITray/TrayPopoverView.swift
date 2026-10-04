@@ -182,7 +182,7 @@ struct TrayPopoverView: View {
             if state.processes.isEmpty {
                 Text(state.isConnected ? "No managed processes" : "Waiting for IPC…")
                     .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Color.statusForeground)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
             } else {
