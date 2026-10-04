@@ -17,6 +17,9 @@ struct CommandPalette: View {
     @State private var filtered: [CommandEntry] = []
     @State private var selectedIndex: Int = 0
     @FocusState private var searchFocused: Bool
+    /// Destructive action awaiting confirmation (PLAN 1.24). The action is not
+    /// forwarded to `onAction` until the operator confirms.
+    @State private var pendingDestructive: CommandAction?
 
     // MARK: - Keyboard contract (PLAN.md:220-222)
 
@@ -34,6 +37,25 @@ struct CommandPalette: View {
     /// The palette is a modal surface: nothing behind it may be reached while
     /// it is open, including via assistive technology.
     static let modalAccessibilityTraits: AccessibilityTraits = [.isModal]
+
+    // MARK: - Destructive confirm (PLAN.md:236-237, task 1.24)
+
+    /// Actions that require explicit confirmation before they execute.
+    /// Today only `killAll`, which is fleet-wide and irreversible.
+    static func isDestructive(_ action: CommandAction) -> Bool {
+        action == .killAll
+    }
+
+    /// Button role for an action: `.destructive` for kills, `nil` otherwise.
+    static func role(for action: CommandAction) -> ButtonRole? {
+        isDestructive(action) ? .destructive : nil
+    }
+
+    static let destructiveConfirmTitle = "Kill all processes?"
+    static let destructiveConfirmMessage =
+        "Sends SIGTERM to every process in the fleet pool. This cannot be undone."
+    static let destructiveConfirmLabel = "Kill all"
+    static let destructiveCancelLabel = "Cancel"
 
     static func intent(for key: KeyEquivalent) -> KeyIntent {
         switch key {
@@ -79,6 +101,12 @@ struct CommandPalette: View {
         let kind: Kind
         static func == (lhs: CommandEntry, rhs: CommandEntry) -> Bool { lhs.id == rhs.id }
         func hash(into hasher: inout Hasher) { hasher.combine(id) }
+
+        /// Destructive role for kill-type actions (PLAN 1.24); nil otherwise.
+        var buttonRole: ButtonRole? {
+            if case .action(let act) = kind { return CommandPalette.role(for: act) }
+            return nil
+        }
     }
 
     private var allEntries: [CommandEntry] {
@@ -162,7 +190,7 @@ struct CommandPalette: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 2) {
                             ForEach(Array(filtered.enumerated()), id: \.element.id) { i, entry in
-                                Button {
+                                Button(role: entry.buttonRole) {
                                     submit(entry)
                                 } label: {
                                     HStack(spacing: 12) {
@@ -228,6 +256,23 @@ struct CommandPalette: View {
             }
             selectedIndex = 0
         }
+        .confirmationDialog(
+            Self.destructiveConfirmTitle,
+            isPresented: Binding(
+                get: { pendingDestructive != nil },
+                set: { if !$0 { pendingDestructive = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(Self.destructiveConfirmLabel, role: .destructive) {
+                confirmDestructive()
+            }
+            Button(Self.destructiveCancelLabel, role: .cancel) {
+                pendingDestructive = nil
+            }
+        } message: {
+            Text(Self.destructiveConfirmMessage)
+        }
     }
 
     /// Routes a key intent to the palette. Only the keys named by
@@ -259,9 +304,26 @@ struct CommandPalette: View {
 
     private func submit(_ entry: CommandEntry) {
         switch entry.kind {
-        case .navigate(let sec): onNavigate(sec)
-        case .action(let act): onAction(act)
+        case .navigate(let sec):
+            onNavigate(sec)
+            isVisible = false
+        case .action(let act):
+            if Self.isDestructive(act) {
+                // Do not forward yet: the confirmation dialog gates execution,
+                // and the palette stays open until the operator decides.
+                pendingDestructive = act
+                return
+            }
+            onAction(act)
+            isVisible = false
         }
+    }
+
+    /// Runs the confirmed destructive action and closes the palette.
+    private func confirmDestructive() {
+        guard let act = pendingDestructive else { return }
+        pendingDestructive = nil
         isVisible = false
+        onAction(act)
     }
 }

@@ -38,6 +38,71 @@ import ShareCLICore
 import AppKit
 import UniformTypeIdentifiers
 
+// MARK: - Destructive kill confirmation (PLAN.md:236-237, task 1.24)
+
+/// What a destructive kill request covers.
+enum KillScope: Equatable {
+    case selected(Set<UInt32>)
+    case all
+
+    /// Headline for the confirmation dialog.
+    var confirmTitle: String {
+        switch self {
+        case .selected(let pids):
+            let n = pids.count
+            return "Kill \(n) selected process\(n == 1 ? "" : "es")?"
+        case .all:
+            return "Kill all processes?"
+        }
+    }
+
+    /// Body copy: states the consequence plainly.
+    var confirmMessage: String {
+        switch self {
+        case .selected:
+            return "Sends SIGTERM to the selected processes. This cannot be undone."
+        case .all:
+            return "Sends SIGTERM to every process in the fleet pool. This cannot be undone."
+        }
+    }
+
+    /// Label of the destructive confirm button.
+    var confirmButtonLabel: String {
+        switch self {
+        case .selected: return "Kill"
+        case .all: return "Kill all"
+        }
+    }
+}
+
+/// Pure confirmation gate for destructive process actions.
+///
+/// `request(_:)` records intent without performing it; the caller may only
+/// perform the kill once `confirm()` hands the scope back (and it clears
+/// pending, so a scope can never fire twice). `decline()` abandons intent.
+///
+/// Kept free of SwiftUI so "a kill cannot fire without confirmation" is
+/// unit-testable without a GUI.
+struct DestructiveKillGate: Equatable {
+    private(set) var pending: KillScope?
+
+    /// Cancel button label, shared with the confirmation dialogs.
+    static let cancelLabel = "Cancel"
+
+    var isConfirming: Bool { pending != nil }
+
+    mutating func request(_ scope: KillScope) { pending = scope }
+
+    mutating func decline() { pending = nil }
+
+    /// Returns the scope to perform and clears it. `nil` means "nothing was
+    /// confirmed, perform nothing".
+    mutating func confirm() -> KillScope? {
+        defer { pending = nil }
+        return pending
+    }
+}
+
 struct ProcessesPage: View {
     @ObservedObject var state: AppState
 
@@ -392,6 +457,8 @@ struct AllProcessesView: View {
     ]
     @State private var selection: Set<UInt32> = []
     @State private var bulkStatus: String = ""
+    /// Confirmation gate for the destructive bulk kill buttons (PLAN 1.24).
+    @State private var killGate = DestructiveKillGate()
 
     private var filtered: [ProcessSummary] {
         let q = filterText.lowercased()
@@ -412,6 +479,25 @@ struct AllProcessesView: View {
             summaryStrip
             filterBar
             bulkActionBar
+                .confirmationDialog(
+                    killGate.pending?.confirmTitle ?? "Confirm kill",
+                    isPresented: Binding(
+                        get: { killGate.isConfirming },
+                        set: { if !$0 { killGate.decline() } }
+                    ),
+                    titleVisibility: .visible
+                ) {
+                    if let scope = killGate.pending {
+                        Button(scope.confirmButtonLabel, role: .destructive) {
+                            performKill(killGate.confirm())
+                        }
+                        Button(DestructiveKillGate.cancelLabel, role: .cancel) {
+                            killGate.decline()
+                        }
+                    }
+                } message: {
+                    Text(killGate.pending?.confirmMessage ?? "")
+                }
             Divider()
             if filtered.isEmpty {
                 EmptyStateView(
@@ -608,29 +694,15 @@ struct AllProcessesView: View {
 
     private var bulkActionBar: some View {
         HStack(spacing: 10) {
-            Button {
-                Task {
-                    var killed = 0
-                    for pid in selection {
-                        await state.kill(pid: pid)
-                        killed += 1
-                    }
-                    bulkStatus = "Killed \(killed) selected"
-                    try? await Task.sleep(nanoseconds: 2_000_000_000)
-                    bulkStatus = ""
-                }
+            Button(role: .destructive) {
+                killGate.request(.selected(selection))
             } label: {
                 Label("Kill selected (\(selection.count))", systemImage: "xmark.circle")
             }
             .disabled(selection.isEmpty)
 
-            Button {
-                Task {
-                    await state.killAll()
-                    bulkStatus = "Kill-all requested"
-                    try? await Task.sleep(nanoseconds: 2_000_000_000)
-                    bulkStatus = ""
-                }
+            Button(role: .destructive) {
+                killGate.request(.all)
             } label: {
                 Label("Kill all", systemImage: "xmark.octagon")
             }
@@ -674,6 +746,34 @@ struct AllProcessesView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(.quaternary.opacity(0.3))
+    }
+
+    // MARK: - Destructive kill (confirmed only)
+
+    /// Performs a kill scope handed back by `killGate.confirm()`. Never called
+    /// directly from a button — a `nil` scope (nothing confirmed) is a no-op.
+    private func performKill(_ scope: KillScope?) {
+        guard let scope else { return }
+        switch scope {
+        case .selected(let pids):
+            Task {
+                var killed = 0
+                for pid in pids {
+                    await state.kill(pid: pid)
+                    killed += 1
+                }
+                bulkStatus = "Killed \(killed) selected"
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                bulkStatus = ""
+            }
+        case .all:
+            Task {
+                await state.killAll()
+                bulkStatus = "Kill-all requested"
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                bulkStatus = ""
+            }
+        }
     }
 
     // MARK: - Export
