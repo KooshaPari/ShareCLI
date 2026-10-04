@@ -409,9 +409,24 @@ private struct RuntimeSubpage: View {
                             }
                         }
                         .frame(height: 10)
-                    } else {
-                        Text(state.isConnected ? "Loading…" : "Not connected to sharecli-ipc")
+                    } else if state.isConnected {
+                        Text("Loading…")
                             .foregroundStyle(.secondary)
+                    } else {
+                        FailedActionBanner(
+                            title: RetryCopy.disconnectedTitle,
+                            detail: state.lastError,
+                            systemImage: "wifi.slash",
+                            actionTitle: RetryCopy.disconnectedStartLabel,
+                            actionSystemImage: "play.fill",
+                            actionHint: RetryCopy.startHint,
+                            action: {
+                                Task {
+                                    await SidecarSupervisor.shared.ensureRunning()
+                                    await state.refresh()
+                                }
+                            }
+                        )
                     }
                 }
                 .padding(8)
