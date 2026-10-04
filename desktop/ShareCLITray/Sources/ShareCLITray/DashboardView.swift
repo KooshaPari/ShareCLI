@@ -54,7 +54,7 @@ struct DashboardView: View {
             case .pool: return "rectangle.stack.fill"
             case .effectiveness: return "chart.line.uptrend.xyaxis"
             case .config: return "gearshape"
-            case .health: return "heart.fill"
+            case .health: return StatusIcon.healthSection.symbolName
             case .logs: return "text.alignleft"
             }
         }

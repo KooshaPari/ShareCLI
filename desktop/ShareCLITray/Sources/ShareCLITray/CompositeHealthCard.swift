@@ -56,7 +56,7 @@ struct CompositeHealthCard: View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Image(systemName: "heart.text.square.fill")
+                    Image(systemName: StatusIcon.compositeHealth.symbolName)
                         .foregroundStyle(bandColor(metric.band))
                     Text("Composite health")
                         .font(.headline)
@@ -196,7 +196,7 @@ struct CompositeHealthCard: View {
     private var placeholder: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                Image(systemName: "heart.text.square")
+                Image(systemName: StatusIcon.healthPlaceholder.symbolName)
                     .foregroundStyle(.tertiary)
                 Text("Composite health")
                     .font(.headline)

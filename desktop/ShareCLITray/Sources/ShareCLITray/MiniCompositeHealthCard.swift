@@ -54,7 +54,7 @@ struct MiniCompositeHealthCard: View {
     private func content(_ metric: CompositeHealthMetric) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                Image(systemName: "heart.text.square.fill")
+                Image(systemName: StatusIcon.compositeHealth.symbolName)
                     .font(.system(size: 11))
                     .foregroundStyle(bandColor(metric.band))
                 Text("Composite")

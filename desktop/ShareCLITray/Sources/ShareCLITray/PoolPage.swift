@@ -423,7 +423,7 @@ struct IssueRow: View {
             switch self {
             case .info: return "info.circle"
             case .warning: return "exclamationmark.triangle"
-            case .critical: return "xmark.octagon"
+            case .critical: return StatusIcon.critical.symbolName
             }
         }
     }

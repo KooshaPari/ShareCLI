@@ -276,7 +276,7 @@ struct TrayPopoverView: View {
             Button {
                 NSApp.terminate(nil)
             } label: {
-                Image(systemName: "power")
+                Image(systemName: StatusIcon.quitApp.symbolName)
                     .foregroundStyle(.red)
             }
             .buttonStyle(.bordered)

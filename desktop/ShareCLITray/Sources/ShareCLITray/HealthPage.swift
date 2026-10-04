@@ -53,7 +53,7 @@ struct HealthPage: View {
     var body: some View {
         if state.health == nil {
             EmptyStateView(
-                icon: "heart.text.square",
+                icon: StatusIcon.healthPlaceholder.symbolName,
                 title: "No health snapshot yet",
                 subtitle: "The health.status IPC hasn't returned. The sidecar emits a new health snapshot every ~2s; if it's blank for longer, the sidecar is hung or the socket is unreachable.",
                 variant: .hero,
