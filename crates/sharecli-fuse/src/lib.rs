@@ -60,7 +60,8 @@ pub use mount_smoke::{
     MountSession, ENV_FUSE_MOUNT_SMOKE,
 };
 pub use neg_dentry::{
-    global_neg_dentry_meters, NegDentryMeters, NegativeDentryCache, DEFAULT_NEG_TTL,
+    global_neg_dentry_meters, NegDentryMeters, NegativeDentryCache, DEFAULT_NEG_CAP,
+    DEFAULT_NEG_SWEEP_IDLE, DEFAULT_NEG_TTL,
 };
 pub use path_remap::remap_mount_to_backing;
 #[cfg(any(target_os = "linux", target_os = "macos", windows))]
