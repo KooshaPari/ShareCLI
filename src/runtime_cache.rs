@@ -129,7 +129,7 @@ impl<C: Clock> CachedProcessMetrics<C> {
     pub fn fetch_fd_count(&self, pid: u32, fetcher: fn(u32) -> Option<u32>) -> Option<u32> {
         let now = self.clock.now_ms();
         {
-            let cache = self.fd_cache.lock().unwrap();
+            let cache = self.fd_cache.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(v) = cache.get(&pid, now) {
                 return v;
             }
@@ -137,7 +137,7 @@ impl<C: Clock> CachedProcessMetrics<C> {
         // Cache miss — invoke the real producer.
         let value = fetcher(pid);
         self.fetch_count.fetch_add(1, Ordering::SeqCst);
-        let mut cache = self.fd_cache.lock().unwrap();
+        let mut cache = self.fd_cache.lock().unwrap_or_else(|e| e.into_inner());
         cache.put(pid, value, now);
         value
     }
@@ -146,14 +146,14 @@ impl<C: Clock> CachedProcessMetrics<C> {
     pub fn fetch_thread_count(&self, pid: u32, fetcher: fn(u32) -> Option<u32>) -> Option<u32> {
         let now = self.clock.now_ms();
         {
-            let cache = self.thread_cache.lock().unwrap();
+            let cache = self.thread_cache.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(v) = cache.get(&pid, now) {
                 return v;
             }
         }
         let value = fetcher(pid);
         self.fetch_count.fetch_add(1, Ordering::SeqCst);
-        let mut cache = self.thread_cache.lock().unwrap();
+        let mut cache = self.thread_cache.lock().unwrap_or_else(|e| e.into_inner());
         cache.put(pid, value, now);
         value
     }
