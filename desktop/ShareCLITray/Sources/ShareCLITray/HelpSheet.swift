@@ -4,19 +4,20 @@ import SwiftUI
 struct HelpSheet: View {
     @Binding var isVisible: Bool
 
-    private struct Shortcut: Identifiable, Hashable {
+    struct Shortcut: Identifiable, Hashable {
         let id: String
         let key: String
         let label: String
     }
-    private let shortcuts: [Shortcut] = [
-        .init(id: "k1", key: "⌘1", label: "Processes page"),
-        .init(id: "k2", key: "⌘2", label: "Agents page"),
-        .init(id: "k3", key: "⌘3", label: "Pool page"),
-        .init(id: "k4", key: "⌘4", label: "Pool effectiveness page"),
-        .init(id: "k5", key: "⌘5", label: "Config page"),
-        .init(id: "k6", key: "⌘6", label: "Health page"),
-        .init(id: "k7", key: "⌘7", label: "Logs page"),
+    static let shortcuts: [Shortcut] = [
+        .init(id: "k1", key: "⌘1", label: "Overview page"),
+        .init(id: "k2", key: "⌘2", label: "Processes page"),
+        .init(id: "k3", key: "⌘3", label: "Agents page"),
+        .init(id: "k4", key: "⌘4", label: "Pool page"),
+        .init(id: "k5", key: "⌘5", label: "Pool effectiveness page"),
+        .init(id: "k6", key: "⌘6", label: "Config page"),
+        .init(id: "k7", key: "⌘7", label: "Health page"),
+        .init(id: "k8", key: "⌘8", label: "Logs page"),
         .init(id: "kr", key: "⌘R", label: "Refresh all panels"),
         .init(id: "kk", key: "⌘K", label: "Open command palette"),
         .init(id: "kw", key: "⌘W", label: "Close window"),
@@ -41,7 +42,7 @@ struct HelpSheet: View {
             }
             .padding(20)
             Divider()
-            Table(shortcuts) {
+            Table(Self.shortcuts) {
                 TableColumn("Key") { row in
                     Text(row.key)
                         .font(.system(.body, design: .monospaced))
