@@ -38,8 +38,12 @@ pub fn should_bypass_coalesce(argv: &[impl AsRef<str>], nocache_args: &[impl AsR
 }
 
 /// Parse a comma-separated `nocache_args=X,Y` option value (rules.conf style).
+///
+/// If `csv` contains a `key=value` pair (e.g. `nocache_args=--fix,--force`),
+/// only the value portion after the first `=` is split on commas.
 pub fn parse_nocache_args_csv(csv: &str) -> Vec<String> {
-    csv.split(',').map(str::trim).filter(|s| !s.is_empty()).map(str::to_string).collect()
+    let value = csv.split_once('=').map(|(_, v)| v).unwrap_or(csv);
+    value.split(',').map(str::trim).filter(|s| !s.is_empty()).map(str::to_string).collect()
 }
 
 #[cfg(test)]
@@ -70,5 +74,15 @@ mod tests {
     fn empty_list_never_matches() {
         let empty: &[&str] = &[];
         assert!(!has_nocache_arg(&["--force"], empty));
+    }
+
+    /// FR-008 — `parse_nocache_args_csv` must strip a leading `nocache_args=`
+    /// key so callers that pass the raw rules.conf value `nocache_args=--fix,--force`
+    /// get the same flag list as `--fix,--force`.
+    #[test]
+    fn parse_csv_strips_equals_prefix() {
+        let flags = parse_nocache_args_csv("nocache_args=--fix,--force");
+        assert_eq!(flags, vec!["--fix", "--force"], "must strip key= prefix");
+        assert!(has_nocache_arg(&["ruff", "--fix", "."], &flags));
     }
 }

@@ -27,6 +27,7 @@ pub fn config_from_rule_opts(harness_home: &Path, opts: &RuleOpts) -> Hypervisor
         coalesce_debounce: Duration::from_millis(opts.debounce_ms),
         cache_key_mode: CacheKeyMode::parse(&opts.cache_key),
         semantic: opts.semantic,
+        error_ttl: Duration::from_secs(opts.error_ttl),
     }
 }
 
@@ -121,6 +122,19 @@ mod tests {
         assert_eq!(
             hv.nocache_args(),
             DEFAULT_NOCACHE_ARGS.iter().map(|s| (*s).to_string()).collect::<Vec<_>>()
+        );
+    }
+
+    /// FR-008 — rules.conf `error_ttl` plumbs into HypervisorConfig.
+    #[test]
+    fn rule_opts_plumb_error_ttl() {
+        let tmp = TempDir::new().expect("tempdir");
+        let opts = RuleOpts { error_ttl: 15, ..RuleOpts::default() };
+        let cfg = config_from_rule_opts(tmp.path(), &opts);
+        assert_eq!(
+            cfg.error_ttl,
+            Duration::from_secs(15),
+            "error_ttl MUST be wired from RuleOpts to HypervisorConfig"
         );
     }
 }

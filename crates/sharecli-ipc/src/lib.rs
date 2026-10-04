@@ -112,11 +112,18 @@ pub struct CoalesceCache {
     root: PathBuf,
     ttl: Duration,
     debounce: Duration,
+    /// TTL for caching failed runs (exit_code != 0). Zero = never cache errors.
+    error_ttl: Duration,
 }
 
 impl Clone for CoalesceCache {
     fn clone(&self) -> Self {
-        Self { root: self.root.clone(), ttl: self.ttl, debounce: self.debounce }
+        Self {
+            root: self.root.clone(),
+            ttl: self.ttl,
+            debounce: self.debounce,
+            error_ttl: self.error_ttl,
+        }
     }
 }
 
@@ -162,13 +169,29 @@ impl CoalesceCache {
         Self::with_options(root, ttl, Duration::ZERO)
     }
 
+    /// Create a cache with a custom error TTL (for caching failed runs).
+    /// Success TTL uses [`DEFAULT_TTL`]; debounce is disabled.
+    pub fn with_error_ttl(root: impl Into<PathBuf>, error_ttl: Duration) -> Self {
+        Self { root: root.into(), ttl: Self::DEFAULT_TTL, debounce: Duration::ZERO, error_ttl }
+    }
+
     /// Create a cache with explicit TTL and debounce window.
     ///
     /// `ttl` — max age of a stored entry before `lookup` returns a miss.
     /// `debounce` — on miss, wait this long then re-check before running the
     /// miss path (origin harness `debounce_ms`; `Duration::ZERO` disables).
     pub fn with_options(root: impl Into<PathBuf>, ttl: Duration, debounce: Duration) -> Self {
-        Self { root: root.into(), ttl, debounce }
+        Self { root: root.into(), ttl, debounce, error_ttl: Duration::ZERO }
+    }
+
+    /// Create a cache with explicit TTL, debounce, and error_ttl.
+    pub fn with_full_options(
+        root: impl Into<PathBuf>,
+        ttl: Duration,
+        debounce: Duration,
+        error_ttl: Duration,
+    ) -> Self {
+        Self { root: root.into(), ttl, debounce, error_ttl }
     }
 
     /// Configured TTL for cache entries.
@@ -179,6 +202,11 @@ impl CoalesceCache {
     /// Configured debounce window (zero = disabled).
     pub fn debounce(&self) -> Duration {
         self.debounce
+    }
+
+    /// Configured error TTL for caching failed runs (zero = never cache errors).
+    pub fn error_ttl(&self) -> Duration {
+        self.error_ttl
     }
 
     fn entry_path(&self, key: &CommandKey) -> PathBuf {
@@ -266,6 +294,28 @@ impl CoalesceCache {
     /// observe a partial / truncated JSON file. After writing, sweeps stale
     /// entries under `root/` whose mtime exceeds the configured TTL.
     pub fn store(&self, key: &CommandKey, result: &CachedResult) -> Result<()> {
+        self.store_inner(key, result, self.ttl)
+    }
+
+    /// Store a result with a custom TTL (for error caching).
+    ///
+    /// The entry's mtime is backdated so `is_fresh` returns `true` for only
+    /// `custom_ttl` from now, regardless of the cache's primary TTL.
+    fn store_with_ttl(
+        &self,
+        key: &CommandKey,
+        result: &CachedResult,
+        custom_ttl: Duration,
+    ) -> Result<()> {
+        self.store_inner(key, result, custom_ttl)
+    }
+
+    fn store_inner(
+        &self,
+        key: &CommandKey,
+        result: &CachedResult,
+        effective_ttl: Duration,
+    ) -> Result<()> {
         self.ensure_root()?;
 
         let bytes = serde_json::to_vec(result).context("serialise CachedResult")?;
@@ -279,6 +329,17 @@ impl CoalesceCache {
 
         let dest = self.entry_path(key);
         tmp.persist(&dest).with_context(|| format!("persist cache entry to {}", dest.display()))?;
+
+        // FR-008: when storing with a shorter TTL (error_ttl), backdate the
+        // mtime so `is_fresh` (which compares age against self.ttl) returns
+        // true for only `effective_ttl` from now.
+        if effective_ttl < self.ttl {
+            let backdate = self.ttl - effective_ttl;
+            let mtime = SystemTime::now() - backdate;
+            if let Ok(f) = fs::OpenOptions::new().write(true).open(&dest) {
+                let _ = f.set_times(fs::FileTimes::new().set_modified(mtime));
+            }
+        }
 
         self.evict_stale()?;
 
@@ -355,7 +416,13 @@ impl CoalesceCache {
         // Lane-7 BLOCKER (tiger): failed runs were stored and replayed to siblings
         // for the full TTL. Skip persistence for any non-success result so siblings
         // re-run on their own; success results are stored as before.
+        // FR-008: when error_ttl > 0, cache the error for the shorter window.
         if cached.exit_code != 0 {
+            if !self.error_ttl.is_zero() {
+                self.store_with_ttl(key, &cached, self.error_ttl)?;
+                record_coalesce_hit_kind(CoalesceHitKind::Miss);
+                return Ok((T::from(cached), CoalesceHitKind::Miss));
+            }
             record_coalesce_hit_kind(CoalesceHitKind::Miss);
             return Ok((T::from(cached), CoalesceHitKind::Miss));
         }
@@ -690,5 +757,51 @@ mod tests {
         }
 
         drop(holder);
+    }
+
+    // -----------------------------------------------------------------------
+    // FR-008 — error_ttl: failed runs cached with short TTL when error_ttl > 0
+    // -----------------------------------------------------------------------
+    #[test]
+    fn error_ttl_caches_failed_run() {
+        let dir = TempDir::new().expect("tempdir");
+        let error_ttl = Duration::from_millis(80);
+        let cache = CoalesceCache::with_error_ttl(dir.path(), error_ttl);
+        assert_eq!(cache.error_ttl(), error_ttl);
+
+        let key = command_key(&["failing-tool".into()], Path::new("/p"), &[]);
+
+        // First call: exit_code 1 (failure). With error_ttl > 0, the result
+        // SHOULD be cached for the error_ttl window.
+        let r1: CachedResult = cache
+            .with_lock(&key, || {
+                Ok(CachedResult { exit_code: 1, stdout: b"err".to_vec(), stderr: vec![] })
+            })
+            .expect("first with_lock");
+        assert_eq!(r1.exit_code, 1);
+
+        // Second call: the error SHOULD be cached, so f() must NOT run.
+        let mut call_count = 0u32;
+        let r2: CachedResult = cache
+            .with_lock(&key, || {
+                call_count += 1;
+                Ok(CachedResult { exit_code: 0, stdout: b"ok".to_vec(), stderr: vec![] })
+            })
+            .expect("second with_lock");
+        assert_eq!(call_count, 0, "error_ttl>0: failed run MUST be served from cache");
+        assert_eq!(r2.exit_code, 1, "must return cached error result");
+
+        // Wait for error_ttl to expire.
+        thread::sleep(error_ttl + Duration::from_millis(30));
+
+        // Third call: error TTL expired, so f() MUST run again.
+        let r3: CachedResult = cache
+            .with_lock(&key, || {
+                call_count += 1;
+                Ok(CachedResult { exit_code: 0, stdout: b"ok".to_vec(), stderr: vec![] })
+            })
+            .expect("third with_lock");
+        assert_eq!(call_count, 1, "after error_ttl expiry, f() must run again");
+        assert_eq!(r3.exit_code, 0, "must return fresh success result");
     }
 }
