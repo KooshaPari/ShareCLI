@@ -505,6 +505,56 @@ mod platform {
             Ok(n)
         }
 
+        /// Run `f` while holding the per-path write lock (Task 1.15).
+        ///
+        /// [`Self::setattr_rel`] and [`Self::write_rel`] take this same lock, so
+        /// callers can serialise a multi-step mutation of one backing path
+        /// against them. When serialisation is disabled the closure still runs.
+        pub fn with_path_lock<R, F: FnOnce() -> R>(&self, rel: &Path, f: F) -> std::io::Result<R> {
+            let abs = abs_under(&self.backing, rel);
+            self.cow
+                .with_locked_path(None, &abs, f)
+                .map_err(|e| std::io::Error::other(e.to_string()))
+        }
+
+        /// Apply truncate/mode to an absolute backing path under the per-path
+        /// write lock, then drop the path lock before touching the read cache
+        /// (Task 1.15 — no lock-order inversion with `write`/`read`).
+        fn apply_setattr_locked(
+            &self,
+            abs: &Path,
+            size: Option<u64>,
+            mode: Option<u32>,
+        ) -> std::io::Result<()> {
+            self.cow
+                .with_locked_path(None, abs, || -> std::io::Result<()> {
+                    if let Some(new_size) = size {
+                        OpenOptions::new().write(true).open(abs)?.set_len(new_size)?;
+                    }
+                    if let Some(mode) = mode {
+                        fs::set_permissions(abs, fs::Permissions::from_mode(mode))?;
+                    }
+                    Ok(())
+                })
+                .map_err(|e| std::io::Error::other(e.to_string()))??;
+            if let Ok(mut cache) = self.read_cache.lock() {
+                cache.invalidate(abs);
+            }
+            Ok(())
+        }
+
+        /// Truncate and/or chmod `rel` under the same per-path lock as
+        /// [`Self::write_rel`] (Task 1.15; `setattr` via no mount).
+        pub fn setattr_rel(
+            &self,
+            rel: &Path,
+            size: Option<u64>,
+            mode: Option<u32>,
+        ) -> std::io::Result<()> {
+            let abs = abs_under(&self.backing, rel);
+            self.apply_setattr_locked(&abs, size, mode)
+        }
+
         /// Create a new regular file at relative `rel` (no mount; FR-009 helper).
         ///
         /// Invalidates negative dentry + read cache and stamps write provenance.
@@ -699,20 +749,11 @@ mod platform {
                     }
                 }
             };
-            if let Some(new_size) = size {
-                if let Err(err) =
-                    OpenOptions::new().write(true).open(&path).and_then(|f| f.set_len(new_size))
-                {
-                    reply.error(Self::io_errno(err));
-                    return;
-                }
-            }
-            if let Some(mode) = mode {
-                let perms = fs::Permissions::from_mode(mode);
-                if let Err(err) = fs::set_permissions(&path, perms) {
-                    reply.error(Self::io_errno(err));
-                    return;
-                }
+            // Task 1.15 — apply truncate/mode under the same per-path lock as
+            // `write`, so a concurrent write and truncate cannot tear.
+            if let Err(err) = self.apply_setattr_locked(&path, size, mode) {
+                reply.error(Self::io_errno(err));
+                return;
             }
             match fs::metadata(&path) {
                 Ok(meta) => {
