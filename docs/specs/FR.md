@@ -1042,6 +1042,20 @@ until create / mkdir / rename-into invalidates the entry.
   flags.
 - **AC-009.22:** [`fuse-smoke`](crates/fuse-smoke-runner) CLI runs the OS × arch
   privileged FUSE mount-smoke matrix with loud fail reasons.
+- **AC-009.23:** Symlink and hard-link ops are dispatchable on the intercept
+  filesystem (and forwarded by the session wrapper): `readlink` returns the
+  stored target without following it, `symlink` creates a link storing a
+  relative target verbatim (so a `node_modules/.bin` style link is not
+  rewritten), and `link` creates a second name for an existing inode. Symlink
+  and hard-link creation invalidate the created path's negative dentry and
+  install the new entry.
+- **AC-009.24:** Durability and handle lifecycle ops are dispatchable on the
+  intercept filesystem (and forwarded by the session wrapper): `fsync` syncs a
+  live handle's descriptor when held, else opens the backing path for the inode
+  and syncs that; `flush` performs an advisory sync-data of a live handle and
+  always reports success (fuser calls it on every `close()`, where an error
+  cannot reach the caller); `release` drops the live handle for the file handle
+  and is a no-op on a second call.
 - **AC-009.25:** Windows WinFsp mount adapter
   ([`winfsp_mount`](crates/sharecli-fuse/src/winfsp_mount.rs)) for the FUSE intercept.
 
