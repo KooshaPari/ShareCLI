@@ -120,3 +120,138 @@ fn sync_directory(path: &Path) {
 
 #[cfg(not(unix))]
 fn sync_directory(_path: &Path) {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn backup_path_is_a_sibling_with_bak_suffix() {
+        assert_eq!(
+            backup_path(Path::new("/etc/sharecli/config.toml")).to_string_lossy(),
+            "/etc/sharecli/config.toml.bak"
+        );
+    }
+
+    #[test]
+    fn staging_path_is_suffix_tagged_with_the_pid() {
+        let staged = staging_path(Path::new("/etc/sharecli/config.toml"));
+        assert_eq!(
+            staged.to_string_lossy(),
+            format!("/etc/sharecli/config.toml.tmp-{}", std::process::id())
+        );
+    }
+
+    #[test]
+    fn sibling_appends_without_touching_the_extension() {
+        assert_eq!(sibling(Path::new("a/b.c"), ".x").to_string_lossy(), "a/b.c.x");
+    }
+
+    #[test]
+    fn first_write_replaces_and_leaves_no_backup() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let target = dir.path().join("config.toml");
+
+        write_atomic(&target, "first").expect("write");
+        assert_eq!(std::fs::read_to_string(&target).expect("read"), "first");
+        assert!(!backup_path(&target).exists(), "no previous generation yet");
+        assert_eq!(staged_files(&dir.path().join("config.toml")), 0);
+    }
+
+    #[test]
+    fn repeated_writes_publish_a_backup_of_the_previous_generation() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let target = dir.path().join("config.toml");
+
+        write_atomic(&target, "v1").expect("write v1");
+        write_atomic(&target, "v2").expect("write v2");
+
+        assert_eq!(std::fs::read_to_string(&target).expect("read"), "v2");
+        assert_eq!(std::fs::read_to_string(backup_path(&target)).expect("bak"), "v1");
+
+        write_atomic(&target, "v3").expect("write v3");
+        assert_eq!(std::fs::read_to_string(&target).expect("read"), "v3");
+        assert_eq!(
+            std::fs::read_to_string(backup_path(&target)).expect("bak"),
+            "v2",
+            "each save rotates the backup forward by exactly one generation"
+        );
+    }
+
+    #[test]
+    fn write_creates_missing_parent_directories() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let target = dir.path().join("nested/deeper/config.toml");
+
+        write_atomic(&target, "payload").expect("write");
+        assert_eq!(std::fs::read_to_string(&target).expect("read"), "payload");
+    }
+
+    #[test]
+    fn staging_failure_reports_an_error_and_leaves_no_debris() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        // A directory at the target path makes `File::create` fail with
+        // IsADirectory, exercising the staging-error cleanup path.
+        let target = dir.path().join("config.toml");
+        std::fs::create_dir(&target).expect("mkdir");
+
+        assert!(write_atomic(&target, "nope").is_err());
+        assert!(target.is_dir(), "the existing directory survives a failed save");
+        assert_eq!(staged_files(&target), 0, "no staging debris is left behind");
+    }
+
+    #[test]
+    fn missing_primary_read_failure_aborts_before_rename() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let target = dir.path().join("config.toml");
+        std::fs::create_dir(&target).expect("mkdir");
+
+        // The staging file stages fine (it is a file path), then the backup
+        // pass fails to read a directory as a file and aborts the swap.
+        let err = write_atomic(&target, "payload").expect_err("read must fail");
+        assert!(format!("{err:#}").contains("config.toml"), "error names the target: {err:#}");
+        assert_eq!(staged_files(&target), 0);
+    }
+
+    #[test]
+    fn interrupted_backup_leaves_the_previous_backup_intact() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let target = dir.path().join("config.toml");
+        write_atomic(&target, "v1").expect("write v1");
+        write_atomic(&target, "v2").expect("write v2");
+        assert_eq!(std::fs::read_to_string(backup_path(&target)).expect("bak"), "v1");
+
+        // Block the backup staging path so the preserve step fails after the
+        // new generation is already staged.
+        let blocked = staging_path(&backup_path(&target));
+        std::fs::create_dir(&blocked).expect("mkdir blocking stage path");
+
+        let err = write_atomic(&target, "v3").expect_err("backup must fail");
+        assert!(format!("{err:#}").contains("staging file"), "error explains the failure: {err:#}");
+        assert_eq!(std::fs::read_to_string(&target).expect("read"), "v2", "primary is unchanged");
+        assert_eq!(
+            std::fs::read_to_string(backup_path(&target)).expect("bak"),
+            "v1",
+            "the interrupted backup cannot publish a truncated .bak"
+        );
+    }
+
+    #[test]
+    fn stage_writes_and_flushes_exact_bytes() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let dest = dir.path().join("staged.txt");
+        stage(&dest, "hello \u{1F600}").expect("stage");
+        assert_eq!(std::fs::read_to_string(&dest).expect("read"), "hello \u{1F600}");
+    }
+
+    /// Count leftover staging files for `target` in its own directory.
+    fn staged_files(target: &Path) -> usize {
+        let dir = target.parent().expect("parent");
+        let prefix = format!("{}.tmp-", target.file_name().expect("name").to_string_lossy());
+        std::fs::read_dir(dir)
+            .expect("read_dir")
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_name().to_string_lossy().starts_with(&prefix))
+            .count()
+    }
+}

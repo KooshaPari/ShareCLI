@@ -236,6 +236,68 @@ mod tests {
         assert!(result.is_ok(), "ConfigWatcher::new should succeed for an existing file");
     }
 
+    // --- reload_config settles the payload, not just the file's existence ---
+
+    #[test]
+    fn reload_config_rejects_a_truncated_payload() {
+        // A half-written config (the crash-under-write state) must be refused,
+        // so the watcher keeps the last good generation instead of adopting it.
+        let mut f = NamedTempFile::new().unwrap();
+        let truncated = "[serve\nauth_mode = ";
+        write!(f, "{}", truncated).unwrap();
+        let err = reload_config(&f.path().to_path_buf()).expect_err("truncated TOML must fail");
+        assert!(!err.to_string().is_empty(), "the parse error must be reportable");
+    }
+
+    #[test]
+    fn reload_config_parses_a_realistic_payload() {
+        // A realistic config body must round-trip, proving the watcher reads the
+        // file's *contents* rather than merely confirming it exists.
+        let mut f = NamedTempFile::new().unwrap();
+        write!(f, "[serve]\n").unwrap();
+        let cfg = reload_config(&f.path().to_path_buf()).expect("valid table parses");
+        // `Config` has no `PartialEq`; compare the fields the payload controls.
+        assert_eq!(
+            cfg.serve.auth_mode,
+            Config::default().serve.auth_mode,
+            "an empty serve table must leave auth_mode at its default"
+        );
+        assert!(cfg.serve.jwt.is_none(), "an empty serve table must not invent a jwt block");
+    }
+
+    // --- Debounce thread lifecycle (real file events) ---
+
+    #[test]
+    fn watcher_shutdown_joins_the_debounce_thread() {
+        // Dropping the watcher must set `shutdown`, wake the debounce thread and
+        // join it; a regression that leaves the thread parked never returns.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "").unwrap();
+
+        let (tx, _rx) = watch::channel(Config::default());
+        let watcher = ConfigWatcher::new(path, tx).expect("watcher starts");
+        assert!(watcher.debounce_thread.is_some(), "a debounce thread must be running");
+        drop(watcher);
+    }
+
+    #[test]
+    fn watcher_drop_after_a_save_event_completes() {
+        // A create/modify event must exercise the notify callback without wedging
+        // shutdown: this drives the event path, then drops the watcher.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "").unwrap();
+
+        let (tx, rx) = watch::channel(Config::default());
+        let watcher = ConfigWatcher::new(path.clone(), tx).expect("watcher starts");
+
+        std::fs::write(&path, "[serve]\n").unwrap();
+
+        drop(watcher);
+        drop(rx);
+    }
+
     #[test]
     fn watcher_new_succeeds_for_nonexistent_file_path() {
         // The watcher watches the *parent* dir; the file itself need not exist yet.

@@ -109,6 +109,28 @@ mod tests {
     }
 
     #[test]
+    fn profile_query_defaults_to_ten_seconds() {
+        assert_eq!(default_seconds(), 10);
+        let query: ProfileQuery = serde_json::from_str("{}").expect("empty query");
+        assert_eq!(query.seconds, 10);
+        let explicit: ProfileQuery = serde_json::from_str(r#"{"seconds": 30}"#).expect("explicit");
+        assert_eq!(explicit.seconds, 30);
+    }
+
+    #[tokio::test]
+    async fn profile_handler_is_404_when_the_env_flag_is_off() {
+        let previous = std::env::var("SHARECLI_PPROF").ok();
+        std::env::remove_var("SHARECLI_PPROF");
+
+        let response = profile_handler(Query(ProfileQuery { seconds: 10 })).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        if let Some(value) = previous {
+            std::env::set_var("SHARECLI_PPROF", value);
+        }
+    }
+
+    #[test]
     fn pprof_parse_enabled_cases() {
         assert!(pprof_enabled_from(Some("1")));
         assert!(pprof_enabled_from(Some("true")));

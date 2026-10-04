@@ -1448,6 +1448,45 @@ mod tests {
         );
     }
 
+    /// `/config` with valid credentials must serve the live config JSON, which
+    /// proves the auth layer passes the request through rather than only
+    /// rejecting bad ones.
+    #[tokio::test]
+    async fn config_serves_json_with_valid_bearer() {
+        let state =
+            router_test_state(ServeRateLimit::new(1000, std::time::Duration::from_secs(60)));
+        let app = build_router(state, bearer_auth());
+
+        let mut req = get_request("/config");
+        req.headers_mut().insert(
+            axum::http::header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer test-secret"),
+        );
+        let resp = app.oneshot(req).await.expect("response");
+        assert_eq!(resp.status(), StatusCode::OK, "valid bearer must be admitted");
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.expect("body");
+        let json: serde_json::Value = serde_json::from_slice(&body).expect("config JSON");
+        assert!(json.is_object(), "config handler must return an object: {json}");
+    }
+
+    /// `/healthz` and `/readyz` are public in every mode: they must answer 200
+    /// without credentials and must not consume the rate-limit budget.
+    #[tokio::test]
+    async fn public_probes_bypass_auth_and_rate_limit() {
+        let state = router_test_state(ServeRateLimit::new(0, std::time::Duration::from_secs(60)));
+        let app = build_router(state, bearer_auth());
+
+        for path in ["/healthz", "/readyz"] {
+            let resp = app.clone().oneshot(get_request(path)).await.expect("probe response");
+            assert_eq!(resp.status(), StatusCode::OK, "{path} must stay public");
+
+            let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.expect("body");
+            let json: serde_json::Value = serde_json::from_slice(&body).expect("probe JSON");
+            assert_eq!(json["status"], "ok", "{path} must report ok");
+        }
+    }
+
     /// A rate-limit `429` must likewise be observable.
     #[tokio::test]
     async fn observability_records_rate_limit_429() {

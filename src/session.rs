@@ -365,3 +365,6 @@ impl GhosttyAdapter {
             .or_else(|| (!caps.control_socket).then_some("native RPC unavailable"))
     }
 }
+
+#[cfg(test)]
+mod tests;
