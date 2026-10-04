@@ -151,6 +151,11 @@ mod platform {
     use crate::write_serialize_meters::record_passthrough_write;
     use crate::InterceptFsOptions;
 
+    // Task 1.18 — the previously-missing FUSE ops (readlink/symlink/link/flush/
+    // fsync + the Shared release forward), kept out of this already-oversized
+    // file.
+    mod ops_missing;
+
     const TTL: Duration = Duration::from_secs(1);
 
     /// Passthrough FUSE filesystem with read coalesce + write-serialize hooks.
@@ -619,10 +624,13 @@ mod platform {
             }
         }
 
+        /// Reply with the entry for a name just created by `mknod`/`symlink`/
+        /// `link`, using `symlink_metadata` so a symlink is reported as
+        /// `FileType::Symlink` rather than resolved to its target (Task 1.18).
         fn install_created_entry_plain(&self, rel: PathBuf, path: PathBuf, reply: ReplyEntry) {
             let mut map = self.inodes.lock().expect("inode map");
             let ino = map.alloc_or_get(rel);
-            match fs::metadata(&path) {
+            match fs::symlink_metadata(&path) {
                 Ok(meta) => reply.entry(&TTL, &Self::metadata_to_attr(ino, &meta), Generation(0)),
                 Err(err) => reply.error(Self::io_errno(err)),
             }
@@ -816,6 +824,11 @@ mod platform {
             }
         }
 
+        /// Task 1.18 — return the stored symlink target (no follow).
+        fn readlink(&self, _req: &Request, ino: INodeNo, reply: ReplyData) {
+            self.op_readlink(ino.0, reply);
+        }
+
         /// Drop the backing descriptor on close (Task 1.14 mechanism cleanup;
         /// plan 1.18 extends this alongside flush/fsync/link/symlink).
         fn release(
@@ -828,8 +841,33 @@ mod platform {
             _flush: bool,
             reply: ReplyEmpty,
         ) {
-            self.open_files.lock().expect("open files").remove(&fh.0);
+            let _ = self.release_fh(fh.0);
             reply.ok();
+        }
+
+        /// Task 1.18 — advisory flush on close; always succeeds (see
+        /// [`InterceptFs::flush_fh`]).
+        fn flush(
+            &self,
+            _req: &Request,
+            _ino: INodeNo,
+            fh: FileHandle,
+            _lock: LockOwner,
+            reply: ReplyEmpty,
+        ) {
+            self.op_flush(fh.0, reply);
+        }
+
+        /// Task 1.18 — sync file contents for durability.
+        fn fsync(
+            &self,
+            _req: &Request,
+            ino: INodeNo,
+            fh: FileHandle,
+            _datasync: bool,
+            reply: ReplyEmpty,
+        ) {
+            self.op_fsync(ino.0, fh.0, reply);
         }
 
         fn write(
@@ -1050,6 +1088,30 @@ mod platform {
                 }
                 Err(err) => reply.error(Self::io_errno(err)),
             }
+        }
+
+        /// Task 1.18 — create a symlink; a relative target is stored verbatim.
+        fn symlink(
+            &self,
+            _req: &Request,
+            parent: INodeNo,
+            link_name: &OsStr,
+            target: &Path,
+            reply: ReplyEntry,
+        ) {
+            self.op_symlink(parent.0, link_name, target, reply);
+        }
+
+        /// Task 1.18 — create a hard link to an existing inode.
+        fn link(
+            &self,
+            _req: &Request,
+            ino: INodeNo,
+            newparent: INodeNo,
+            newname: &OsStr,
+            reply: ReplyEntry,
+        ) {
+            self.op_link(ino.0, newparent.0, newname, reply);
         }
 
         fn unlink(&self, _req: &Request, parent: INodeNo, name: &OsStr, reply: ReplyEmpty) {
@@ -1325,6 +1387,63 @@ mod platform {
             reply: ReplyEmpty,
         ) {
             self.0.rename(req, parent, name, newparent, newname, flags, reply);
+        }
+        // Task 1.18 — forward the previously-missing ops (and release) so a
+        // registry/spawn-mounted session matches the InterceptFs behaviour.
+        fn readlink(&self, req: &Request, ino: INodeNo, reply: ReplyData) {
+            self.0.readlink(req, ino, reply);
+        }
+        fn symlink(
+            &self,
+            req: &Request,
+            parent: INodeNo,
+            link_name: &OsStr,
+            target: &Path,
+            reply: ReplyEntry,
+        ) {
+            self.0.symlink(req, parent, link_name, target, reply);
+        }
+        fn link(
+            &self,
+            req: &Request,
+            ino: INodeNo,
+            newparent: INodeNo,
+            newname: &OsStr,
+            reply: ReplyEntry,
+        ) {
+            self.0.link(req, ino, newparent, newname, reply);
+        }
+        fn flush(
+            &self,
+            req: &Request,
+            ino: INodeNo,
+            fh: FileHandle,
+            lock: LockOwner,
+            reply: ReplyEmpty,
+        ) {
+            self.0.flush(req, ino, fh, lock, reply);
+        }
+        fn fsync(
+            &self,
+            req: &Request,
+            ino: INodeNo,
+            fh: FileHandle,
+            datasync: bool,
+            reply: ReplyEmpty,
+        ) {
+            self.0.fsync(req, ino, fh, datasync, reply);
+        }
+        fn release(
+            &self,
+            req: &Request,
+            ino: INodeNo,
+            fh: FileHandle,
+            flags: OpenFlags,
+            lock: Option<LockOwner>,
+            flush: bool,
+            reply: ReplyEmpty,
+        ) {
+            self.0.release(req, ino, fh, flags, lock, flush, reply);
         }
     }
 }
