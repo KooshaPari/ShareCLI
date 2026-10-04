@@ -123,10 +123,11 @@ use std::path::Path;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 mod platform {
     use std::{
+        collections::HashMap,
         ffi::OsStr,
-        fs::{self, OpenOptions},
+        fs::{self, File, OpenOptions},
         io::{Seek, SeekFrom, Write as IoWrite},
-        os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
+        os::unix::fs::{FileExt, MetadataExt, OpenOptionsExt, PermissionsExt},
         path::{Path, PathBuf},
         sync::Mutex,
         time::{Duration, SystemTime},
@@ -134,8 +135,9 @@ mod platform {
 
     use fuser::{
         BsdFileFlags, Errno, FileAttr, FileHandle, FileType, Filesystem, FopenFlags, Generation,
-        INodeNo, OpenFlags, RenameFlags, ReplyAttr, ReplyCreate, ReplyData, ReplyDirectory,
-        ReplyEmpty, ReplyEntry, ReplyOpen, ReplyWrite, Request, TimeOrNow, WriteFlags,
+        INodeNo, LockOwner, OpenFlags, RenameFlags, ReplyAttr, ReplyCreate, ReplyData,
+        ReplyDirectory, ReplyEmpty, ReplyEntry, ReplyOpen, ReplyWrite, Request, TimeOrNow,
+        WriteFlags,
     };
     use tracing::{debug, trace};
 
@@ -164,6 +166,34 @@ mod platform {
         read_cache: Mutex<ReadContentCache>,
         neg_dentry: Mutex<NegativeDentryCache>,
         cow: AgentCowStore,
+        /// Live backing descriptors keyed by FUSE file handle (== inode).
+        ///
+        /// Task 1.14 — holding the descriptor (not just the path) keeps an
+        /// unlinked-but-open file readable, per POSIX.
+        open_files: Mutex<HashMap<u64, OpenHandle>>,
+    }
+
+    /// A live backing-file handle: the path captured at `open` plus the
+    /// descriptor that survives an unlink of the name.
+    #[derive(Debug)]
+    struct OpenHandle {
+        path: PathBuf,
+        file: File,
+    }
+
+    /// Positional read from a held descriptor (`pread`; offset is absolute).
+    fn read_at(file: &File, offset: u64, size: u32) -> std::io::Result<Vec<u8>> {
+        let mut buf = vec![0u8; size as usize];
+        let mut filled = 0usize;
+        while filled < buf.len() {
+            let n = file.read_at(&mut buf[filled..], offset + filled as u64)?;
+            if n == 0 {
+                break;
+            }
+            filled += n;
+        }
+        buf.truncate(filled);
+        Ok(buf)
     }
 
     impl InterceptFs {
@@ -205,6 +235,7 @@ mod platform {
                 read_cache: Mutex::new(ReadContentCache::new()),
                 neg_dentry: Mutex::new(NegativeDentryCache::with_ttl(DEFAULT_NEG_TTL)),
                 cow: AgentCowStore::new(cow_root, default_agent, opts.serialize),
+                open_files: Mutex::new(HashMap::new()),
             }
         }
 
@@ -296,6 +327,70 @@ mod platform {
         pub fn read_coalesced_rel(&self, rel: &Path) -> std::io::Result<Vec<u8>> {
             let abs = abs_under(&self.backing, rel);
             self.read_cache.lock().expect("read cache lock").read_coalesced(&abs)
+        }
+
+        /// Open `rel` and register a live handle that survives an unlink
+        /// (Task 1.14). Returns the FUSE file handle (the inode number), which
+        /// is also the `ino` used by [`Self::read_at_handle`].
+        pub fn open_rel(&self, rel: &Path) -> std::io::Result<u64> {
+            let path = abs_under(&self.backing, rel);
+            let file = File::open(&path)?;
+            let ino = self.inodes.lock().expect("inode map lock").alloc_or_get(rel.to_path_buf());
+            self.open_files.lock().expect("open files lock").insert(ino, OpenHandle { path, file });
+            Ok(ino)
+        }
+
+        /// Read `size` bytes at absolute `offset` from the handle `fh`.
+        ///
+        /// A coalesced on-disk read is used while the captured name still
+        /// denotes the same inode; once the name is unlinked or replaced
+        /// (rename-over-open) the held descriptor is read instead, so an open
+        /// handle keeps returning its original content (POSIX). An unknown
+        /// handle falls back to the inode map, preserving the pre-1.14 path.
+        pub fn read_at_handle(&self, fh: u64, offset: u64, size: u32) -> std::io::Result<Vec<u8>> {
+            // If the live handle no longer matches the path's inode, the held
+            // descriptor wins (unlink, or a rename replaced the name).
+            {
+                let guard = self.open_files.lock().expect("open files lock");
+                if let Some(handle) = guard.get(&fh) {
+                    let still_current = match (fs::metadata(&handle.path), handle.file.metadata()) {
+                        (Ok(current), Ok(held)) => current.ino() == held.ino(),
+                        _ => false,
+                    };
+                    if !still_current {
+                        return read_at(&handle.file, offset, size);
+                    }
+                }
+            }
+            let handle_path = {
+                let guard = self.open_files.lock().expect("open files lock");
+                guard.get(&fh).map(|h| h.path.clone())
+            };
+            let path = match handle_path {
+                Some(path) => path,
+                None => {
+                    match self.inodes.lock().expect("inode map lock").abs_path(&self.backing, fh) {
+                        Some(path) => path,
+                        None => return Err(std::io::Error::from(std::io::ErrorKind::NotFound)),
+                    }
+                }
+            };
+            let cached = {
+                let mut cache = self.read_cache.lock().expect("read cache lock");
+                cache.read_slice(&path, offset, size)
+            };
+            match cached {
+                Ok(buf) => Ok(buf),
+                // Race: the name vanished after the identity check; held fd wins.
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                    let guard = self.open_files.lock().expect("open files lock");
+                    match guard.get(&fh) {
+                        Some(handle) => read_at(&handle.file, offset, size),
+                        None => Err(err),
+                    }
+                }
+                Err(err) => Err(err),
+            }
         }
 
         /// Stage CoW bytes for a relative path (no mount; FR-009 helpers).
@@ -631,15 +726,28 @@ mod platform {
         }
 
         fn open(&self, _req: &Request, ino: INodeNo, _flags: OpenFlags, reply: ReplyOpen) {
-            let map = self.inodes.lock().expect("inode map");
-            let Some(path) = map.abs_path(&self.backing, ino.0) else {
-                reply.error(Errno::ENOENT);
-                return;
+            let path = {
+                let map = self.inodes.lock().expect("inode map");
+                match map.abs_path(&self.backing, ino.0) {
+                    Some(path) => path,
+                    None => {
+                        reply.error(Errno::ENOENT);
+                        return;
+                    }
+                }
             };
             match fs::metadata(&path) {
-                Ok(meta) if meta.is_file() => {
-                    reply.opened(FileHandle(ino.0), FopenFlags::empty());
-                }
+                Ok(meta) if meta.is_file() => match File::open(&path) {
+                    Ok(file) => {
+                        // Task 1.14 — hold the descriptor so reads survive an unlink.
+                        self.open_files
+                            .lock()
+                            .expect("open files")
+                            .insert(ino.0, OpenHandle { path, file });
+                        reply.opened(FileHandle(ino.0), FopenFlags::empty());
+                    }
+                    Err(err) => reply.error(Self::io_errno(err)),
+                },
                 Ok(_) => reply.error(Errno::EISDIR),
                 Err(err) => reply.error(Self::io_errno(err)),
             }
@@ -649,7 +757,7 @@ mod platform {
             &self,
             _req: &Request,
             ino: INodeNo,
-            _fh: FileHandle,
+            fh: FileHandle,
             offset: u64,
             size: u32,
             _flags: OpenFlags,
@@ -657,20 +765,29 @@ mod platform {
             reply: ReplyData,
         ) {
             debug!(?ino, offset, size, "read");
-            let path = {
-                let map = self.inodes.lock().expect("inode map");
-                match map.abs_path(&self.backing, ino.0) {
-                    Some(p) => p,
-                    None => {
-                        reply.error(Errno::ENOENT);
-                        return;
-                    }
-                }
-            };
-            match self.read_cache.lock().expect("read cache").read_slice(&path, offset, size) {
+            // Task 1.14 — read through the open handle so an unlinked-but-open
+            // file stays readable; fall back to the inode number when no fh.
+            let key = if fh.0 == 0 { ino.0 } else { fh.0 };
+            match self.read_at_handle(key, offset, size) {
                 Ok(buf) => reply.data(&buf),
                 Err(err) => reply.error(Self::io_errno(err)),
             }
+        }
+
+        /// Drop the backing descriptor on close (Task 1.14 mechanism cleanup;
+        /// plan 1.18 extends this alongside flush/fsync/link/symlink).
+        fn release(
+            &self,
+            _req: &Request,
+            _ino: INodeNo,
+            fh: FileHandle,
+            _flags: OpenFlags,
+            _lock: Option<LockOwner>,
+            _flush: bool,
+            reply: ReplyEmpty,
+        ) {
+            self.open_files.lock().expect("open files").remove(&fh.0);
+            reply.ok();
         }
 
         fn write(
