@@ -19,7 +19,15 @@ use tokio::sync::RwLock;
 
 use crate::audit_log;
 use crate::config;
+use crate::runtime_cache::{CachedProcessMetrics, MonotonicClock};
 use crate::spawn_policy::{is_build_harness, SpawnPolicy};
+
+/// Shared per-process metric cache — 2 s TTL, monotonic clock.
+fn cached_metrics() -> &'static CachedProcessMetrics<MonotonicClock> {
+    use std::sync::OnceLock;
+    static INSTANCE: OnceLock<CachedProcessMetrics<MonotonicClock>> = OnceLock::new();
+    INSTANCE.get_or_init(|| CachedProcessMetrics::new(Duration::from_secs(2)))
+}
 
 fn spawn_capability(cmd: &str, harness: &Option<String>) -> String {
     harness.clone().unwrap_or_else(|| cmd.to_string())
@@ -170,8 +178,8 @@ impl ProcessInfo {
             let du = p.disk_usage();
             (Some(du.total_read_bytes), Some(du.total_written_bytes))
         };
-        let fd_count = count_open_fds(pid.as_u32());
-        let thread_count = count_threads(pid.as_u32());
+        let fd_count = cached_metrics().fetch_fd_count(pid.as_u32(), count_open_fds);
+        let thread_count = cached_metrics().fetch_thread_count(pid.as_u32(), count_threads);
 
         #[cfg(not(target_os = "linux"))]
         let (disk_read_bytes, disk_write_bytes): (Option<u64>, Option<u64>) = (None, None);
@@ -199,7 +207,7 @@ impl ProcessInfo {
 
 /// Count descriptors without crossing the runtime/IPC layer boundary.
 /// Linux uses `/proc` first; macOS and other Unix systems fall back to lsof.
-fn count_open_fds(pid: u32) -> Option<u32> {
+pub fn count_open_fds(pid: u32) -> Option<u32> {
     #[cfg(target_os = "linux")]
     if let Ok(entries) = std::fs::read_dir(format!("/proc/{pid}/fd")) {
         return Some(entries.filter_map(std::result::Result::ok).count() as u32);

@@ -39,6 +39,7 @@ pub mod proc_table;
 pub mod progress;
 pub mod pyroscope_stub;
 pub mod runtime;
+pub mod runtime_cache;
 pub mod scheduler;
 pub mod serve_auth;
 pub mod serve_lock;
