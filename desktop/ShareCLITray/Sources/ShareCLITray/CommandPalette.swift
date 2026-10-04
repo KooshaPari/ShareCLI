@@ -2,7 +2,8 @@
 ///
 /// SwiftUI sheet that overlays a fuzzy-search list of all navigable
 /// destinations and a curated set of actions (kill all, export, etc).
-/// Submits on Enter; Escape closes via .onKeyPress.
+/// Submits on Enter; Escape closes via .onExitCommand; Up/Down move the
+/// highlight; Tab is trapped inside the palette (PLAN.md:220-222).
 import SwiftUI
 import ShareCLICore
 
@@ -15,6 +16,48 @@ struct CommandPalette: View {
     @State private var query: String = ""
     @State private var filtered: [CommandEntry] = []
     @State private var selectedIndex: Int = 0
+    @FocusState private var searchFocused: Bool
+
+    // MARK: - Keyboard contract (PLAN.md:220-222)
+
+    /// What a key press means to the palette. Kept as a pure mapping so the
+    /// keyboard behaviour is unit-testable independently of SwiftUI.
+    enum KeyIntent: Equatable {
+        case moveUp
+        case moveDown
+        case submit
+        case dismiss
+        case trapTab
+        case passThrough
+    }
+
+    /// The palette is a modal surface: nothing behind it may be reached while
+    /// it is open, including via assistive technology.
+    static let modalAccessibilityTraits: AccessibilityTraits = [.isModal]
+
+    static func intent(for key: KeyEquivalent) -> KeyIntent {
+        switch key {
+        case .upArrow: return .moveUp
+        case .downArrow: return .moveDown
+        case .return: return .submit
+        case .escape: return .dismiss
+        case .tab: return .trapTab
+        default: return .passThrough
+        }
+    }
+
+    /// Highlight arithmetic: clamped, never wrapping, safe on an empty list.
+    static func moveUp(from index: Int) -> Int { max(0, index - 1) }
+
+    static func moveDown(from index: Int, count: Int) -> Int {
+        guard count > 0 else { return 0 }
+        return min(count - 1, index + 1)
+    }
+
+    static func resolvedIndex(_ index: Int, count: Int) -> Int {
+        guard count > 0 else { return 0 }
+        return min(max(0, index), count - 1)
+    }
 
     enum CommandAction: Hashable {
         case refreshAll
@@ -86,6 +129,8 @@ struct CommandPalette: View {
                     TextField("Search pages + actions…", text: $query)
                         .textFieldStyle(.plain)
                         .font(.title3)
+                        .focused($searchFocused)
+                        .onSubmit { submitHighlighted() }
                     if !query.isEmpty {
                         Button {
                             query = ""
@@ -158,10 +203,17 @@ struct CommandPalette: View {
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .shadow(color: .black.opacity(0.30), radius: 24, y: 8)
             .onExitCommand { isVisible = false }
+            .onKeyPress(.upArrow) { handle(Self.intent(for: .upArrow)) }
+            .onKeyPress(.downArrow) { handle(Self.intent(for: .downArrow)) }
+            .onKeyPress(.tab) { handle(Self.intent(for: .tab)) }
+            .accessibilityElement(children: .contain)
+            .accessibilityAddTraits(Self.modalAccessibilityTraits)
         }
         .transition(.scale(scale: 0.96).combined(with: .opacity))
         .onAppear {
             filtered = allEntries
+            selectedIndex = 0
+            searchFocused = true
         }
         .onChange(of: query) { _, newValue in
             let q = newValue.lowercased().trimmingCharacters(in: .whitespaces)
@@ -176,6 +228,33 @@ struct CommandPalette: View {
             }
             selectedIndex = 0
         }
+    }
+
+    /// Routes a key intent to the palette. Only the keys named by
+    /// `intent(for:)` are intercepted; everything else falls through to the
+    /// focused text field.
+    private func handle(_ intent: KeyIntent) -> KeyPress.Result {
+        switch intent {
+        case .moveUp:
+            selectedIndex = Self.moveUp(from: selectedIndex)
+        case .moveDown:
+            selectedIndex = Self.moveDown(from: selectedIndex, count: filtered.count)
+        case .submit:
+            submitHighlighted()
+        case .dismiss:
+            isVisible = false
+        case .trapTab:
+            searchFocused = true
+        case .passThrough:
+            return .ignored
+        }
+        return .handled
+    }
+
+    private func submitHighlighted() {
+        let idx = Self.resolvedIndex(selectedIndex, count: filtered.count)
+        guard filtered.indices.contains(idx) else { return }
+        submit(filtered[idx])
     }
 
     private func submit(_ entry: CommandEntry) {

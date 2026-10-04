@@ -56,5 +56,15 @@ let package = Package(
             dependencies: ["ShareCLICore"],
             path: "Tests/ShareCLICoreTests"
         ),
+
+        // View-level tests for the tray UI (keyboard nav, focus trap,
+        // accessibility traits). Imports the executable target directly:
+        // SwiftPM builds `@main`-based executable targets as libraries for
+        // test targets. Headless, like ShareCLICoreTests.
+        .testTarget(
+            name: "ShareCLITrayTests",
+            dependencies: ["ShareCLITray"],
+            path: "Tests/ShareCLITrayTests"
+        ),
     ]
 )
