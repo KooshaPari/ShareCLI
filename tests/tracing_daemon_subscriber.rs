@@ -1,3 +1,6 @@
+//! FR: NFR-002 (Observability: structured logs via tracing, gated on
+//! --verbose/--quiet)
+//!
 //! Audit task 1.11 (lane 5) — daemonized (non-TTY) tracing subscriber.
 //!
 //! PLAN: `docs/audit/2026-09-20/PLAN.md` lines 183-185 —

@@ -1,7 +1,10 @@
+//! FR: NFR-003 (error handling)
+//!
 //! Audit task 1.10 — `src/error.rs` CLI exit-code taxonomy (PLAN lines 179-181).
 //!
-//! The plan text names no FR/AC id for task 1.10, so the FR reference here is
-//! intentionally absent rather than invented: FR UNKNOWN.
+//! The plan text names no FR/AC id for task 1.10, so the annotation above
+//! cites the FR.md requirement these assertions verify (NFR-003, Error
+//! Handling) rather than inventing a task-level id: FR UNKNOWN for the task.
 //!
 //! Contract under test (docs/audit/2026-09-20/PLAN.md:180):
 //! distinct `UserInput → 64`, `NotFound → 2`, `Internal → 1`.

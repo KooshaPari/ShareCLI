@@ -1,8 +1,13 @@
+//! FR: FR-001 (stop-miss error reporting), NFR-003 (error handling)
+//!
 //! Audit task 1.10 — end-to-end CLI exit codes and single-copy error output.
 //!
 //! PLAN.md lines 179-181: distinct `UserInput → 64`, `NotFound → 2`,
-//! `Internal → 1`; stop double-printing. The plan names no FR/AC id for this
-//! task, so tests carry no invented FR reference: FR UNKNOWN.
+//! `Internal → 1`; stop double-printing. The plan itself names no FR/AC id for
+//! this task, so the annotation above cites the FR.md requirements these
+//! assertions actually verify instead of inventing a task-level id: FR-001
+//! (Managed Process Lifecycle — `stop` must report an unmanaged pid as an
+//! error) and NFR-003 (Error Handling).
 //!
 //! These run the real binary (`CARGO_BIN_EXE_sharecli`) with a scratch `HOME`
 //! so no user config or log file is read or written.
