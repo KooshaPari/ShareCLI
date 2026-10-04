@@ -385,6 +385,7 @@ struct AllProcessesView: View {
     @ObservedObject var state: AppState
 
     @State private var filterText: String = ""
+    @FocusState private var filterFocused: Bool
     @State private var minRSS: Double = 0  // MB threshold
     @State private var sortOrder: [KeyPathComparator<ProcessSummary>] = [
         KeyPathComparator(\ProcessSummary.memory_mb, order: .reverse)
@@ -583,6 +584,7 @@ struct AllProcessesView: View {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
             TextField("Filter by name / project / harness / pid", text: $filterText)
                 .textFieldStyle(.plain)
+                .filterFieldFocus($filterFocused)
             if !filterText.isEmpty {
                 Button { filterText = "" } label: {
                     Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)

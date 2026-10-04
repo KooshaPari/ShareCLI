@@ -23,6 +23,7 @@ struct AgentsPage: View {
     @AppStorage("agents.selectedFamily") private var selectedFamilyFilter: String = "all"
     @AppStorage("agents.selectedPID") private var selectedPID: Int = 0
     @State private var filterText: String = ""
+    @FocusState private var filterFocused: Bool
     @State private var sortOrder: [KeyPathComparator<AgentProcRow>] = [
         KeyPathComparator(\AgentProcRow.mem_rss_bytes, order: .reverse)
     ]
@@ -176,6 +177,7 @@ struct AgentsPage: View {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
             TextField("Filter by comm / family / state / PID", text: $filterText)
                 .textFieldStyle(.plain)
+                .filterFieldFocus($filterFocused)
             if !filterText.isEmpty {
                 Button {
                     filterText = ""

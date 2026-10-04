@@ -27,6 +27,7 @@ struct LogsPage: View {
     @AppStorage("logs.tailpaused") var tailPaused: Bool = false
     @AppStorage("logs.filterText") var filterText: String = ""
     @AppStorage("logs.filterLevels") var filterLevelsCSV: String = "DEBUG,INFO,WARN,ERROR"
+    @FocusState private var filterFocused: Bool
     @State private var lines: [LogLine] = []
     @State private var streamError: String? = nil
     @State private var lastRefresh: Date = .distantPast
@@ -83,6 +84,7 @@ struct LogsPage: View {
                 LabeledContent("Filter text") {
                     TextField("substring…", text: $filterText)
                         .textFieldStyle(.roundedBorder)
+                        .filterFieldFocus($filterFocused)
                 }
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Levels")
