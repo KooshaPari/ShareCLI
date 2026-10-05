@@ -37,8 +37,15 @@ let package = Package(
                 "CShareCLIFFI",
                 .product(name: "Sparkle", package: "Sparkle"),
             ],
-            path: "Sources/ShareCLITray"
+            path: "Sources/ShareCLITray",
             // Link libsharecli_ffi via desktop/build.sh -Xlinker flags.
+            // Task 1.29: CTA colour tokens (AccentColor/AccentPrimary/
+            // SyncViolet/PulseGreen) ship as an asset catalog so
+            // NSColor(named:) resolves at runtime; CTATokens.swift falls
+            // back to the tokens.css literals when unbundled (headless).
+            resources: [
+                .process("Assets.xcassets"),
+            ],
         ),
 
         // Shared core (IPC client, data models)

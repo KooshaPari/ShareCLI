@@ -512,7 +512,7 @@ struct AgentsPage: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            .tint(.red)
+            .tint(CTAButtonStyle.tint(for: .destructive))
         }
     }
 

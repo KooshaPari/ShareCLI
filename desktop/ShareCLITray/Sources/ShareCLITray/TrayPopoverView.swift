@@ -240,6 +240,7 @@ struct TrayPopoverView: View {
                 onOpenDashboard()
             }
             .buttonStyle(.borderedProminent)
+            .tint(Color.ctaPrimary)
             .controlSize(.small)
 
             Spacer()
