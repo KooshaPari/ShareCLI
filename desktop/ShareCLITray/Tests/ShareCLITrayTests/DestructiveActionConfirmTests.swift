@@ -119,7 +119,8 @@ final class DestructiveActionConfirmTests: XCTestCase {
     }
 
     func testProcessesPageKillButtonsAreDestructiveAndConfirmed() throws {
-        let text = try ownedSource("ProcessesPage.swift")
+        // After task 1.28 decomposition, bulk kill lives in AllProcessesView.swift
+        let text = try ownedSource("AllProcessesView.swift")
         XCTAssertTrue(text.contains("Button(role: .destructive)"),
                       "bulk kill buttons must declare role: .destructive")
         XCTAssertTrue(text.contains(".confirmationDialog("),

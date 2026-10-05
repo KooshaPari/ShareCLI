@@ -112,11 +112,12 @@ final class TrayRetryActionTests: XCTestCase {
             .appendingPathComponent("Sources/ShareCLITray")
 
         // Each page must reach the shared copy model rather than a local string.
+        // After task 1.28 decomposition, ConfigPage subpages moved to ConfigTable.
         let owned = [
             "HealthPage.swift",
             "PoolPage.swift",
             "PoolEffectivenessPage.swift",
-            "ConfigPage.swift",
+            "ConfigTable.swift",
             "LogsPage.swift",
         ]
         for name in owned {
