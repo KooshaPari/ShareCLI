@@ -24,6 +24,10 @@ struct ProjectGroupCard: View {
     let keyLabel: String
     let kill: (UInt32) -> Void
     @State private var expanded = true
+    /// Per-row kill confirmation gate (closure batch A2 followup). Routes
+    /// the inline `ProcessRowInline` kill button through a confirmation
+    /// dialog so the destructive action cannot fire silently.
+    @State private var killGate = DestructiveKillGate()
     /// Reduce motion (PLAN 1.23): gates the expand/collapse animation.
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -72,7 +76,7 @@ struct ProjectGroupCard: View {
                 rssBarChart
                 VStack(spacing: 4) {
                     ForEach(group.members.prefix(5), id: \.pid) { p in
-                        ProcessRowInline(p: p, kill: kill)
+                        ProcessRowInline(p: p, kill: { pid in killGate.request(.selected([pid])) })
                     }
                     if group.members.count > 5 {
                         Text("+\(group.members.count - 5) more (sorted by RSS desc)")
@@ -86,6 +90,41 @@ struct ProjectGroupCard: View {
         .padding(12)
         .background(.quaternary)
         .clipShape(RoundedRectangle(cornerRadius: 10))
+        .confirmationDialog(
+            killGate.pending?.confirmTitle ?? "Confirm kill",
+            isPresented: Binding(
+                get: { killGate.isConfirming },
+                set: { if !$0 { killGate.decline() } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let scope = killGate.pending {
+                Button(scope.confirmButtonLabel, role: .destructive) {
+                    performKill(killGate.confirm())
+                }
+                Button(DestructiveKillGate.cancelLabel, role: .cancel) {
+                    killGate.decline()
+                }
+            }
+        } message: {
+            Text(killGate.pending?.confirmMessage ?? "")
+        }
+    }
+
+    /// Executes the kill for the given scope. `nil` (nothing confirmed) is a
+    /// no-op so the inline row kill button can never fire without the dialog.
+    private func performKill(_ scope: KillScope?) {
+        guard let scope else { return }
+        switch scope {
+        case .selected(let pids):
+            for pid in pids {
+                kill(pid)
+            }
+        case .all:
+            for p in group.members {
+                kill(p.pid)
+            }
+        }
     }
 
     private var rssBarChart: some View {

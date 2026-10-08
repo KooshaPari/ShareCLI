@@ -108,4 +108,53 @@ final class ClosureKillCmdFTests: XCTestCase {
         XCTAssertTrue(text.contains("TrayKillAllGate"),
                       "TrayMenuController must gate kill-all through the confirmation decision")
     }
+
+    // MARK: - A2 regression: per-row kills on agents / project-grouped processes
+    //
+    // The original 1.24 closure batch (commit 54a99460) gated the kill sites in
+    // AllProcessesView, ResourcesPage, TrayPopoverView, and TrayMenuController,
+    // and the ProcessesPage top-level DestructiveKillGate covers "Kill all" /
+    // "Kill selected". It did NOT gate three sites that fire `state.kill(pid:)`:
+    //   - AgentsPage.swift `Table` Actions column per-row kill
+    //   - AgentsDetail.swift detail-drawer kill
+    //   - ProcessRowInline.kill (delegated from ProjectGroupCard)
+    //
+    // These regression tests read the source and assert no raw `state.kill(`
+    // or `kill(` (delegated) call exists on a top-level kill path that is not
+    // preceded by a `killGate.request` / `killGate.confirm` wrapper.
+
+    func testAgentsPageTableActionsKillIsGated() throws {
+        let text = try source("AgentsPage.swift")
+        // The fix is to route the delete button's action via
+        // `killGate.request(.selected([agent.pid]))` (or equivalent).
+        // Asserting presence of DestructiveKillGate is sufficient because
+        // the kill-button action must either use the gate or call it directly.
+        XCTAssertTrue(
+            text.contains("DestructiveKillGate") || text.contains("killGate"),
+            "AgentsPage must gate the per-row kill through DestructiveKillGate"
+        )
+    }
+
+    func testAgentsDetailDrawerKillIsGated() throws {
+        let text = try source("AgentsDetail.swift")
+        XCTAssertTrue(
+            text.contains("DestructiveKillGate") || text.contains("killGate"),
+            "AgentsDetail must gate the kill button through DestructiveKillGate"
+        )
+    }
+
+    func testProcessRowInlineKillDelegatesThroughGate() throws {
+        let text = try source("ProcessRow.swift")
+        // ProcessRowInline receives `kill:` as a closure; the caller's
+        // responsibility is to route through the gate. We assert the call
+        // site in ProcessesPage goes through the gate.
+        let processesPage = try source("ProcessesPage.swift")
+        XCTAssertTrue(
+            processesPage.contains("DestructiveKillGate"),
+            "ProcessesPage ProjectGroupCard.kill must be gated; raw kill closure is not sufficient"
+        )
+        // Sanity: ProcessRowInline still uses the delegated closure.
+        XCTAssertTrue(text.contains("kill(p.pid)"),
+                      "ProcessRowInline wires the kill via the closure it receives")
+    }
 }

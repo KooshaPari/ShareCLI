@@ -15,6 +15,11 @@ struct AgentsDetailView: View {
     let agent: AgentProcRow
     @ObservedObject var state: AppState
 
+    /// Per-row kill confirmation gate (closure batch A2 followup). Routes
+    /// the detail-drawer kill button through a confirmation dialog so the
+    /// destructive action cannot fire silently.
+    @State private var killGate = DestructiveKillGate()
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -27,6 +32,39 @@ struct AgentsDetailView: View {
             .padding(16)
         }
         .background(.background)
+        .confirmationDialog(
+            killGate.pending?.confirmTitle ?? "Confirm kill",
+            isPresented: Binding(
+                get: { killGate.isConfirming },
+                set: { if !$0 { killGate.decline() } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let scope = killGate.pending {
+                Button(scope.confirmButtonLabel, role: .destructive) {
+                    performKill(killGate.confirm())
+                }
+                Button(DestructiveKillGate.cancelLabel, role: .cancel) {
+                    killGate.decline()
+                }
+            }
+        } message: {
+            Text(killGate.pending?.confirmMessage ?? "")
+        }
+    }
+
+    /// Executes the kill for the given scope. `nil` (nothing confirmed) is a
+    /// no-op so the detail-drawer kill button can never fire without the dialog.
+    private func performKill(_ scope: KillScope?) {
+        guard let scope else { return }
+        switch scope {
+        case .selected(let pids):
+            for pid in pids {
+                Task { await state.kill(pid: pid) }
+            }
+        case .all:
+            Task { await state.kill(pid: agent.pid) }
+        }
     }
 
     // MARK: - Header
@@ -245,7 +283,7 @@ struct AgentsDetailView: View {
     private var detailActions: some View {
         VStack(alignment: .leading, spacing: 6) {
             Button {
-                Task { await state.kill(pid: agent.pid) }
+                killGate.request(.selected([agent.pid]))
             } label: {
                 Label("Kill PID \(agent.pid)", systemImage: "xmark.octagon.fill")
                     .frame(maxWidth: .infinity)

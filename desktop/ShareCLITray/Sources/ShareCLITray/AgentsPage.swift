@@ -31,6 +31,12 @@ struct AgentsPage: View {
         KeyPathComparator(\AgentProcRow.mem_rss_bytes, order: .reverse)
     ]
 
+    /// Per-row kill confirmation gate (closure batch A2 followup). The Table
+    /// `Actions` column kill button routes through this gate rather than firing
+    /// `state.kill(pid:)` directly, so the user always sees a confirmation
+    /// dialog before a destructive action runs.
+    @State private var killGate = DestructiveKillGate()
+
     private var allAgents: [AgentProcRow] {
         state.statusSnapshot?.agents ?? []
     }
@@ -272,7 +278,7 @@ struct AgentsPage: View {
 
             TableColumn("Actions") { agent in
                 Button {
-                    Task { await state.kill(pid: agent.pid) }
+                    killGate.request(.selected([agent.pid]))
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.red)
@@ -281,6 +287,41 @@ struct AgentsPage: View {
                 .help("Kill PID \(agent.pid) (\(agent.comm))")
             }
             .width(40)
+        }
+        .confirmationDialog(
+            killGate.pending?.confirmTitle ?? "Confirm kill",
+            isPresented: Binding(
+                get: { killGate.isConfirming },
+                set: { if !$0 { killGate.decline() } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let scope = killGate.pending {
+                Button(scope.confirmButtonLabel, role: .destructive) {
+                    performKill(killGate.confirm())
+                }
+                Button(DestructiveKillGate.cancelLabel, role: .cancel) {
+                    killGate.decline()
+                }
+            }
+        } message: {
+            Text(killGate.pending?.confirmMessage ?? "")
+        }
+    }
+
+    /// Executes the kill for the given scope. `nil` (nothing confirmed) is a
+    /// no-op so a per-row delete button can never fire without the dialog.
+    private func performKill(_ scope: KillScope?) {
+        guard let scope else { return }
+        switch scope {
+        case .selected(let pids):
+            for pid in pids {
+                Task { await state.kill(pid: pid) }
+            }
+        case .all:
+            for agent in allAgents {
+                Task { await state.kill(pid: agent.pid) }
+            }
         }
     }
 
