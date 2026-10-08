@@ -773,8 +773,7 @@ async fn stop_via_ipc(
 }
 
 pub(crate) async fn build_status_json() -> Result<StatusJson> {
-    let pool = ProcessPool::new();
-    let processes: Vec<ProcessInfo> = pool.list().await;
+    let processes = supervised_processes(None, None).await?;
     let snapshot = proc::AgentProcSnapshot::capture()?;
     Ok(StatusJson {
         total_processes: processes.len(),
@@ -817,7 +816,7 @@ async fn render_status_once(verbose: bool, json: bool, csv: bool, ndjson: bool) 
         let status_json = build_status_json().await?;
         let summary: sharecli_fleet::StatusOperatorPanel = status_json.clone().into();
         let pool = ProcessPool::new();
-        let processes: Vec<ProcessInfo> = pool.list().await;
+        let processes = supervised_processes(None, None).await?;
         let mut by_harness: std::collections::HashMap<String, (usize, u64)> =
             std::collections::HashMap::new();
         for proc in &processes {
@@ -841,7 +840,7 @@ async fn render_status_once(verbose: bool, json: bool, csv: bool, ndjson: bool) 
     }
 
     let pool = ProcessPool::new();
-    let processes: Vec<ProcessInfo> = pool.list().await;
+    let processes = supervised_processes(None, None).await?;
 
     let mut by_harness: std::collections::HashMap<&str, (usize, u64)> =
         std::collections::HashMap::new();
