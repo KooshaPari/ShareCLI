@@ -6,6 +6,8 @@ pub mod fuse;
 pub mod history;
 pub mod mesh;
 pub mod proc;
+#[cfg(unix)]
+pub mod process_ipc;
 pub mod render_csv;
 pub mod report;
 pub mod serve;
@@ -585,29 +587,37 @@ pub async fn start(project: &str, harness: &str, cwd: Option<&str>, args: &[Stri
         anyhow::bail!("Project path does not exist: {:?}", project_path);
     }
 
-    // Apply the spawn-policy throttle when the harness is a build harness (cargo/rustc/…).
-    // The policy is constructed from the global config's [spawn_policy] section.
-    let pool = {
-        let policy = SpawnPolicy::new(cfg.spawn_policy.clone());
-        ProcessPool::with_spawn_policy(Arc::new(policy))
-    };
-    println!("Starting {} harness for project '{}'...", harness, project);
+    #[cfg(unix)]
+    {
+        // The resident IPC daemon must own the child so subsequent CLI
+        // invocations can inspect and terminate it. Never fall back to a
+        // short-lived, disconnected ProcessPool.
+        let pid = process_ipc::spawn(project, harness, &project_path, args).await?;
+        println!("Started process {pid} ({harness}) for project '{project}'");
+        println!("Working directory: {:?}", project_path);
+        Ok(())
+    }
 
-    let info = pool
-        .spawn(
-            harness,
-            args,
-            Some(project_path.clone()),
-            Some(project.to_string()),
-            Some(harness.to_string()),
-        )
-        .await?;
-
-    println!("Started process {} ({})", info.pid, info.name);
-    println!("Working directory: {:?}", project_path);
-
-    Ok(())
-}
+    #[cfg(not(unix))]
+    {
+        let pool = {
+            let policy = SpawnPolicy::new(cfg.spawn_policy.clone());
+            ProcessPool::with_spawn_policy(Arc::new(policy))
+        };
+        println!("Starting {} harness for project '{}'...", harness, project);
+        let info = pool
+            .spawn(
+                harness,
+                args,
+                Some(project_path.clone()),
+                Some(project.to_string()),
+                Some(harness.to_string()),
+            )
+            .await?;
+        println!("Started process {} ({})", info.pid, info.name);
+        println!("Working directory: {:?}", project_path);
+        Ok(())
+    }
 
 /// When `force` is set, destructive SIGKILL requires explicit `--yes` (C09 L81.6).
 fn force_kill_requires_confirmation(force: bool, yes: bool) -> bool {
@@ -629,7 +639,14 @@ pub async fn stop(
     force: bool,
     yes: bool,
 ) -> Result<()> {
-    let pool = ProcessPool::new();
+    #[cfg(unix)]
+    {
+        return stop_via_ipc(pid, project, harness, all, force, yes).await;
+    }
+
+    #[cfg(not(unix))]
+    {
+        let pool = ProcessPool::new();
 
     if all {
         if force_kill_requires_confirmation(force, yes) {
@@ -684,6 +701,62 @@ pub async fn stop(
     }
     progress.finish("Processes stopped");
 
+        Ok(())
+    }
+}
+
+#[cfg(unix)]
+async fn stop_via_ipc(
+    pid: Option<u32>,
+    project: Option<&str>,
+    harness: Option<&str>,
+    all: bool,
+    force: bool,
+    yes: bool,
+) -> Result<()> {
+    if all {
+        if force_kill_requires_confirmation(force, yes) {
+            let count = process_ipc::list().await?.len();
+            force_kill_preview("all managed processes", count);
+            return Ok(());
+        }
+        process_ipc::kill_all().await?;
+        println!("All supervisor-managed processes stopped.");
+        return Ok(());
+    }
+
+    if let Some(pid) = pid {
+        if force_kill_requires_confirmation(force, yes) {
+            force_kill_preview(&format!("PID {pid}"), 1);
+            return Ok(());
+        }
+        anyhow::ensure!(
+            process_ipc::kill(pid).await?,
+            "PID {pid} is not managed by the ShareCLI IPC supervisor"
+        );
+        println!("Process {pid} stopped.");
+        return Ok(());
+    }
+
+    let processes = process_ipc::list().await?;
+    let matching: Vec<_> = if let Some(project) = project {
+        processes.into_iter().filter(|p| p.project.as_deref() == Some(project)).collect()
+    } else if let Some(harness) = harness {
+        processes.into_iter().filter(|p| p.harness.as_deref() == Some(harness)).collect()
+    } else {
+        anyhow::bail!("Specify --pid, --project, --harness, or --all");
+    };
+    if force_kill_requires_confirmation(force, yes) {
+        force_kill_preview("selected managed processes", matching.len());
+        return Ok(());
+    }
+    for proc in matching {
+        anyhow::ensure!(
+            process_ipc::kill(proc.pid).await?,
+            "PID {} was not terminated by the supervisor", proc.pid
+        );
+        println!("Stopped process {}", proc.pid);
+    }
     Ok(())
 }
 

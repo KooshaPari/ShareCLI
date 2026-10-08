@@ -33,3 +33,23 @@ jobs:
         run: cargo test --locked -p sharecli-ipc --bin sharecli-ipc supervisor_socket_tests -- --nocapture
       - name: Check formatting of touched Rust files
         run: rustfmt --edition 2021 --check src/runtime.rs tests/run_pool_fail_closed_regression.rs
+      - name: Unix CLI-to-supervisor cross-invocation smoke
+        run: |
+          set -euo pipefail
+          cargo build --locked -p sharecli -p sharecli-ipc --bins
+          export SHARECLI_IPC_SOCK="$RUNNER_TEMP/sharecli-audit.sock"
+          export SHARECLI_SESSION_DB="$RUNNER_TEMP/sharecli-audit.sqlite"
+          if target/debug/sharecli start fixture --harness sleep --cwd "$RUNNER_TEMP" 20; then
+            echo "ERROR: start must fail when supervisor is absent" >&2
+            exit 1
+          fi
+          target/debug/sharecli-ipc >"$RUNNER_TEMP/ipc.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 50); do
+            test -S "$SHARECLI_IPC_SOCK" && break
+            sleep 0.2
+          done
+          test -S "$SHARECLI_IPC_SOCK"
+          target/debug/sharecli start fixture --harness sleep --cwd "$RUNNER_TEMP" 20
+          target/debug/sharecli stop --all
