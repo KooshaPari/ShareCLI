@@ -948,6 +948,58 @@ mod tests {
         assert_eq!(tracked.len(), 1);
     }
 
+    /// Regression: a build slot belongs to the running child, not just spawn().
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn build_slot_remains_held_until_child_is_terminated() {
+        use crate::config::SpawnPolicyConfig;
+
+        let policy = Arc::new(SpawnPolicy::new(SpawnPolicyConfig {
+            nice_level: 0,
+            max_concurrent_builds: 1,
+            use_sccache: false,
+        }));
+        let pool = Arc::new(ProcessPool::with_spawn_policy(Arc::clone(&policy)));
+        let first = pool
+            .spawn(
+                "sleep",
+                &["5".to_string()],
+                None,
+                Some("first".into()),
+                Some("build".into()),
+            )
+            .await
+            .expect("first build should start");
+        assert_eq!(policy.available_permits(), 0);
+
+        let pool_for_second = Arc::clone(&pool);
+        let mut second = tokio::spawn(async move {
+            pool_for_second
+                .spawn(
+                    "sleep",
+                    &["5".to_string()],
+                    None,
+                    Some("second".into()),
+                    Some("build".into()),
+                )
+                .await
+        });
+
+        assert!(
+            tokio::time::timeout(Duration::from_millis(200), &mut second)
+                .await
+                .is_err(),
+            "second build must not be admitted while first child is running"
+        );
+        assert!(pool.kill_verified(first.pid).await.expect("kill first"));
+        let second_info = tokio::time::timeout(Duration::from_secs(4), second)
+            .await
+            .expect("second build should acquire released slot")
+            .expect("second spawn task should complete")
+            .expect("second build should start");
+        assert!(pool.kill_verified(second_info.pid).await.expect("kill second"));
+    }
+
     #[tokio::test]
     async fn test_process_pool() {
         let pool = ProcessPool::new();
