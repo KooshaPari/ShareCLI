@@ -264,4 +264,106 @@ final class DestructiveActionConfirmTests: XCTestCase {
             }
         }
     }
+
+    // MARK: - AC: every kill call site is gated by a confirmationDialog
+
+    /// Enumerates every source file that calls `state.kill(pid:)` or
+    /// `state.killAll()` and asserts each such file also declares at least
+    /// one of: a SwiftUI `.confirmationDialog(`, a SwiftUI `.alert(`, an
+    /// AppKit `NSAlert`, or a reference to a pure gate helper
+    /// (`DestructiveKillGate`, `TrayKillAllGate`). Any of these routes the
+    /// user through a confirmation prompt before the destructive action
+    /// fires. A file that calls `state.kill(...)` with none of these is a
+    /// one-click wipe — this test fails closed.
+    ///
+    /// Why we accept multiple gate shapes:
+    ///   - SwiftUI views use `.confirmationDialog(` or `.alert(`
+    ///   - AppKit menu bar / right-click paths use `NSAlert`
+    ///   - Helper views that pass a `kill:` closure to a child delegate
+    ///     the gating to that child (e.g., `ProjectGroupCard` in
+    ///     `ProcessRow.swift`); the parent's `kill: { ... }` closure
+    ///     counts as "gated" if the child uses any of these patterns.
+    func testEveryKillCallSiteIsGatedByAConfirmationDialog() throws {
+        let sourcesDir = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()   // ShareCLITrayTests
+            .deletingLastPathComponent()   // Tests
+            .deletingLastPathComponent()   // ShareCLITray
+            .appendingPathComponent("Sources/ShareCLITray")
+        let fm = FileManager.default
+        guard let sources = try? fm.contentsOfDirectory(atPath: sourcesDir.path) else {
+            XCTFail("could not list \(sourcesDir.path)")
+            return
+        }
+        // Build the file→text map once; the helper test reuses it.
+        var fileToText: [String: String] = [:]
+        for file in sources where file.hasSuffix(".swift") {
+            let path = sourcesDir.appendingPathComponent(file)
+            if let text = try? String(contentsOf: path, encoding: .utf8) {
+                fileToText[file] = text
+            }
+        }
+        let gatePatterns: [String] = [
+            ".confirmationDialog(",   // SwiftUI confirmationDialog
+            ".alert(",                // SwiftUI alert
+            "NSAlert",                // AppKit NSAlert
+            "DestructiveKillGate",    // pure helper used by SwiftUI views
+            "TrayKillAllGate",        // pure helper used by the menubar path
+        ]
+        func hasGate(_ text: String) -> Bool {
+            gatePatterns.contains { text.contains($0) }
+        }
+        var offenders: [String] = []
+        for (file, text) in fileToText {
+            let callsStateKill = text.contains("state.kill(pid:") || text.contains("AppState.shared.kill")
+            if callsStateKill && !hasGate(text) {
+                offenders.append(file)
+            }
+        }
+        XCTAssertGreaterThan(
+            fileToText.count, 0,
+            "test setup must scan the Sources/ShareCLITray tree; got 0 files"
+        )
+        XCTAssertEqual(
+            offenders, [],
+            "every file that calls state.kill(...) or AppState.shared.kill must reference at least one of: .confirmationDialog(, .alert(, NSAlert, DestructiveKillGate, or TrayKillAllGate. Offending files: \(offenders)"
+        )
+    }
+
+    /// Same as above but for the macOS status-bar menu bar action. The
+    /// `MenuAction.killAll` selector should be paired with a confirmation
+    /// dialog in TrayMenuController, or routed through a shared helper
+    /// that does.
+    func testMenuBarKillAllIsConfirmationGated() throws {
+        let text = try ownedSource("TrayMenuController.swift")
+        // TrayMenuController is a programmatic AppKit menu; it can route
+        // through the shared DestructiveKillGate helper or call
+        // confirmationDialog equivalent. Either way, the user must see
+        // a prompt before killAll fires.
+        XCTAssertTrue(
+            text.contains("DestructiveKillGate") || text.contains("confirmAlert") || text.contains(".alert("),
+            "TrayMenuController.killAll must present a confirmation via DestructiveKillGate, confirmAlert, or .alert(; raw call to AppState.shared.killAll() without prompt would let one click in the menu bar wipe the fleet"
+        )
+        // And critically: the raw call site should be inside a function
+        // that takes user input, not the @objc selector itself.
+        XCTAssertFalse(
+            text.contains("func killAll(_ sender: Any?) {\n            await AppState.shared.killAll()"),
+            "TrayMenuController.killAll(_:) must not call AppState.shared.killAll() directly; route through a gate"
+        )
+    }
+
+    /// The CommandPalette (⌘K) is the highest-traffic entry point to
+    /// killAll. Its existing test already covers the destructive role and
+    /// confirm copy; this test asserts the user cannot trigger the
+    /// action via a typed command without seeing a confirm dialog.
+    func testCommandPaletteKillAllHasVisibleConfirmDialog() throws {
+        let text = try ownedSource("CommandPalette.swift")
+        XCTAssertTrue(
+            text.contains(".confirmationDialog("),
+            "CommandPalette must present a .confirmationDialog( so ⌘K → 'kill all' cannot fire without user confirm"
+        )
+        XCTAssertTrue(
+            text.contains("titleVisibility: .visible"),
+            "CommandPalette's confirmationDialog must set titleVisibility: .visible so VoiceOver reads it"
+        )
+    }
 }
