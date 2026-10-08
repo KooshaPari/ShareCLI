@@ -961,13 +961,7 @@ mod tests {
         }));
         let pool = Arc::new(ProcessPool::with_spawn_policy(Arc::clone(&policy)));
         let first = pool
-            .spawn(
-                "sleep",
-                &["5".to_string()],
-                None,
-                Some("first".into()),
-                Some("build".into()),
-            )
+            .spawn("sleep", &["5".to_string()], None, Some("first".into()), Some("build".into()))
             .await
             .expect("first build should start");
         assert_eq!(policy.available_permits(), 0);
@@ -986,9 +980,7 @@ mod tests {
         });
 
         assert!(
-            tokio::time::timeout(Duration::from_millis(200), &mut second)
-                .await
-                .is_err(),
+            tokio::time::timeout(Duration::from_millis(200), &mut second).await.is_err(),
             "second build must not be admitted while first child is running"
         );
         assert!(pool.kill_verified(first.pid).await.expect("kill first"));
