@@ -279,3 +279,50 @@ print('PASS: fragmented/pipelined NDJSON, correlation, error envelope, current b
         println!("{}", String::from_utf8_lossy(&result.stdout));
     }
 }
+
+#[cfg(all(test, unix))]
+mod supervisor_socket_tests {
+    use super::*;
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+
+    async fn rpc(socket: &std::path::Path, request: &str) -> serde_json::Value {
+        let mut stream = tokio::net::UnixStream::connect(socket).await.unwrap();
+        stream.write_all(request.as_bytes()).await.unwrap();
+        stream.write_all(b"\n").await.unwrap();
+        let mut line = String::new();
+        let mut reader = tokio::io::BufReader::new(stream);
+        tokio::time::timeout(std::time::Duration::from_secs(8), reader.read_line(&mut line))
+            .await.unwrap().unwrap();
+        serde_json::from_str(&line).unwrap()
+    }
+
+    #[tokio::test]
+    async fn distinct_socket_connections_share_supervisor_registry() {
+        let temp = tempfile::tempdir().unwrap();
+        let socket = temp.path().join("supervisor.sock");
+        let listener = bind_unix_listener(&socket).unwrap();
+        let handler = Arc::new(Handler::with_fixture_store(
+            &temp.path().join("session.sqlite"),
+        ).unwrap());
+        let server = tokio::spawn(async move {
+            for _ in 0..2 {
+                let (stream, _) = listener.accept().await.unwrap();
+                let h = Arc::clone(&handler);
+                tokio::spawn(async move {
+                    serve_unix_connection(stream, h).await.unwrap();
+                });
+            }
+        });
+
+        let started = rpc(&socket, r#"{"id":1,"method":"process.spawn","params":{"cmd":"sleep","args":["30"]}}"#).await;
+        assert!(started["error"].is_null(), "spawn response: {started}");
+        let pid = started["result"]["pid"].as_u64().expect("PID");
+
+        let stopped = rpc(&socket, &format!(
+            r#"{{"id":2,"method":"process.kill","params":{{"pid":{pid}}}}}"#
+        )).await;
+        assert!(stopped["error"].is_null(), "stop response: {stopped}");
+        assert_eq!(stopped["result"], serde_json::Value::Bool(true));
+        server.await.unwrap();
+    }
+}

@@ -29,5 +29,7 @@ jobs:
         run: cargo test --locked -p sharecli --lib
       - name: Execute IPC library tests
         run: cargo test --locked -p sharecli-ipc --lib
+      - name: Execute real Unix socket supervisor regression
+        run: cargo test --locked -p sharecli-ipc --bin sharecli-ipc supervisor_socket_tests -- --nocapture
       - name: Check formatting of touched Rust files
         run: rustfmt --edition 2021 --check src/runtime.rs tests/run_pool_fail_closed_regression.rs
