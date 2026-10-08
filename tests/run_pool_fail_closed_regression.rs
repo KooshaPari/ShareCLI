@@ -24,17 +24,13 @@ async fn unknown_pid_is_not_reported_as_terminated() {
 #[tokio::test]
 #[serial_test::serial]
 async fn build_permit_stays_held_until_natural_exit() {
-    use std::sync::Arc;
-    use std::time::Duration;
     use sharecli::config::SpawnPolicyConfig;
     use sharecli::runtime::ProcessPool;
     use sharecli::spawn_policy::SpawnPolicy;
+    use std::sync::Arc;
+    use std::time::Duration;
 
-    let config = SpawnPolicyConfig {
-        nice_level: 0,
-        max_concurrent_builds: 1,
-        use_sccache: false,
-    };
+    let config = SpawnPolicyConfig { nice_level: 0, max_concurrent_builds: 1, use_sccache: false };
     let policy = Arc::new(SpawnPolicy::new(config));
     let pool = ProcessPool::with_spawn_policy(Arc::clone(&policy));
     let _child = pool
@@ -58,17 +54,13 @@ async fn build_permit_stays_held_until_natural_exit() {
 #[tokio::test]
 #[serial_test::serial]
 async fn build_permit_released_after_explicit_kill() {
-    use std::sync::Arc;
-    use std::time::Duration;
     use sharecli::config::SpawnPolicyConfig;
     use sharecli::runtime::ProcessPool;
     use sharecli::spawn_policy::SpawnPolicy;
+    use std::sync::Arc;
+    use std::time::Duration;
 
-    let config = SpawnPolicyConfig {
-        nice_level: 0,
-        max_concurrent_builds: 1,
-        use_sccache: false,
-    };
+    let config = SpawnPolicyConfig { nice_level: 0, max_concurrent_builds: 1, use_sccache: false };
     let policy = Arc::new(SpawnPolicy::new(config));
     let pool = ProcessPool::with_spawn_policy(Arc::clone(&policy));
     let child = pool

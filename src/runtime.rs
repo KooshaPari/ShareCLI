@@ -468,8 +468,7 @@ impl ProcessPool {
                 let _permit = permit;
                 loop {
                     match watcher_port.status(&watcher_handle).await {
-                        Ok(ProcessState::Exited { .. })
-                        | Err(SubstrateError::NotFound(_)) => break,
+                        Ok(ProcessState::Exited { .. }) | Err(SubstrateError::NotFound(_)) => break,
                         Ok(ProcessState::Running { .. }) => {}
                         Err(error) => {
                             tracing::warn!(
