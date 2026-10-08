@@ -1291,6 +1291,7 @@ mod tests {
                 families: HashMap::new(),
             },
             processes: vec![],
+            supervisor_error: None,
         };
         let json = serde_json::to_string(&snapshot).expect("serialize");
         assert!(json.contains("\"gate\""));
