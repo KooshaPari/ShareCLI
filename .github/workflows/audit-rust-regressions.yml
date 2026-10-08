@@ -27,5 +27,7 @@ jobs:
         run: cargo test --locked -p sharecli --test run_pool_fail_closed_regression -- --nocapture
       - name: Execute ShareCLI library tests
         run: cargo test --locked -p sharecli --lib
+      - name: Execute IPC library tests
+        run: cargo test --locked -p sharecli-ipc --lib
       - name: Check formatting of touched Rust files
         run: rustfmt --edition 2021 --check src/runtime.rs tests/run_pool_fail_closed_regression.rs

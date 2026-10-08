@@ -1115,3 +1115,21 @@ mod dispatch_tests {
         assert!(resp.result.is_array(), "result must be an array");
     }
 }
+
+#[cfg(test)]
+mod verified_kill_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn unknown_pid_returns_false_not_success() {
+        let temp = tempfile::tempdir().unwrap();
+        let handler =
+            Handler::with_fixture_store(&temp.path().join("sessions.sqlite")).unwrap();
+        let response = handler
+            .dispatch(r#"{"id":7,"method":"process.kill","params":{"pid":4294967295}}"#)
+            .await;
+        assert_eq!(response.id, 7);
+        assert!(response.error.is_none());
+        assert_eq!(response.result, Value::Bool(false));
+    }
+}
