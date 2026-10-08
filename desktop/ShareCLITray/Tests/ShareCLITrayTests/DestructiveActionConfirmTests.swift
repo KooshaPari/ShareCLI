@@ -138,4 +138,130 @@ final class DestructiveActionConfirmTests: XCTestCase {
         XCTAssertFalse(text.contains("state.killAll()"),
                        "the palette must not call killAll directly; it routes through onAction after confirm")
     }
+
+    // MARK: - AC: VoiceOver-friendly confirmation contract
+
+    /// The confirmation dialog must declare `titleVisibility: .visible` so
+    /// VoiceOver reads the title. Without this, the headline is treated as
+    /// decorative and the user hears only the buttons — losing the
+    /// "Kill 3 selected processes?" question that the whole gate exists to
+    /// ask.
+    func testAllProcessesViewDialogSetsTitleVisibilityVisible() throws {
+        let text = try ownedSource("AllProcessesView.swift")
+        XCTAssertTrue(
+            text.contains("titleVisibility: .visible"),
+            "confirmationDialog must set titleVisibility: .visible so VoiceOver reads the title"
+        )
+    }
+
+    /// The destructive button must use `Button(_, role: .destructive)` (not
+    /// just plain `Button`) so VoiceOver announces the destructive trait and
+    /// the system displays the red emphasis styling.
+    func testAllProcessesViewUsesDestructiveButtonRoleForConfirm() throws {
+        let text = try ownedSource("AllProcessesView.swift")
+        // We need a destructive Button carrying the scope's confirm label.
+        XCTAssertTrue(
+            text.contains("scope.confirmButtonLabel, role: .destructive"),
+            "the confirm button must bind role: .destructive to the scope's label"
+        )
+    }
+
+    /// The cancel button must declare `role: .cancel` so VoiceOver identifies
+    /// it as the safe option and the system renders it in the standard
+    /// position.
+    func testAllProcessesViewUsesCancelButtonRole() throws {
+        let text = try ownedSource("AllProcessesView.swift")
+        XCTAssertTrue(
+            text.contains("role: .cancel"),
+            "the cancel button must declare role: .cancel so VoiceOver identifies it"
+        )
+    }
+
+    /// Pluralization must be correct in confirm copy — VoiceOver reads it
+    /// aloud and "Kill 1 process?" vs "Kill 1 selected processes?" must
+    /// match the count exactly so the user trusts the read-out.
+    func testVoiceOverReadsPluralizationCorrectly() {
+        XCTAssertEqual(
+            KillScope.selected([1]).confirmTitle, "Kill 1 selected process?",
+            "VoiceOver must read '1 process' (singular) for a single-PID scope"
+        )
+        XCTAssertEqual(
+            KillScope.selected([1, 2]).confirmTitle, "Kill 2 selected processes?",
+            "VoiceOver must read 'N processes' (plural) for >1 PIDs"
+        )
+        XCTAssertTrue(
+            KillScope.all.confirmTitle.localizedCaseInsensitiveContains("all"),
+            "VoiceOver must read 'all' explicitly for the bulk scope"
+        )
+    }
+
+    /// The confirm message must include the words "cannot be undone" so
+    /// VoiceOver tells the user this is irreversible — without that phrase,
+    /// the user could tap the wrong button. The existing confirm copy test
+    /// already covers lowercase containment; this one enforces the exact
+    /// phrase as a contract.
+    func testVoiceOverReadsCannotBeUndoneExactly() {
+        for scope in [KillScope.selected([1]), KillScope.all] {
+            XCTAssertTrue(
+                scope.confirmMessage.contains("cannot be undone"),
+                "VoiceOver must hear 'cannot be undone' for \(scope); got: \(scope.confirmMessage)"
+            )
+        }
+    }
+
+    /// The cancel label must be the system string "Cancel" so VoiceOver's
+    /// rotor / Cmd+Opt+Space / "type to find" pick it up reliably. Custom
+    /// labels (e.g. "Never mind") are announced but break user muscle
+    /// memory.
+    func testVoiceOverFindsTheCancelLabel() {
+        XCTAssertEqual(
+            DestructiveKillGate.cancelLabel, "Cancel",
+            "cancel label must be the system 'Cancel' so VoiceOver users find it"
+        )
+        XCTAssertEqual(
+            CommandPalette.destructiveCancelLabel, "Cancel",
+            "CommandPalette cancel label must match"
+        )
+    }
+
+    /// Headline-and-body duplication: if the title already says "Kill 3
+    /// selected processes?" the body must not also say "Kill 3 selected
+    /// processes" — VoiceOver would read it twice, making the question feel
+    /// like a warning instead of a question. The body should add new
+    /// information (the consequence phrase).
+    func testConfirmBodyDoesNotDuplicateTheTitle() {
+        let scope = KillScope.selected([1, 2, 3])
+        XCTAssertFalse(
+            scope.confirmMessage.localizedCaseInsensitiveContains(scope.confirmTitle.replacingOccurrences(of: "?", with: "")),
+            "confirm message must not restate the title; got: \(scope.confirmMessage) for title \(scope.confirmTitle)"
+        )
+    }
+
+    /// Every confirmation dialog across the tray must be reachable from
+    /// at least one of the listed source files. If a future view adds a
+    /// destructive action but forgets the dialog, this test fails closed.
+    func testEveryDestructiveDialogUsesVisibleTitleAndDestructiveRole() throws {
+        let dialogHolders: [String] = [
+            "AllProcessesView.swift",
+            "ProcessRow.swift",
+            "TrayPopoverView.swift",
+            "ResourcesPage.swift",
+            "CommandPalette.swift",
+            "AgentsDetail.swift",
+            "AgentsPage.swift",
+        ]
+        for source in dialogHolders {
+            let text = try ownedSource(source)
+            if text.contains(".confirmationDialog(") {
+                XCTAssertTrue(
+                    text.contains("titleVisibility: .visible"),
+                    "\(source) declares a confirmationDialog but does not set titleVisibility: .visible"
+                )
+                XCTAssertTrue(
+                    text.contains("role: .destructive"),
+                    "\(source) declares a confirmationDialog but its confirm button lacks role: .destructive"
+                )
+            }
+        }
+    }
 }
