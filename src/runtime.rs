@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use anyhow::{bail, Result};
 use runtime_process::CommandGroupProcess;
 use serde_json::json;
-use substrate::{ProcessHandle, ProcessPort, ProcessSpawnSpec};
+use substrate::{ProcessHandle, ProcessPort, ProcessSpawnSpec, ProcessState, SubstrateError};
 use sysinfo::{Pid, ProcessStatus, System};
 use tokio::process::Command;
 use tokio::sync::RwLock;
@@ -456,6 +456,33 @@ impl ProcessPool {
 
         let mut procs = self.processes.write().await;
         procs.insert(pid, managed);
+        drop(procs);
+
+        // Build admission must own capacity until process exit, not just
+        // until ProcessPort::spawn returns. The watcher also releases after
+        // an explicit kill removes the adapter-local process handle.
+        if let Some(permit) = _permit {
+            let watcher_port = self.port.clone();
+            let watcher_handle = handle;
+            tokio::spawn(async move {
+                let _permit = permit;
+                loop {
+                    match watcher_port.status(&watcher_handle).await {
+                        Ok(ProcessState::Exited { .. })
+                        | Err(SubstrateError::NotFound(_)) => break,
+                        Ok(ProcessState::Running { .. }) => {}
+                        Err(error) => {
+                            tracing::warn!(
+                                pid = watcher_handle.pid,
+                                %error,
+                                "build permit watcher could not determine child state"
+                            );
+                        }
+                    }
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+            });
+        }
 
         emit_spawn_audit(&info.project, &capability, "ok", Some(pid));
 

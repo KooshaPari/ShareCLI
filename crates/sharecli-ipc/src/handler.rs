@@ -35,6 +35,7 @@ use sharecli::commands::proc::{AgentProcRow, AgentProcSnapshot};
 use sharecli::config::Config;
 use sharecli::monitoring::HostResourceWatchJson;
 use sharecli::runtime::SharedRuntime;
+use sharecli::spawn_policy::SpawnPolicy;
 use sharecli::{ProcessInfo, ProcessPool};
 use sharecli_fleet::thermal::ThermalGovernor;
 use sharecli_fleet::{count_host_agents, gate_status_snapshot, GateStatusSnapshot};
@@ -360,8 +361,11 @@ impl Handler {
     }
 
     pub async fn new() -> Result<Self> {
-        let pool = Arc::new(ProcessPool::new());
-        let config = Arc::new(RwLock::new(Config::load().unwrap_or_default()));
+        let loaded = Config::load().unwrap_or_default();
+        let pool = Arc::new(ProcessPool::with_spawn_policy(Arc::new(
+            SpawnPolicy::new(loaded.spawn_policy.clone()),
+        )));
+        let config = Arc::new(RwLock::new(loaded));
         let path =
             session_database_path(std::env::var_os("SHARECLI_SESSION_DB"), dirs::data_local_dir())?;
         let sessions = Arc::new(SessionStore::open(path)?);
