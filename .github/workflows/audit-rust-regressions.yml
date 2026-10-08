@@ -1,7 +1,7 @@
 name: Audit Rust regression (isolated, zero-spend)
 on:
   push:
-    branches: [audit/rust-regressions-20261007]
+    branches: [audit/dashboard-supervisor-20261008]
 permissions:
   contents: read
 concurrency:
@@ -27,6 +27,8 @@ jobs:
         run: cargo test --locked -p sharecli --test run_pool_fail_closed_regression -- --nocapture
       - name: Execute ShareCLI library tests
         run: cargo test --locked -p sharecli --lib
+      - name: Check dashboard source formatting
+        run: rustfmt --edition 2021 --check src/commands/serve.rs
       - name: Execute IPC library tests
         run: cargo test --locked -p sharecli-ipc --lib
       - name: Execute real Unix socket supervisor regression

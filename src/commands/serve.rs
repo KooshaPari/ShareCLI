@@ -667,16 +667,24 @@ pub struct DashboardWsSnapshot {
     pub status: StatusJson,
     pub agents: DashboardAgentSummary,
     pub processes: Vec<DashboardProcessRow>,
+    /// Explicitly distinguish an unavailable supervisor from an empty registry.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub supervisor_error: Option<String>,
 }
 
 /// Build the live dashboard WebSocket snapshot (parity with CLI/IPC pool + status envelopes).
 pub async fn build_dashboard_ws_snapshot() -> anyhow::Result<DashboardWsSnapshot> {
-    let managed_pool = ProcessPool::new();
-    let (procs, pool_json, status_json) = tokio::join!(
-        managed_pool.list(),
+    // The dashboard must remain usable when the resident supervisor is down.
+    // Unlike start/stop/ps, it can show host metrics in a degraded state, but
+    // must explicitly report that managed-process counts are unavailable.
+    let (process_result, pool_json) = tokio::join!(
+        super::supervised_processes(None, None),
         crate::commands::build_pool_json(),
-        crate::commands::build_status_json(),
     );
+    let (procs, supervisor_error) = match process_result {
+        Ok(procs) => (procs, None),
+        Err(error) => (Vec::new(), Some(error.to_string())),
+    };
     let agent_snap = AgentProcSnapshot::capture()?;
 
     let mut families: HashMap<String, usize> = HashMap::new();
@@ -699,11 +707,21 @@ pub async fn build_dashboard_ws_snapshot() -> anyhow::Result<DashboardWsSnapshot
         })
         .collect();
 
+    let status = StatusJson {
+        total_processes: procs.len(),
+        agents: agent_snap.agents.clone(),
+        scanned: agent_snap.scanned,
+        watched: agent_snap.watched,
+        gate: agent_snap.gate.clone(),
+        host_watch: agent_snap.host_watch.clone(),
+        pool: None,
+        log_location: super::sharecli_log_location(),
+    };
     Ok(DashboardWsSnapshot {
         gate: agent_snap.gate,
         host_watch: agent_snap.host_watch,
         pool: pool_json?,
-        status: status_json?,
+        status,
         agents: DashboardAgentSummary {
             scanned: agent_snap.scanned,
             watched: agent_snap.watched,
@@ -711,6 +729,7 @@ pub async fn build_dashboard_ws_snapshot() -> anyhow::Result<DashboardWsSnapshot
             families,
         },
         processes,
+        supervisor_error,
     })
 }
 
