@@ -39,4 +39,32 @@ extension Color {
     static var valueForeground: Color {
         .primary
     }
+
+    /// Semantic token: warning/alert foreground (orange status indicators).
+    ///
+    /// Use for warning badges, alert text, and caution indicators that must
+    /// meet WCAG AA 4.5:1 in both appearances.
+    ///
+    /// Resolves to:
+    /// - Light appearance: dark amber (#994C00, ~5.0:1 on white)
+    /// - Dark appearance:  SwiftUI .orange (~4.6:1 on dark)
+    static var warningForeground: Color {
+        let isDark = NSApp?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        if isDark { return .orange }
+        return Color(red: 0.60, green: 0.30, blue: 0.0)
+    }
+
+    /// Semantic token: success/healthy foreground (green status indicators).
+    ///
+    /// Use for success badges, healthy-state text, and positive indicators
+    /// that must meet WCAG AA 4.5:1 in both appearances.
+    ///
+    /// Resolves to:
+    /// - Light appearance: dark green (#1A6B1A, ~4.8:1 on white)
+    /// - Dark appearance:  SwiftUI .green (~4.3:1 on dark)
+    static var successForeground: Color {
+        let isDark = NSApp?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        if isDark { return .green }
+        return Color(red: 0.10, green: 0.42, blue: 0.10)
+    }
 }

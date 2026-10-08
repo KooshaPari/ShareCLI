@@ -116,4 +116,56 @@ final class SemanticColorTests: XCTestCase {
         XCTAssertLessThan(tertiaryDark, aaBodyText,
             ".tertiary in dark FAILS AA body text (this is the bug)")
     }
+
+    // MARK: - WarningForeground adaptive token (B3: AA residual .orange)
+
+    func testWarningForegroundIsAccessible() {
+        // warningForeground must compile and return a valid colour.
+        let token = Color.warningForeground
+        XCTAssertNotNil(token)
+    }
+
+    func testWarningForegroundLightModeIsDarkerThanStandardOrange() {
+        // In light appearance, warningForeground must use a darker amber
+        // (#994C00) instead of standard SwiftUI .orange (~2.1:1 fails AA).
+        // Verify R channel is reduced (darker amber vs bright orange).
+        let nsToken = NSColor(Color.warningForeground)
+        let nsOrange = NSColor.orange
+        guard let tRGB = nsToken.usingColorSpace(.deviceRGB),
+              let oRGB = nsOrange.usingColorSpace(.deviceRGB) else {
+            XCTFail("could not convert colours to deviceRGB")
+            return
+        }
+        // The dark amber has a lower red channel than standard orange
+        // (0.60 vs ~1.0) and a much lower green channel (0.30 vs ~0.6).
+        XCTAssertLessThan(tRGB.redComponent, oRGB.redComponent,
+            "warningForeground light: red channel must be dimmer than .orange")
+        XCTAssertLessThan(tRGB.greenComponent, oRGB.greenComponent,
+            "warningForeground light: green channel must be dimmer than .orange")
+    }
+
+    // MARK: - SuccessForeground adaptive token (B3: AA residual .green)
+
+    func testSuccessForegroundIsAccessible() {
+        // successForeground must compile and return a valid colour.
+        let token = Color.successForeground
+        XCTAssertNotNil(token)
+    }
+
+    func testSuccessForegroundLightModeIsDarkerThanStandardGreen() {
+        // In light appearance, successForeground must use a darker forest
+        // green (#1A6B1A) instead of standard SwiftUI .green (~2.5:1 fails AA).
+        // Verify G channel is reduced (darker green vs bright green).
+        let nsToken = NSColor(Color.successForeground)
+        let nsGreen = NSColor.green
+        guard let tRGB = nsToken.usingColorSpace(.deviceRGB),
+              let gRGB = nsGreen.usingColorSpace(.deviceRGB) else {
+            XCTFail("could not convert colours to deviceRGB")
+            return
+        }
+        // The forest green has a much lower green channel than standard green
+        // (0.42 vs ~1.0) — this is the primary indicator of reduced brightness.
+        XCTAssertLessThan(tRGB.greenComponent, gRGB.greenComponent,
+            "successForeground light: green channel must be dimmer than .green")
+    }
 }

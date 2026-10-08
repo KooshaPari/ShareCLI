@@ -83,7 +83,7 @@ final class CtaTokenTests: XCTestCase {
     }
 
     func testOwnedFilesUseTheCTATokens() throws {
-        for name in ["AgentsPage.swift", "TrayPopoverView.swift", "EmptyStateView.swift",
+        for name in ["AgentsDetail.swift", "TrayPopoverView.swift", "EmptyStateView.swift",
                      "UpdaterView.swift", "ChannelPicker.swift"] {
             let text = try ownedSource(name)
             XCTAssertTrue(
