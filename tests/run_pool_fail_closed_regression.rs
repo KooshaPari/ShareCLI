@@ -77,3 +77,20 @@ async fn build_permit_released_after_explicit_kill() {
     }
     assert_eq!(policy.available_permits(), 1, "kill must release build slot");
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn refresh_reaps_naturally_exited_managed_process() {
+    use sharecli::runtime::ProcessPool;
+    use std::time::Duration;
+
+    let pool = ProcessPool::new();
+    let child = pool
+        .spawn("sleep", &["0.1".to_string()], None, None, Some("sleep".to_string()))
+        .await
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    pool.refresh().await;
+    assert!(pool.list().await.is_empty());
+    assert!(!pool.kill_verified(child.pid).await.unwrap());
+}

@@ -320,8 +320,32 @@ impl ProcessPool {
 
     /// Refresh system process information
     pub async fn refresh(&self) {
-        let mut sys = self.system.write().await;
-        sys.refresh_all();
+        {
+            let mut sys = self.system.write().await;
+            sys.refresh_all();
+        }
+
+        // Reap naturally exited adapter-local children before reporting state.
+        let mut processes = self.processes.write().await;
+        let mut exited = Vec::new();
+        for (&pid, managed) in processes.iter() {
+            match self.port.status(&managed.handle).await {
+                Ok(ProcessState::Exited { .. }) => {
+                    let _ = self
+                        .port
+                        .wait_with_timeout(&managed.handle, Duration::from_millis(10))
+                        .await;
+                    exited.push(pid);
+                }
+                Ok(ProcessState::Running { .. }) => {}
+                Err(error) => {
+                    tracing::warn!(pid, %error, "unable to refresh managed child");
+                }
+            }
+        }
+        for pid in exited {
+            processes.remove(&pid);
+        }
     }
 
     /// Get all managed processes
