@@ -25,3 +25,7 @@ jobs:
           sudo apt-get install -y libglib2.0-dev libgtk-3-dev libxdo-dev pkg-config
       - name: Execute actual ShareCLI regression test
         run: cargo test --locked -p sharecli --test run_pool_fail_closed_regression -- --nocapture
+      - name: Execute ShareCLI library tests
+        run: cargo test --locked -p sharecli --lib
+      - name: Check formatting of touched Rust files
+        run: rustfmt --edition 2021 --check src/runtime.rs tests/run_pool_fail_closed_regression.rs
