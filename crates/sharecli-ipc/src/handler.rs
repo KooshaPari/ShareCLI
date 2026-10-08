@@ -498,8 +498,8 @@ impl Handler {
                 let pid: u32 =
                     req.params["pid"].as_u64().ok_or_else(|| anyhow::anyhow!("missing pid"))?
                         as u32;
-                self.pool.kill(pid).await?;
-                Ok(Value::Bool(true))
+                let terminated = self.pool.kill_verified(pid).await?;
+                Ok(Value::Bool(terminated))
             }
 
             "process.kill_all" => {
