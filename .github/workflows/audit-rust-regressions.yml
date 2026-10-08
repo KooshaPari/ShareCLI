@@ -52,4 +52,27 @@ jobs:
           done
           test -S "$SHARECLI_IPC_SOCK"
           target/debug/sharecli start fixture --harness sleep --cwd "$RUNNER_TEMP" 20
+          python3 - <<'PY'
+          import json, os, socket
+          path = os.environ["SHARECLI_IPC_SOCK"]
+          with socket.socket(socket.AF_UNIX) as client:
+              client.connect(path)
+              client.sendall(b'{"id":21,"method":"process.list","params":{}}\n')
+              response = b""
+              while not response.endswith(b"\n"):
+                  response += client.recv(4096)
+          result = json.loads(response)["result"]
+          assert len(result) == 1, f"expected one supervisor-owned child: {result}"
+          PY
           target/debug/sharecli stop --all
+          python3 - <<'PY'
+          import json, os, socket
+          with socket.socket(socket.AF_UNIX) as client:
+              client.connect(os.environ["SHARECLI_IPC_SOCK"])
+              client.sendall(b'{"id":22,"method":"process.list","params":{}}\n')
+              response = b""
+              while not response.endswith(b"\n"):
+                  response += client.recv(4096)
+          result = json.loads(response)["result"]
+          assert result == [], f"expected empty supervisor registry after stop: {result}"
+          PY
