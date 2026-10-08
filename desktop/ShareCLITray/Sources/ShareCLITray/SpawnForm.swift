@@ -81,6 +81,7 @@ struct SpawnView: View {
                         else { Label("Spawn", systemImage: "play.fill") }
                     }
                     .buttonStyle(.borderedProminent)
+                    .tint(Color.ctaPrimary)
                     .disabled(spawning || binary.isEmpty)
                     .keyboardShortcut(.return, modifiers: [.command])
 
@@ -243,6 +244,7 @@ struct PresetsView: View {
                     .textFieldStyle(.roundedBorder)
                 Button("Save current filter") { saveCurrent() }
                     .buttonStyle(.borderedProminent)
+                    .tint(Color.ctaPrimary)
                     .disabled(newPresetName.isEmpty)
                     .keyboardShortcut(.return, modifiers: [.command])
             }

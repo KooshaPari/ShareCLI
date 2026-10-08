@@ -158,6 +158,7 @@ struct CommandPalette: View {
                         .textFieldStyle(.plain)
                         .font(.title3)
                         .focused($searchFocused)
+                        .filterFieldFocus($searchFocused)
                         .onSubmit { submitHighlighted() }
                     if !query.isEmpty {
                         Button {

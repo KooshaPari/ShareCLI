@@ -17,10 +17,11 @@ import XCTest
 ///      row documented by task 1.26 is truthful.
 ///   2. It collides with no app-global shortcut already owned by
 ///      `DashboardView.attachShortcutMonitor` (⌘1..⌘8, ⌘K, ⌘R, ⌘W, ⌘/, ⌘,).
-///   3. Every in-scope filter-bearing page is registered. The app has FOUR
+///   3. Every filter-bearing page is registered. The app has FOUR
 ///      filter/search text fields; the fourth (the ⌘K palette's search field in
-///      `CommandPalette.swift`) is owned by lane 1.20 and is out of scope here,
-///      so it is recorded as deferred rather than silently dropped or invented.
+///      `CommandPalette.swift`) was originally deferred to lane 1.20 by task
+///      1.25 and is now wired by the closure batch (cricket 2026-10-05, A3), so
+///      all four fields are in `wiredFields` and none remains deferred.
 ///
 /// The SwiftUI focus wiring (`@FocusState` + the shortcut trigger) is
 /// compile-verified by the `ShareCLITray` target. End-to-end GUI focus
@@ -65,19 +66,22 @@ final class FilterFieldShortcutTests: XCTestCase {
 
     // MARK: - Contract 3: every in-scope filter field is registered
 
-    func testWiredFieldsCoverTheThreeInScopeFilterPages() {
+    func testWiredFieldsCoverAllFourFilterPages() {
+        // Closure batch (cricket 2026-10-05, A3): the ⌘K palette search field,
+        // originally deferred to lane 1.20 by task 1.25, is now wired, so all
+        // four filter fields across the app carry the ⌘F shortcut.
         XCTAssertEqual(
             FilterFieldShortcut.wiredFields.map(\.rawValue),
-            ["processes.filter", "agents.filter", "logs.filter"],
-            "the three in-scope filter fields are Processes / Agents / Logs"
+            ["processes.filter", "agents.filter", "logs.filter", "palette.search"],
+            "all four filter fields are Processes / Agents / Logs / palette search"
         )
     }
 
-    func testPaletteSearchFieldIsRecordedAsDeferred() {
+    func testNoFilterFieldRemainsDeferred() {
         XCTAssertEqual(
             FilterFieldShortcut.outOfScopeFields.map(\.rawValue),
-            ["palette.search"],
-            "the fourth filter field (⌘K palette search) is owned by lane 1.20 and must be recorded, not dropped"
+            [],
+            "the closure batch wired the last deferred field (palette search); nothing remains out of scope"
         )
     }
 

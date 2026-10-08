@@ -179,8 +179,8 @@ struct AllProcessesView: View {
                 .width(80)
 
                 TableColumn("Actions") { p in
-                    Button {
-                        Task { await state.kill(pid: p.pid) }
+                    Button(role: .destructive) {
+                        killGate.request(.selected([p.pid]))
                     } label: {
                         Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
                     }

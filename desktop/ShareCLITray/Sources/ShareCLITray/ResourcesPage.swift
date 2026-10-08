@@ -26,6 +26,9 @@ struct ResourcesView: View {
 
     @State private var selection: UInt32?
 
+    /// Confirmation gate for the destructive per-PID kill (closure batch, A2).
+    @State private var killGate = DestructiveKillGate()
+
     private var sorted: [ProcessSummary] {
         state.processes.sorted { $0.pid < $1.pid }
     }
@@ -131,6 +134,34 @@ struct ResourcesView: View {
         .onChange(of: selection) { _, new in
             selectedPidRaw = new.map(String.init) ?? ""
         }
+        .confirmationDialog(
+            killGate.pending?.confirmTitle ?? "Confirm kill",
+            isPresented: Binding(
+                get: { killGate.isConfirming },
+                set: { if !$0 { killGate.decline() } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let scope = killGate.pending {
+                Button(scope.confirmButtonLabel, role: .destructive) {
+                    performKill(killGate.confirm())
+                }
+                Button(DestructiveKillGate.cancelLabel, role: .cancel) {
+                    killGate.decline()
+                }
+            }
+        } message: {
+            Text(killGate.pending?.confirmMessage ?? "")
+        }
+        }
+    }
+
+    /// Kills the confirmed PID scope. `nil` (nothing confirmed) is a no-op, so
+    /// the destructive action can never fire without the dialog.
+    private func performKill(_ scope: KillScope?) {
+        guard case .selected(let pids) = scope else { return }
+        Task {
+            for pid in pids { await state.kill(pid: pid) }
         }
     }
 
@@ -265,13 +296,14 @@ struct ResourcesView: View {
     private func actions(for p: ProcessSummary) -> some View {
         section("Actions", icon: "hammer") {
             HStack {
-                Button {
-                    Task { await state.kill(pid: p.pid) }
+                Button(role: .destructive) {
+                    killGate.request(.selected([p.pid]))
                 } label: {
                     Label("Kill PID \(p.pid)", systemImage: "xmark.octagon.fill")
                         .foregroundStyle(.red)
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(CTAButtonStyle.tint(for: .destructive))
                 .controlSize(.large)
 
                 Spacer()

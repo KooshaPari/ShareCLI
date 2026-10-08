@@ -37,11 +37,15 @@ enum FilterFieldShortcut {
         var id: String { rawValue }
     }
 
-    /// Fields wired by task 1.25.
-    static let wiredFields: [Field] = [.processesFilter, .agentsFilter, .logsFilter]
+    /// Fields wired by task 1.25 plus the closure batch (⌘F palette search).
+    static let wiredFields: [Field] = [.processesFilter, .agentsFilter, .logsFilter, .paletteSearch]
 
     /// Fields deliberately deferred to another lane (recorded, not claimed).
-    static let outOfScopeFields: [Field] = [.paletteSearch]
+    ///
+    /// Closure batch (cricket 2026-10-05): `paletteSearch` was the sole deferred
+    /// field and is now wired, so this list is empty. Kept so a future deferral
+    /// has a home that the tests already check.
+    static let outOfScopeFields: [Field] = []
 
     /// App-global shortcuts owned by `DashboardView.attachShortcutMonitor`
     /// (⌘1..⌘8 page jumps, ⌘K palette, ⌘R refresh, ⌘W close, ⌘/ help, ⌘, prefs).
