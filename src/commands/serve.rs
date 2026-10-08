@@ -1289,7 +1289,7 @@ mod tests {
                 families: HashMap::new(),
             },
             processes: vec![],
-            supervisor_error: None,
+            supervisor_error: Some("supervisor unavailable".into()),
         };
         let json = serde_json::to_string(&snapshot).expect("serialize");
         assert!(json.contains("\"gate\""));
@@ -1298,5 +1298,9 @@ mod tests {
         assert!(json.contains("\"status\""));
         assert!(json.contains("\"agents\""));
         assert!(json.contains("\"processes\""));
+        assert!(
+            json.contains("\"supervisor_error\":\"supervisor unavailable\""),
+            "offline supervisor status must be explicit: {json}"
+        );
     }
 }
