@@ -618,6 +618,7 @@ pub async fn start(project: &str, harness: &str, cwd: Option<&str>, args: &[Stri
         println!("Working directory: {:?}", project_path);
         Ok(())
     }
+}
 
 /// When `force` is set, destructive SIGKILL requires explicit `--yes` (C09 L81.6).
 fn force_kill_requires_confirmation(force: bool, yes: bool) -> bool {
