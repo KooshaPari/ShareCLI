@@ -677,10 +677,8 @@ pub async fn build_dashboard_ws_snapshot() -> anyhow::Result<DashboardWsSnapshot
     // The dashboard must remain usable when the resident supervisor is down.
     // Unlike start/stop/ps, it can show host metrics in a degraded state, but
     // must explicitly report that managed-process counts are unavailable.
-    let (process_result, pool_json) = tokio::join!(
-        super::supervised_processes(None, None),
-        crate::commands::build_pool_json(),
-    );
+    let (process_result, pool_json) =
+        tokio::join!(super::supervised_processes(None, None), crate::commands::build_pool_json(),);
     let (procs, supervisor_error) = match process_result {
         Ok(procs) => (procs, None),
         Err(error) => (Vec::new(), Some(error.to_string())),
