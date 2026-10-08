@@ -25,6 +25,10 @@ jobs:
           sudo apt-get install -y libglib2.0-dev libgtk-3-dev libxdo-dev pkg-config
       - name: Execute actual ShareCLI regression test
         run: cargo test --locked -p sharecli --test run_pool_fail_closed_regression -- --nocapture
+      - name: Verify process-lifetime permit and natural-exit regressions
+        run: |
+          cargo test --locked -p sharecli --test run_pool_fail_closed_regression build_permit -- --nocapture
+          cargo test --locked -p sharecli --test run_pool_fail_closed_regression refresh_reaps -- --nocapture
       - name: Execute ShareCLI library tests
         run: cargo test --locked -p sharecli --lib
       - name: Execute IPC library tests
