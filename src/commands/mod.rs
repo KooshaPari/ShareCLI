@@ -334,17 +334,44 @@ pub struct StatusNdjsonLine {
     pub snapshot: StatusJson,
 }
 
-async fn build_ps_all_json(project: Option<&str>, harness: Option<&str>) -> Result<PsAllJson> {
-    let pool = ProcessPool::new();
-    let filter = if let Some(p) = project {
-        ProcessFilter::ByProject(p.to_string())
-    } else if let Some(h) = harness {
-        ProcessFilter::ByHarness(h.to_string())
-    } else {
-        ProcessFilter::All
-    };
+/// Query the resident supervisor on Unix; never fabricate an empty registry.
+async fn supervised_processes(project: Option<&str>, harness: Option<&str>) -> Result<Vec<ProcessInfo>> {
+    #[cfg(unix)]
+    {
+        let managed = process_ipc::list().await?;
+        let mut system = sysinfo::System::new_all();
+        system.refresh_all();
+        Ok(managed.into_iter()
+            .filter(|p| project.map_or(true, |v| p.project.as_deref() == Some(v)))
+            .filter(|p| harness.map_or(true, |v| p.harness.as_deref() == Some(v)))
+            .filter_map(|p| {
+                let mut info = ProcessInfo::from_sysinfo(
+                    sysinfo::Pid::from_u32(p.pid),
+                    p.harness.clone().unwrap_or_else(|| "managed".to_string()),
+                    &system,
+                )?;
+                info.project = p.project;
+                info.harness = p.harness;
+                Some(info)
+            }).collect())
+    }
+    #[cfg(not(unix))]
+    {
+        let pool = ProcessPool::new();
+        pool.refresh().await;
+        let filter = if let Some(p) = project {
+            ProcessFilter::ByProject(p.to_string())
+        } else if let Some(h) = harness {
+            ProcessFilter::ByHarness(h.to_string())
+        } else {
+            ProcessFilter::All
+        };
+        Ok(pool.find(filter).await)
+    }
+}
 
-    let processes: Vec<ProcessInfo> = pool.find(filter).await;
+async fn build_ps_all_json(project: Option<&str>, harness: Option<&str>) -> Result<PsAllJson> {
+    let processes = supervised_processes(project, harness).await?;
     let proc_source = HostProcSource;
     let total_mem: u64 = processes.iter().map(|p| p.memory_mb).sum();
     let managed: Vec<PsManagedProcessRow> = processes
@@ -432,15 +459,7 @@ async fn render_ps_once(
 
     if csv {
         let payload = build_ps_all_json(project, harness).await?;
-        let pool = ProcessPool::new();
-        let filter = if let Some(p) = project {
-            ProcessFilter::ByProject(p.to_string())
-        } else if let Some(h) = harness {
-            ProcessFilter::ByHarness(h.to_string())
-        } else {
-            ProcessFilter::All
-        };
-        let processes: Vec<ProcessInfo> = pool.find(filter).await;
+    let processes = supervised_processes(project, harness).await?;
         let proc_source = HostProcSource;
         let body = render_csv::render_ps_all_csv_body(
             &processes,
@@ -454,15 +473,7 @@ async fn render_ps_once(
         return Ok(());
     }
 
-    let pool = ProcessPool::new();
-    let filter = if let Some(p) = project {
-        ProcessFilter::ByProject(p.to_string())
-    } else if let Some(h) = harness {
-        ProcessFilter::ByHarness(h.to_string())
-    } else {
-        ProcessFilter::All
-    };
-    let processes: Vec<ProcessInfo> = pool.find(filter).await;
+    let processes = supervised_processes(project, harness).await?;
     let proc_source = HostProcSource;
     print_ps_text_table(&processes, &proc_source, project, harness, all)?;
     if all {

@@ -64,6 +64,13 @@ jobs:
           result = json.loads(response)["result"]
           assert len(result) == 1, f"expected one supervisor-owned child: {result}"
           PY
+          target/debug/sharecli ps --all --json >"$RUNNER_TEMP/ps.json"
+          python3 - <<'PY'
+          import json, os
+          with open(os.path.join(os.environ["RUNNER_TEMP"], "ps.json")) as f:
+              report = json.load(f)
+          assert len(report["processes"]) == 1, f"ps must report supervisor child: {report['processes']}"
+          PY
           target/debug/sharecli stop --all
           python3 - <<'PY'
           import json, os, socket
