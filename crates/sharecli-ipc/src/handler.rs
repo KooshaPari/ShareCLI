@@ -521,9 +521,11 @@ impl Handler {
             }
 
             "process.kill" => {
-                let pid: u32 =
-                    req.params["pid"].as_u64().ok_or_else(|| anyhow::anyhow!("missing pid"))?
-                        as u32;
+                let pid_value = req.params["pid"]
+                    .as_u64()
+                    .ok_or_else(|| anyhow::anyhow!("missing pid"))?;
+                let pid = u32::try_from(pid_value)
+                    .map_err(|_| anyhow::anyhow!("process.kill: pid out of range"))?;
                 let terminated = self.pool.kill_verified(pid).await?;
                 Ok(Value::Bool(terminated))
             }
@@ -534,9 +536,11 @@ impl Handler {
             }
 
             "process.cmdline" => {
-                let pid: u32 =
-                    req.params["pid"].as_u64().ok_or_else(|| anyhow::anyhow!("missing pid"))?
-                        as u32;
+                let pid_value = req.params["pid"]
+                    .as_u64()
+                    .ok_or_else(|| anyhow::anyhow!("missing pid"))?;
+                let pid = u32::try_from(pid_value)
+                    .map_err(|_| anyhow::anyhow!("process.cmdline: pid out of range"))?;
                 // Per plan §3.3: return empty Vec when the pid is gone or the
                 // cmdline is unreadable. The Swift UI renders "No command line
                 // available" when the list is empty.
@@ -1194,5 +1198,19 @@ mod managed_spawn_tests {
             r#"{"id":13,"method":"process.spawn","params":{"cmd":"  "}}"#
         ).await;
         assert!(response.error.unwrap_or_default().contains("empty cmd"));
+    }
+}
+
+#[cfg(test)]
+mod pid_bounds_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn kill_rejects_u64_pid_overflow() {
+        let handler = Handler::with_session_store(SessionStore::open_memory().unwrap());
+        let response = handler
+            .dispatch(r#"{"id":99,"method":"process.kill","params":{"pid":4294967296}}"#)
+            .await;
+        assert!(response.error.unwrap_or_default().contains("pid out of range"));
     }
 }
