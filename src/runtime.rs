@@ -623,20 +623,21 @@ impl SharedRuntime {
         Ok(())
     }
 
+    /// Fail closed: no persistent Node/Bun worker protocol is implemented yet.
+    ///
+    /// This command must not claim successful script execution when it only
+    /// spawns a version probe and formats a status message.
     pub async fn run_with_pool(
         &self,
         harness_type: &str,
         project: &str,
         _script: &str,
     ) -> Result<(u32, String)> {
-        let pooled = self.acquire(harness_type).await?;
-
-        let output =
-            format!("Using pooled {} process {} for project {}", harness_type, pooled.pid, project);
-
-        self.release(harness_type, pooled.pid).await?;
-
-        Ok((pooled.pid, output))
+        bail!(
+            "pooled {} execution for project '{}' is not implemented; no script executed",
+            harness_type,
+            project
+        )
     }
 
     pub async fn health_check(&self) -> RuntimeHealth {
