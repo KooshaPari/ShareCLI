@@ -487,6 +487,28 @@ impl Handler {
                 Ok(serde_json::to_value(results)?)
             }
 
+            // Only expose executable process creation on Unix's credential-
+            // checked, owner-only socket. Windows loopback TCP currently lacks
+            // equivalent client authentication; fail closed there.
+            #[cfg(unix)]
+            "process.spawn" => {
+                let cmd = req.params.get("cmd").and_then(Value::as_str)
+                    .ok_or_else(|| anyhow::anyhow!("process.spawn: missing cmd"))?;
+                anyhow::ensure!(!cmd.trim().is_empty(), "process.spawn: empty cmd");
+                let args: Vec<String> = match req.params.get("args") {
+                    None | Some(Value::Null) => Vec::new(),
+                    Some(value) => serde_json::from_value(value.clone())?,
+                };
+                let cwd = req.params.get("cwd").and_then(Value::as_str)
+                    .map(std::path::PathBuf::from);
+                let project = req.params.get("project").and_then(Value::as_str)
+                    .map(str::to_owned);
+                let harness = req.params.get("harness").and_then(Value::as_str)
+                    .map(str::to_owned);
+                let info = self.pool.spawn(cmd, &args, cwd, project, harness).await?;
+                Ok(serde_json::json!({"pid": info.pid, "name": info.name}))
+            }
+
             "process.list" => {
                 self.pool.refresh().await;
                 let procs: Vec<ProcessSummary> =
@@ -1131,5 +1153,42 @@ mod verified_kill_tests {
         assert_eq!(response.id, 7);
         assert!(response.error.is_none());
         assert_eq!(response.result, Value::Bool(false));
+    }
+}
+
+#[cfg(all(test, unix))]
+mod managed_spawn_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn unix_ipc_spawn_and_verified_stop_share_one_registry() {
+        let handler = Handler::with_session_store(SessionStore::open_memory().unwrap());
+        let started = handler.dispatch(
+            r#"{"id":10,"method":"process.spawn","params":{"cmd":"sleep","args":["30"],"project":"fixture","harness":"sleep"}}"#
+        ).await;
+        assert!(started.error.is_none(), "spawn error: {:?}", started.error);
+        let pid = started.result["pid"].as_u64().expect("spawn PID");
+        assert!(pid > 0 && pid <= u32::MAX as u64);
+
+        let stopped = handler.dispatch(
+            &format!(r#"{{"id":11,"method":"process.kill","params":{{"pid":{pid}}}}}"#)
+        ).await;
+        assert!(stopped.error.is_none(), "stop error: {:?}", stopped.error);
+        assert_eq!(stopped.result, Value::Bool(true));
+
+        let again = handler.dispatch(
+            &format!(r#"{{"id":12,"method":"process.kill","params":{{"pid":{pid}}}}}"#)
+        ).await;
+        assert!(again.error.is_none());
+        assert_eq!(again.result, Value::Bool(false));
+    }
+
+    #[tokio::test]
+    async fn unix_ipc_spawn_rejects_empty_command() {
+        let handler = Handler::with_session_store(SessionStore::open_memory().unwrap());
+        let response = handler.dispatch(
+            r#"{"id":13,"method":"process.spawn","params":{"cmd":"  "}}"#
+        ).await;
+        assert!(response.error.unwrap_or_default().contains("empty cmd"));
     }
 }
