@@ -1,5 +1,8 @@
 name: GPG Signed Commits (Soft Gate — pending GPG key provisioning)
 on: [pull_request]
+permissions:
+  contents: read
+  pull-requests: read
 jobs:
   gpg:
     runs-on: ubuntu-latest
@@ -9,13 +12,21 @@ jobs:
         with:
           fetch-depth: 0
       - name: Verify GPG Signed Commits
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
-          COMMITS=$(git log --format='%H' origin/${{ github.base_ref }}..HEAD)
-          for sha in $COMMITS; do
-            SIG=$(git log -1 --format='%G?' $sha)
-            if [ "$SIG" = "N" ]; then
-              echo "ERROR: Commit $sha is not GPG signed"
-              exit 1
+          set -euo pipefail
+          missing=0
+          while IFS= read -r sha; do
+            sig="$(git log -1 --format=%G? "$sha")"
+            if [[ "$sig" == "N" ]]; then
+              echo "MISSING GPG signature: $sha $(git log -1 --format=%s "$sha")"
+              missing=1
             fi
-          done
+          done < <(git rev-list --no-merges "${BASE}..${HEAD}")
+          if [[ "$missing" -ne 0 ]]; then
+            echo "::warning::One or more commits lack GPG signature (soft gate)"
+            exit 1
+          fi
           echo "All commits are GPG signed"

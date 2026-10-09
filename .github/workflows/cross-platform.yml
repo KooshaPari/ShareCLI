@@ -54,6 +54,14 @@ jobs:
       - name: Cargo cache
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2
 
+      - name: Setup Zig (native matrix)
+        # spawn-core-sys v0.8.0 build script shells out to `zig build-obj`;
+        # without zig on PATH, every native test job fails with
+        # `Error: failed to run 'zig build-obj': No such file or directory`.
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29  # v2.2.1
+        with:
+          version: 0.14.1
+
       - name: Build
         run: cargo build --workspace --all-features --locked 2>&1 | tail -5
 
@@ -135,6 +143,12 @@ jobs:
         # rust-toolchain.toml pins 1.96.0, not the action's 'stable'.
         # Add musl to the resolved toolchain.
         run: rustup target add x86_64-unknown-linux-musl
+
+      - name: Setup Zig (musl)
+        # spawn-core-sys v0.8.0 build script shells out to `zig build-obj`.
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29  # v2.2.1
+        with:
+          version: 0.14.1
 
       - name: Test (lib, musl)
         run: cargo test --workspace --lib --target x86_64-unknown-linux-musl --no-fail-fast
