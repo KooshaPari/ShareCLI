@@ -1,8 +1,9 @@
 /// IPCClient.swift — Unix socket NDJSON-RPC client for the sharecli IPC server.
 ///
 /// All calls are async; the caller awaits on a background Task.
-/// Thread-safety: each call creates its own socket connection (stateless from
-/// the Swift side — the Rust server handles concurrent connections).
+/// Thread-safety: one long-lived connection owned by `IPCConnection`. Replies
+/// are routed by request id, so concurrent calls stay concurrent; every request
+/// carries its own deadline and can be cancelled without disturbing the others.
 
 import Foundation
 import Network
@@ -330,32 +331,6 @@ public struct ProcessCmdline: Decodable, Hashable {
     public let argv: [String]
 }
 
-// MARK: - Per-process detail IPC (process.fdcount, process.io)
-
-public struct ProcessFdcountResult: Decodable, Hashable {
-    public let pid: UInt32
-    public let fd_count: UInt32?
-    public let sampled_at: UInt64
-    public let note: String?
-}
-
-public struct ProcessIoResult: Decodable, Hashable {
-    public let pid: UInt32
-    public let disk_read_bytes: UInt64?
-    public let disk_write_bytes: UInt64?
-    public let sampled_at: UInt64
-    public let note: String?
-}
-
-// MARK: - Tree view (process.tree)
-
-public struct ProcessTreeNode: Decodable, Hashable, Identifiable {
-    public var id: UInt32 { pid }
-    public let pid: UInt32
-    public let name: String
-    public let children: [ProcessTreeNode]
-}
-
 // MARK: - Spawn (process.spawn)
 
 public struct ProcessSpawnPayload: Encodable {
@@ -364,13 +339,15 @@ public struct ProcessSpawnPayload: Encodable {
     public let args: [String]
     public let project: String?
     public let harness: String?
+    public let cwd: String?
 
-    public init(name: String, command: String, args: [String], project: String?, harness: String?) {
+    public init(name: String, command: String, args: [String], project: String?, harness: String?, cwd: String?) {
         self.name = name
         self.command = command
         self.args = args
         self.project = project
         self.harness = harness
+        self.cwd = cwd
     }
 }
 
@@ -396,8 +373,19 @@ public actor IPCClient {
     public nonisolated var socketPath: String { _socketPath }
     private var nextId: Int = 1
 
-    public init(socketPath: String) {
+    /// One connection for the life of this client. `IPCClient` is an actor and
+    /// this is a `let`, so the reference never changes; all mutation of the
+    /// socket happens inside `IPCConnection` on its own serial queue.
+    ///
+    /// The per-request deadline (audit 0.7) lives there as well: every `send`
+    /// schedules its own timeout on that queue, so a sidecar that accepts but
+    /// never answers still fails with `IPCError.timeout` rather than pinning
+    /// anything.
+    private let connection: IPCConnection
+
+    public init(socketPath: String, timeout: TimeInterval = 5.0) {
         self._socketPath = socketPath
+        self.connection = IPCConnection(socketPath: socketPath, timeout: timeout)
     }
 
     public static func defaultClient() -> IPCClient {
@@ -434,10 +422,20 @@ public actor IPCClient {
         return resp.result ?? []
     }
 
-    public func kill(pid: UInt32) async throws {
-        let _: IPCResponse<Bool> = try await call(
+    /// Returns `true` when the daemon really stopped the process.
+    ///
+    /// The daemon answers `false` for a pid it does not manage (audit 0.6,
+    /// lane-4 BLOCKER). That refusal is the whole point of the contract, so it
+    /// must reach the caller: discarding it made the tray claim it had stopped
+    /// a process that was still running.
+    @discardableResult
+    public func kill(pid: UInt32) async throws -> Bool {
+        let resp: IPCResponse<Bool> = try await call(
             method: "process.kill", params: ["pid": .uint(pid)]
         )
+        guard let killed = resp.result else { throw IPCError.nilResult("process.kill") }
+        guard killed else { throw IPCError.server("no such pid: \(pid)") }
+        return true
     }
 
     public func killAll() async throws {
@@ -507,34 +505,6 @@ public actor IPCClient {
         return snap.cmdline.isEmpty ? nil : snap
     }
 
-    /// Per-process FD count (cross-platform via `lsof`).
-    /// Returns `fd_count: nil` + a `note` if the sidecar couldn't read it.
-    public func fetchFdcount(pid: UInt32) async throws -> ProcessFdcountResult {
-        let resp: IPCResponse<ProcessFdcountResult> = try await call(
-            method: "process.fdcount", params: ["pid": .uint(pid)]
-        )
-        guard let snap = resp.result else { throw IPCError.nilResult("process.fdcount") }
-        return snap
-    }
-
-    /// Per-process disk I/O bytes (Linux-only).
-    /// Returns `disk_read_bytes: nil` + a `note` if not available.
-    public func fetchIo(pid: UInt32) async throws -> ProcessIoResult {
-        let resp: IPCResponse<ProcessIoResult> = try await call(
-            method: "process.io", params: ["pid": .uint(pid)]
-        )
-        guard let snap = resp.result else { throw IPCError.nilResult("process.io") }
-        return snap
-    }
-
-    /// Fetch a flat tree of the process fleet (parent → children).
-    public func fetchProcessTree() async throws -> ProcessTreeNode? {
-        let resp: IPCResponse<ProcessTreeNode> = try await call(
-            method: "process.tree", params: [:]
-        )
-        return resp.result
-    }
-
     /// Spawn a new process in the pool. The sidecar returns the assigned PID
     /// on success, or `success: false` with `error` populated.
     public func spawn(payload: ProcessSpawnPayload) async throws -> ProcessSpawnResult {
@@ -545,7 +515,8 @@ public actor IPCClient {
                 "command": .string(payload.command),
                 "args": .array(payload.args.map { .string($0) }),
                 "project": payload.project.map(AnyCodable.string) ?? .null,
-                "harness": payload.harness.map(AnyCodable.string) ?? .null
+                "harness": payload.harness.map(AnyCodable.string) ?? .null,
+                "cwd": payload.cwd.map(AnyCodable.string) ?? .null
             ]
         )
         guard let snap = resp.result else { throw IPCError.nilResult("process.spawn") }
@@ -577,80 +548,21 @@ public actor IPCClient {
         var payload = try JSONEncoder().encode(req)
         payload.append(contentsOf: [UInt8(ascii: "\n")])
 
-        let sock = socketPath
-        return try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .utility).async {
-                do {
-                    let fd = try Self.openUnixSocket(path: sock)
-                    defer { Darwin.close(fd) }
+        // One connection for every call: `IPCConnection` keeps the socket open
+        // and hands back the raw reply matched to `id`, so this only has to
+        // decode it. Decoding here rather than in the connection is what keeps
+        // one id->continuation map usable for every `T` a caller asks for.
+        let raw = try await connection.send(id: id, frame: payload)
+        let decoded = try JSONDecoder().decode(IPCResponse<T>.self, from: raw)
 
-                    // Write request
-                    try payload.withUnsafeBytes { buf in
-                        var written = 0
-                        while written < buf.count {
-                            let n = Darwin.write(fd, buf.baseAddress!.advanced(by: written), buf.count - written)
-                            guard n > 0 else { throw IPCError.writeFailed }
-                            written += n
-                        }
-                    }
-
-                    // Read until newline
-                    var response = Data()
-                    var byte = UInt8(0)
-                    while true {
-                        let n = Darwin.read(fd, &byte, 1)
-                        guard n > 0 else { throw IPCError.readFailed }
-                        if byte == UInt8(ascii: "\n") { break }
-                        response.append(byte)
-                    }
-
-                    let decoded = try JSONDecoder().decode(IPCResponse<T>.self, from: response)
-
-                    // The daemon reports refusals (for example a rejected
-                    // config patch) in `error` with a null result. Surface it
-                    // as a thrown error, otherwise callers treat the refusal as
-                    // success and the tray shows a false "Applied" toast for a
-                    // write that never happened.
-                    if let message = decoded.error {
-                        throw IPCError.server(message)
-                    }
-
-                    continuation.resume(returning: decoded)
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
+        // The daemon reports refusals (for example a rejected config patch) in
+        // `error` with a null result. Surface it as a thrown error, otherwise
+        // callers treat the refusal as success and the tray shows a false
+        // "Applied" toast for a write that never happened.
+        if let message = decoded.error {
+            throw IPCError.server(message)
         }
-    }
-
-    private static func openUnixSocket(path: String) throws -> Int32 {
-        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard fd >= 0 else { throw IPCError.socketCreate }
-
-        var addr = sockaddr_un()
-        addr.sun_family = sa_family_t(AF_UNIX)
-        let pathCap = MemoryLayout.size(ofValue: addr.sun_path)
-        path.withCString { cstr in
-            withUnsafeMutableBytes(of: &addr.sun_path) { raw in
-                guard let base = raw.baseAddress else { return }
-                let dest = base.assumingMemoryBound(to: CChar.self)
-                let n = min(pathCap, raw.count)
-                memset(dest, 0, n)
-                strncpy(dest, cstr, n > 0 ? n - 1 : 0)
-            }
-        }
-
-        let connectResult = withUnsafePointer(to: &addr) { ptr in
-            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sap in
-                connect(fd, sap, socklen_t(MemoryLayout<sockaddr_un>.size))
-            }
-        }
-
-        guard connectResult == 0 else {
-            Darwin.close(fd)
-            throw IPCError.connectFailed(path)
-        }
-        return fd
+        return decoded
     }
 }
 
@@ -664,6 +576,12 @@ public enum IPCError: LocalizedError {
     case writeFailed
     case readFailed
     case nilResult(String)
+    /// The daemon accepted the connection but did not answer within the
+    /// configured deadline (lane-2 BLOCKER fix, audit 0.7).
+    case timeout
+    /// A connection is already live. `IPCConnection.connect()` refuses to open
+    /// a second one (PLAN.md:166).
+    case alreadyConnected
     /// The daemon answered with a populated `error` field.
     case server(String)
 
@@ -673,6 +591,8 @@ public enum IPCError: LocalizedError {
         case .connectFailed(let p): return "Could not connect to sharecli-ipc at \(p)"
         case .writeFailed: return "Socket write failed"
         case .readFailed: return "Socket read failed"
+        case .timeout: return "IPC request timed out"
+        case .alreadyConnected: return "An IPC connection is already open"
         case .nilResult(let m): return "Nil result from \(m)"
         case .server(let m): return m
         }

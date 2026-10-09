@@ -1,4 +1,4 @@
-//! Config file watcher with debounced hot-reload.
+//! Config file watcher with trailing-edge debounced hot-reload.
 //!
 //! # Usage
 //!
@@ -14,10 +14,23 @@
 //! let _watcher = ConfigWatcher::new(path, tx).expect("failed to start watcher");
 //! // rx now receives updated Config values on every valid save.
 //! ```
+//!
+//! # Debounce policy
+//!
+//! The debouncer is **trailing**: it waits for a quiet window of `DEBOUNCE`
+//! (defined in the private `debounce` module) measured from the *latest* event,
+//! then reloads once. A leading-edge scheme fires on the first event and drops
+//! everything inside the window; for a burst of saves that produces several
+//! reloads of intermediate states and can lose the final save entirely. The
+//! deterministic coverage for that contract is
+//! `debounce::tests::five_events_within_the_window_yield_exactly_one_claim`;
+//! the filesystem-tier receipt is `tests/config_watcher_hot_reload.rs`.
+
+mod debounce;
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::time::Instant;
 
 use anyhow::Result;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
@@ -25,9 +38,7 @@ use tokio::sync::watch;
 use tracing::{error, info};
 
 use crate::config::Config;
-
-/// Debounce window: coalesce file-system events within this duration.
-const DEBOUNCE: Duration = Duration::from_millis(200);
+use debounce::{lock, wait, Debouncer, Shared};
 
 /// Watches a config file path and sends a new [`Config`] on `reload_tx`
 /// whenever the file is created or modified with a valid TOML payload.
@@ -35,71 +46,127 @@ const DEBOUNCE: Duration = Duration::from_millis(200);
 /// Parse errors are logged and the previous config is kept — the watcher
 /// never crashes on bad input.
 pub struct ConfigWatcher {
-    /// Keep the watcher alive; dropped when `ConfigWatcher` is dropped.
+    /// Keep the file watcher alive; dropped when `ConfigWatcher` is dropped.
     _watcher: RecommendedWatcher,
+    /// Coordination shared with the notify callback and debounce thread.
+    shared: Arc<Shared>,
+    /// The trailing-edge debounce thread; joined on drop.
+    debounce_thread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl ConfigWatcher {
-    /// Start watching `path`.  Sends the initial (or reloaded) config on
-    /// `reload_tx` for every valid `Create` / `Modify` event.
+    /// Start watching `path`. Sends a config on `reload_tx` for each settled
+    /// batch of `Create` / `Modify` events.
     pub fn new(path: PathBuf, reload_tx: watch::Sender<Config>) -> Result<Self> {
-        // Shared last-event timestamp for debouncing.
-        let last_event: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
+        let shared = Arc::new(Shared::new());
 
-        let path_clone = path.clone();
-        let last_clone = Arc::clone(&last_event);
-
-        let mut watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
-            match res {
+        // The notify callback only records events; all reloading happens on the
+        // debounce thread so the trailing deadline can be extended safely.
+        let callback_shared = Arc::clone(&shared);
+        let mut watcher =
+            notify::recommended_watcher(move |res: notify::Result<Event>| match res {
                 Ok(event) => {
-                    let relevant =
-                        matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_));
-                    if !relevant {
+                    if !matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_)) {
                         return;
                     }
-
-                    // Debounce: record the event time; only act if ≥200 ms has
-                    // elapsed since the *previous* action.
-                    let now = Instant::now();
-                    {
-                        let mut guard = last_clone.lock().unwrap_or_else(|e| e.into_inner());
-                        if let Some(prev) = *guard {
-                            if now.duration_since(prev) < DEBOUNCE {
-                                // Still within debounce window — skip.
-                                return;
-                            }
-                        }
-                        *guard = Some(now);
-                    }
-
-                    // Attempt to reload.
-                    match reload_config(&path_clone) {
-                        Ok(cfg) => {
-                            info!("config_watcher: reloaded {:?}", path_clone);
-                            // send() only errors when all receivers are gone; treat
-                            // that as a no-op (the process is shutting down).
-                            let _ = reload_tx.send(cfg);
-                        }
-                        Err(e) => {
-                            error!(
-                                "config_watcher: parse error in {:?} — keeping old config: {e}",
-                                path_clone
-                            );
-                        }
-                    }
+                    let mut guard = callback_shared.state.lock().unwrap_or_else(|e| e.into_inner());
+                    guard.record(Instant::now());
+                    drop(guard);
+                    callback_shared.cv.notify_one();
                 }
                 Err(e) => {
                     error!("config_watcher: watch error: {e}");
                 }
-            }
-        })?;
+            })?;
 
         // Watch the file's parent directory so we also catch atomic rename-saves
         // (editors like vim, helix, and `sed -i` write to a temp file then rename).
-        let watch_target = path.parent().unwrap_or(&path);
-        watcher.watch(watch_target, RecursiveMode::NonRecursive)?;
+        let watch_target = path.parent().unwrap_or(&path).to_path_buf();
+        watcher.watch(&watch_target, RecursiveMode::NonRecursive)?;
 
-        Ok(Self { _watcher: watcher })
+        let thread_shared = Arc::clone(&shared);
+        let thread_path = path.clone();
+        let debounce_thread =
+            std::thread::Builder::new().name("config-debounce".into()).spawn(move || {
+                run_debounced_reload(thread_path, thread_shared, reload_tx);
+            })?;
+
+        Ok(Self { _watcher: watcher, shared, debounce_thread: Some(debounce_thread) })
+    }
+}
+
+impl Drop for ConfigWatcher {
+    fn drop(&mut self) {
+        {
+            let mut guard = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
+            guard.shutdown = true;
+        }
+        self.shared.cv.notify_all();
+        if let Some(handle) = self.debounce_thread.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+/// Wait for `DEBOUNCE` of quiet after the latest event, then reload once.
+///
+/// Runs on its own thread so the notify callback stays cheap and so the
+/// deadline can be extended when further events arrive mid-wait.
+fn run_debounced_reload(path: PathBuf, shared: Arc<Shared>, reload_tx: watch::Sender<Config>) {
+    loop {
+        // 1. Wait for an outstanding batch.
+        let (mut generation, mut due) = {
+            let mut guard = lock(&shared);
+            while !guard.pending && !guard.shutdown {
+                guard = wait(&shared, guard);
+            }
+            if guard.shutdown {
+                return;
+            }
+            (guard.generation, guard.due_at().expect("pending implies an event"))
+        };
+
+        // 2. Sleep to the trailing deadline, following any newer event.
+        loop {
+            let now = Instant::now();
+            if now >= due {
+                break;
+            }
+            std::thread::sleep(due - now);
+            let guard = lock(&shared);
+            if guard.shutdown {
+                return;
+            }
+            if guard.generation != generation {
+                generation = guard.generation;
+                due = guard.due_at().expect("pending implies an event");
+                continue;
+            }
+            drop(guard);
+            if Instant::now() >= due {
+                break;
+            }
+            // Woke early; sleep out the remainder.
+        }
+
+        // 3. Claim the batch. A newer event arriving here means we wait again
+        //    rather than reloading a file that is still being written.
+        if !lock(&shared).claim(generation) {
+            continue;
+        }
+
+        // 4. Reload the settled file.
+        match reload_config(&path) {
+            Ok(cfg) => {
+                info!("config_watcher: reloaded {path:?}");
+                // send() only errors when all receivers are gone; treat that as
+                // a no-op (the process is shutting down).
+                let _ = reload_tx.send(cfg);
+            }
+            Err(e) => {
+                error!("config_watcher: parse error in {path:?} — keeping old config: {e}");
+            }
+        }
     }
 }
 
@@ -117,6 +184,7 @@ fn reload_config(path: &PathBuf) -> Result<Config> {
 #[cfg(test)]
 mod tests {
     use std::io::Write;
+    use std::time::Duration;
 
     use tempfile::NamedTempFile;
     use tokio::sync::watch;
@@ -154,67 +222,6 @@ mod tests {
         assert!(result.is_err(), "expected Err for missing file");
     }
 
-    // --- debounce logic ---
-
-    #[test]
-    fn debounce_suppresses_rapid_events() {
-        // Simulate two events with zero elapsed time between them.
-        let last_event: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
-
-        let now = Instant::now();
-        // First event: always passes.
-        let first_passed = {
-            let mut guard = last_event.lock().unwrap();
-            match *guard {
-                Some(prev) if now.duration_since(prev) < DEBOUNCE => false,
-                _ => {
-                    *guard = Some(now);
-                    true
-                }
-            }
-        };
-
-        // Second event at the *same* instant — should be suppressed.
-        let second_passed = {
-            let mut guard = last_event.lock().unwrap();
-            match *guard {
-                Some(prev) if now.duration_since(prev) < DEBOUNCE => false,
-                _ => {
-                    *guard = Some(now);
-                    true
-                }
-            }
-        };
-
-        assert!(first_passed, "first event should pass");
-        assert!(!second_passed, "second event within debounce window should be suppressed");
-    }
-
-    #[test]
-    fn debounce_allows_event_after_window_expires() {
-        let last_event: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
-
-        // Seed with a timestamp well in the past.
-        {
-            let past = Instant::now() - Duration::from_millis(500);
-            *last_event.lock().unwrap() = Some(past);
-        }
-
-        let now = Instant::now();
-        let passed = {
-            let mut guard = last_event.lock().unwrap();
-            match *guard {
-                Some(prev) if now.duration_since(prev) < DEBOUNCE => false,
-                _ => {
-                    *guard = Some(now);
-                    true
-                }
-            }
-        };
-
-        assert!(passed, "event after debounce window should be allowed through");
-    }
-
     // --- ConfigWatcher::new wires up without panicking ---
 
     #[test]
@@ -227,6 +234,68 @@ mod tests {
 
         let result = ConfigWatcher::new(f.path().to_path_buf(), tx);
         assert!(result.is_ok(), "ConfigWatcher::new should succeed for an existing file");
+    }
+
+    // --- reload_config settles the payload, not just the file's existence ---
+
+    #[test]
+    fn reload_config_rejects_a_truncated_payload() {
+        // A half-written config (the crash-under-write state) must be refused,
+        // so the watcher keeps the last good generation instead of adopting it.
+        let mut f = NamedTempFile::new().unwrap();
+        let truncated = "[serve\nauth_mode = ";
+        write!(f, "{}", truncated).unwrap();
+        let err = reload_config(&f.path().to_path_buf()).expect_err("truncated TOML must fail");
+        assert!(!err.to_string().is_empty(), "the parse error must be reportable");
+    }
+
+    #[test]
+    fn reload_config_parses_a_realistic_payload() {
+        // A realistic config body must round-trip, proving the watcher reads the
+        // file's *contents* rather than merely confirming it exists.
+        let mut f = NamedTempFile::new().unwrap();
+        write!(f, "[serve]\n").unwrap();
+        let cfg = reload_config(&f.path().to_path_buf()).expect("valid table parses");
+        // `Config` has no `PartialEq`; compare the fields the payload controls.
+        assert_eq!(
+            cfg.serve.auth_mode,
+            Config::default().serve.auth_mode,
+            "an empty serve table must leave auth_mode at its default"
+        );
+        assert!(cfg.serve.jwt.is_none(), "an empty serve table must not invent a jwt block");
+    }
+
+    // --- Debounce thread lifecycle (real file events) ---
+
+    #[test]
+    fn watcher_shutdown_joins_the_debounce_thread() {
+        // Dropping the watcher must set `shutdown`, wake the debounce thread and
+        // join it; a regression that leaves the thread parked never returns.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "").unwrap();
+
+        let (tx, _rx) = watch::channel(Config::default());
+        let watcher = ConfigWatcher::new(path, tx).expect("watcher starts");
+        assert!(watcher.debounce_thread.is_some(), "a debounce thread must be running");
+        drop(watcher);
+    }
+
+    #[test]
+    fn watcher_drop_after_a_save_event_completes() {
+        // A create/modify event must exercise the notify callback without wedging
+        // shutdown: this drives the event path, then drops the watcher.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "").unwrap();
+
+        let (tx, rx) = watch::channel(Config::default());
+        let watcher = ConfigWatcher::new(path.clone(), tx).expect("watcher starts");
+
+        std::fs::write(&path, "[serve]\n").unwrap();
+
+        drop(watcher);
+        drop(rx);
     }
 
     #[test]

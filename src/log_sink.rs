@@ -5,6 +5,42 @@ use tracing::Subscriber;
 use tracing_subscriber::layer::Context;
 use tracing_subscriber::Layer;
 
+/// Where a process routes its human-readable tracing output.
+///
+/// Audit task 1.11 (`docs/audit/2026-09-20/PLAN.md` lines 183-185).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogSinkRoute {
+    /// Interactive console (stderr is a TTY, or `--verbose`): mirror events to
+    /// stderr.
+    Console,
+    /// Daemonized / piped (stderr is not a TTY): never write to stderr, so the
+    /// FR-007 stderr-silent contract holds; events go to the file sink only.
+    Daemon,
+}
+
+/// Resolved subscriber configuration for one process start.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SubscriberPlan {
+    /// Whether to install the global subscriber. `--quiet` is the only opt-out.
+    pub install: bool,
+    /// Where human-readable output is routed.
+    pub route: LogSinkRoute,
+    /// Global level filter: DEBUG with `--verbose`, INFO otherwise.
+    pub level: tracing::Level,
+}
+
+/// Decide the subscriber configuration from CLI flags and the stderr TTY.
+///
+/// Audit task 1.11: the subscriber is installed even when stderr is not a TTY,
+/// so a daemonized `sharecli serve` emits logs. The stderr console layer is
+/// attached only on [`LogSinkRoute::Console`]; the file sink carries the log
+/// for the daemon route.
+pub fn plan_subscriber(quiet: bool, verbose: bool, stderr_is_tty: bool) -> SubscriberPlan {
+    let level = if verbose { tracing::Level::DEBUG } else { tracing::Level::INFO };
+    let route = if verbose || stderr_is_tty { LogSinkRoute::Console } else { LogSinkRoute::Daemon };
+    SubscriberPlan { install: !quiet, route, level }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum LogLevel {
     Debug,
@@ -136,6 +172,41 @@ impl<S: Subscriber> Layer<S> for LogSinkLayer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn plan_routes_console_for_a_tty_or_verbose() {
+        let interactive = plan_subscriber(false, false, true);
+        assert!(interactive.install, "only --quiet opts out of installing the subscriber");
+        assert_eq!(interactive.route, LogSinkRoute::Console);
+        assert_eq!(interactive.level, tracing::Level::INFO);
+
+        let verbose = plan_subscriber(false, true, false);
+        assert_eq!(verbose.route, LogSinkRoute::Console);
+        assert_eq!(verbose.level, tracing::Level::DEBUG);
+    }
+
+    #[test]
+    fn plan_routes_daemon_for_a_piped_stderr() {
+        let daemon = plan_subscriber(false, false, false);
+        assert_eq!(daemon.route, LogSinkRoute::Daemon);
+        assert!(daemon.install, "a daemonized serve must still install the subscriber");
+        assert_eq!(daemon.level, tracing::Level::INFO);
+    }
+
+    #[test]
+    fn plan_honours_quiet() {
+        assert!(!plan_subscriber(true, false, true).install);
+        assert!(!plan_subscriber(true, true, false).install);
+    }
+
+    #[test]
+    fn from_level_maps_every_tracing_level() {
+        assert_eq!(LogLevel::from_level(&tracing::Level::ERROR), LogLevel::Error);
+        assert_eq!(LogLevel::from_level(&tracing::Level::WARN), LogLevel::Warn);
+        assert_eq!(LogLevel::from_level(&tracing::Level::INFO), LogLevel::Info);
+        assert_eq!(LogLevel::from_level(&tracing::Level::DEBUG), LogLevel::Debug);
+        assert_eq!(LogLevel::from_level(&tracing::Level::TRACE), LogLevel::Debug);
+    }
+
     #[test]
     fn write_and_drain() {
         let s = LogSink::new(10);

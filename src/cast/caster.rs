@@ -651,7 +651,16 @@ mod tests {
     // -----------------------------------------------------------------------
     // MockProcessRunner
     // -----------------------------------------------------------------------
+    // Platform trait that provides `ExitStatus::from_raw` for the mock's
+    // failure statuses. The unix-only import broke the windows-latest CI
+    // test build (`cannot find \`unix\` in \`os\``); Windows has the same
+    // trait under std::os::windows with a u32 raw code — the literal `1`
+    // call sites infer correctly on both. Production logic only checks
+    // `status.success()`, which is false for these values on both platforms.
+    #[cfg(unix)]
     use std::os::unix::process::ExitStatusExt;
+    #[cfg(windows)]
+    use std::os::windows::process::ExitStatusExt;
 
     #[test]
     fn mock_process_runner_new_is_empty() {

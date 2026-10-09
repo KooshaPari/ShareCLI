@@ -463,6 +463,9 @@ pub struct HypervisorConfig {
     pub cache_key_mode: CacheKeyMode,
     /// When true, apply lint-tool semantic argv normalization before hashing (AC-008.20).
     pub semantic: bool,
+    /// TTL for caching failed runs (exit_code != 0). Zero = never cache errors.
+    /// Origin: rules.conf `error_ttl=` (default 10s in harness dispatcher).
+    pub error_ttl: Duration,
 }
 
 /// A request to spawn a managed process.
@@ -647,6 +650,7 @@ impl Hypervisor {
                 coalesce_debounce: Duration::ZERO,
                 cache_key_mode: CacheKeyMode::Time,
                 semantic: false,
+                error_ttl: Duration::ZERO,
             },
             gate,
             DEFAULT_NOCACHE_ARGS.iter().map(|s| (*s).to_string()).collect(),
@@ -679,10 +683,11 @@ impl Hypervisor {
         gate: Arc<dyn ThermalGate>,
         nocache_args: Vec<String>,
     ) -> Self {
-        let cache = CoalesceCache::with_options(
+        let cache = CoalesceCache::with_full_options(
             config.cache_root.clone(),
             config.coalesce_ttl,
             config.coalesce_debounce,
+            config.error_ttl,
         );
         let queue = SlotQueue::new(config.queue_root.clone(), config.queue_max_concurrent);
 
@@ -1359,6 +1364,7 @@ mod tests {
                 coalesce_debounce: debounce,
                 cache_key_mode: CacheKeyMode::Time,
                 semantic: false,
+                error_ttl: Duration::ZERO,
             },
             Arc::new(FakeThermalGate::new(ThermalDecision::Allow)),
             vec![],

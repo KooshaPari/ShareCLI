@@ -14,6 +14,28 @@
 import AppKit
 import ShareCLICore
 
+/// Confirmation decision for the menubar's destructive "Kill All Processes".
+///
+/// Closure batch (cricket 2026-10-05, A2). The popover and the process pages use
+/// `DestructiveKillGate` (a SwiftUI state machine); an `NSMenu` has no such state,
+/// so this is the equivalent *pure* decision for the AppKit path: the kill-all
+/// scope is returned only from a confirmed request, and `nil` means "perform
+/// nothing". Kept free of AppKit so it is unit-testable headlessly.
+enum TrayKillAllGate {
+    /// Returns the scope to perform for a confirmation state, or `nil` when the
+    /// action was not confirmed (nothing to perform).
+    static func confirm(pending: Bool) -> KillScope? {
+        pending ? .all : nil
+    }
+
+    /// Confirmation alert copy, shared with the NSAlert presented by the menu.
+    static let title = "Kill all processes?"
+    static let message =
+        "Sends SIGTERM to every process in the fleet pool. This cannot be undone."
+    static let confirmLabel = "Kill All"
+    static let cancelLabel = "Cancel"
+}
+
 @MainActor
 enum TrayMenuController {
 
@@ -204,6 +226,16 @@ final class MenuAction: NSObject {
     }
 
     @objc func killAll(_ sender: Any?) {
+        // Destructive: require an explicit confirmation before killing. The
+        // decision is the pure `TrayKillAllGate`; the alert reports it.
+        let alert = NSAlert()
+        alert.messageText = TrayKillAllGate.title
+        alert.informativeText = TrayKillAllGate.message
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: TrayKillAllGate.confirmLabel)
+        alert.addButton(withTitle: TrayKillAllGate.cancelLabel)
+        let confirmed = alert.runModal() == .alertFirstButtonReturn
+        guard TrayKillAllGate.confirm(pending: confirmed) != nil else { return }
         Task { @MainActor in
             await AppState.shared.killAll()
         }

@@ -150,11 +150,20 @@ struct PoolPage: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             if !state.isConnected {
-                HStack(spacing: 6) {
-                    Image(systemName: "wifi.slash").foregroundStyle(.orange)
-                    Text(state.lastError ?? "Not connected to sharecli-ipc")
-                        .foregroundStyle(.secondary)
-                }
+                FailedActionBanner(
+                    title: RetryCopy.disconnectedTitle,
+                    detail: state.lastError,
+                    systemImage: "wifi.slash",
+                    actionTitle: RetryCopy.disconnectedStartLabel,
+                    actionSystemImage: "play.fill",
+                    actionHint: RetryCopy.startHint,
+                    action: {
+                        Task {
+                            await SidecarSupervisor.shared.ensureRunning()
+                            await state.refresh()
+                        }
+                    }
+                )
                 .font(.caption2)
                 .padding(.top, 4)
             }
@@ -414,7 +423,7 @@ struct IssueRow: View {
             switch self {
             case .info: return "info.circle"
             case .warning: return "exclamationmark.triangle"
-            case .critical: return "xmark.octagon"
+            case .critical: return StatusIcon.critical.symbolName
             }
         }
     }

@@ -209,3 +209,184 @@ fn is_hazardous_root(path: &Path) -> bool {
     ];
     ROOTS.iter().any(|root| path == Path::new(root))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn policy() -> AgentCallPolicy {
+        AgentCallPolicy::new(PathBuf::from("/work/proj"))
+    }
+
+    #[test]
+    fn admits_plain_command_with_default_deadline() {
+        let decision = policy().admit("ls -la");
+        assert_eq!(decision.command(), "ls -la");
+        assert_eq!(decision.pause_code(), None);
+        assert_eq!(decision.resume_condition(), None);
+        assert_eq!(decision.deadline(), Duration::from_secs(30));
+    }
+
+    #[test]
+    fn empty_command_is_admitted_without_normalization() {
+        let decision = policy().admit("");
+        assert_eq!(decision.command(), "");
+        assert_eq!(decision.pause_code(), None);
+    }
+
+    #[test]
+    fn rewrites_recursive_grep_dot_to_project_root() {
+        let decision = policy().admit("grep -r needle .");
+        assert_eq!(
+            decision.command(),
+            "rg --hidden --glob '!target' --glob '!node_modules' needle /work/proj"
+        );
+        assert_eq!(decision.pause_code(), None);
+    }
+
+    #[test]
+    fn rewrites_recursive_grep_without_target_to_project_root() {
+        let decision = policy().admit("grep -R needle");
+        assert_eq!(
+            decision.command(),
+            "rg --hidden --glob '!target' --glob '!node_modules' needle /work/proj"
+        );
+    }
+
+    #[test]
+    fn uses_explicit_grep_target_when_it_is_a_directory() {
+        let decision = policy().admit("egrep -rn pattern src/lib");
+        assert_eq!(
+            decision.command(),
+            "rg --hidden --glob '!target' --glob '!node_modules' pattern src/lib"
+        );
+    }
+
+    #[test]
+    fn leaves_non_recursive_grep_untouched() {
+        let decision = policy().admit("grep needle .");
+        assert_eq!(decision.command(), "grep needle .");
+    }
+
+    #[test]
+    fn leaves_recursive_non_grep_untouched() {
+        let decision = policy().admit("rm -r build");
+        assert_eq!(decision.command(), "rm -r build");
+    }
+
+    #[test]
+    fn recursive_flag_detection_accepts_long_and_bundled_flags() {
+        assert!(has_recursive_flag(&["--recursive"]));
+        assert!(has_recursive_flag(&["-r"]));
+        assert!(has_recursive_flag(&["-R"]));
+        assert!(has_recursive_flag(&["-rn"]));
+        assert!(!has_recursive_flag(&["-l"]));
+        assert!(!has_recursive_flag(&["-"]));
+        assert!(!has_recursive_flag(&[]));
+    }
+
+    #[test]
+    fn hazardous_root_is_paused_with_resume_condition() {
+        let decision = policy().admit("rm -rf /");
+        assert_eq!(decision.pause_code(), Some(PauseCode::HazardousRoot));
+        assert_eq!(decision.resume_condition(), Some("use a path inside the project root"));
+        assert_eq!(decision.deadline(), DEFAULT_DEADLINE);
+    }
+
+    #[test]
+    fn hazardous_root_check_applies_to_any_argument() {
+        assert!(targets_hazardous_root("ls /etc"));
+        assert!(targets_hazardous_root("find /usr"));
+        assert!(!targets_hazardous_root("ls /usr/local"));
+        assert!(!targets_hazardous_root("ls /work/proj"));
+        // A root with a trailing separator is still the same path.
+        assert!(targets_hazardous_root("ls /var/"));
+    }
+
+    #[test]
+    fn every_published_root_is_recognized() {
+        for root in [
+            "/",
+            "/Applications",
+            "/Library",
+            "/System",
+            "/Users",
+            "/bin",
+            "/dev",
+            "/etc",
+            "/opt",
+            "/private",
+            "/proc",
+            "/sys",
+            "/tmp",
+            "/usr",
+            "/var",
+            "/Volumes",
+        ] {
+            assert!(is_hazardous_root(Path::new(root)), "{root} must be hazardous");
+        }
+        assert!(!is_hazardous_root(Path::new("/work/proj")));
+        assert!(!is_hazardous_root(Path::new("relative/path")));
+    }
+
+    #[test]
+    fn missing_thermal_headroom_pauses_before_limits() {
+        let policy = policy().with_thermal_headroom(false);
+        let decision = policy.admit("ls");
+        assert_eq!(decision.pause_code(), Some(PauseCode::Thermal));
+        assert_eq!(decision.resume_condition(), Some("wait for thermal headroom"));
+    }
+
+    #[test]
+    fn project_limit_is_enforced_once_reached() {
+        let policy = policy().with_project_limit(1);
+        assert_eq!(policy.admit("ls").pause_code(), None);
+        let refused = policy.admit("ls");
+        assert_eq!(refused.pause_code(), Some(PauseCode::ProjectLimit));
+        assert_eq!(refused.resume_condition(), Some("wait for an active project call to finish"));
+    }
+
+    #[test]
+    fn build_slots_are_enforced_for_build_commands_only() {
+        let policy = policy().with_build_slots(1);
+        assert_eq!(policy.admit("cargo build").pause_code(), None);
+        let refused = policy.admit("make all");
+        assert_eq!(refused.pause_code(), Some(PauseCode::BuildSlot));
+        // A non-build command is not blocked by the exhausted build budget.
+        assert_eq!(policy.admit("ls").pause_code(), None);
+    }
+
+    #[test]
+    fn build_command_detection_covers_known_tools() {
+        assert!(is_build_command("cargo test"));
+        assert!(is_build_command("make"));
+        assert!(is_build_command("just lint"));
+        assert!(!is_build_command("npm test"));
+        assert!(!is_build_command(""));
+        assert!(!is_build_command("  "));
+    }
+
+    #[test]
+    fn hazardous_check_runs_before_project_limit() {
+        let policy = policy().with_project_limit(0);
+        let decision = policy.admit("ls /");
+        assert_eq!(decision.pause_code(), Some(PauseCode::HazardousRoot));
+    }
+
+    #[test]
+    fn admitted_counts_saturate_at_project_limit() {
+        let policy = policy().with_project_limit(2);
+        assert_eq!(policy.admit("ls").pause_code(), None);
+        assert_eq!(policy.admit("ls").pause_code(), None);
+        assert_eq!(policy.admit("ls").pause_code(), Some(PauseCode::ProjectLimit));
+        // The refused call must not have consumed budget on a retry path either.
+        assert_eq!(policy.admitted_calls.get(), 2);
+    }
+
+    #[test]
+    fn normalized_recursive_grep_still_honors_project_limit() {
+        let policy = policy().with_project_limit(1);
+        assert_eq!(policy.admit("grep -r needle .").pause_code(), None);
+        assert_eq!(policy.admit("grep -r needle .").pause_code(), Some(PauseCode::ProjectLimit));
+    }
+}

@@ -107,7 +107,7 @@ struct ChannelPicker: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(channel == option ? option.badgeColor : Color.gray.opacity(0.25))
+                    .tint(channel == option ? option.badgeColor : Color.ctaSecondary.opacity(0.25))
                     .controlSize(.small)
                     .accessibilityLabel("Release channel: \(option.displayName)")
                     .accessibilityAddTraits(channel == option ? [.isSelected] : [])

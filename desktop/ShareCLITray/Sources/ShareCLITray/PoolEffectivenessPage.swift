@@ -54,11 +54,20 @@ struct PoolEffectivenessPage: View {
                     }
                     glossaryPanel
                     if !state.isConnected {
-                        HStack(spacing: 6) {
-                            Image(systemName: "wifi.slash").foregroundStyle(.orange)
-                            Text(state.lastError ?? "Not connected to sharecli-ipc")
-                                .foregroundStyle(.secondary)
-                        }
+                        FailedActionBanner(
+                            title: RetryCopy.disconnectedTitle,
+                            detail: state.lastError,
+                            systemImage: "wifi.slash",
+                            actionTitle: RetryCopy.disconnectedStartLabel,
+                            actionSystemImage: "play.fill",
+                            actionHint: RetryCopy.startHint,
+                            action: {
+                                Task {
+                                    await SidecarSupervisor.shared.ensureRunning()
+                                    await state.refresh()
+                                }
+                            }
+                        )
                         .font(.caption)
                     }
                 }

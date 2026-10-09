@@ -1,20 +1,32 @@
 name: DCO Sign-off (Soft Gate — pending GPG key provisioning)
 on: [pull_request]
+permissions:
+  contents: read
+  pull-requests: read
 jobs:
   dco:
     runs-on: ubuntu-latest
     continue-on-error: true  # Wave18: hard gate deferred until signing infra ready
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - name: DCO Sign-off Check
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
-          # Verify all commits have DCO sign-off
-          COMMITS=$(git log --format='%H %s' origin/${{ github.base_ref }}..HEAD)
-          for sha in $(echo "$COMMITS" | awk '{print $1}'); do
-            MSG=$(git log -1 --format='%B' $sha)
-            if ! echo "$MSG" | grep -q 'Signed-off-by:'; then
-              echo "ERROR: Commit $sha missing DCO sign-off"
-              exit 1
+          set -euo pipefail
+          missing=0
+          while IFS= read -r sha; do
+            body="$(git log -1 --format=%B "$sha")"
+            if ! grep -qiE '^Signed-off-by: .+ <.+@.+>$' <<<"$body"; then
+              echo "MISSING Signed-off-by: $sha $(git log -1 --format=%s "$sha")"
+              missing=1
             fi
-          done
-          echo "All commits have DCO sign-off"
+          done < <(git rev-list --no-merges "${BASE}..${HEAD}")
+          if [[ "$missing" -ne 0 ]]; then
+            echo "::warning::One or more commits lack DCO Signed-off-by (soft gate)"
+            exit 1
+          fi
+          echo "All commits have Signed-off-by"

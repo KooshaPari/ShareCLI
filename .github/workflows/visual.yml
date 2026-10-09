@@ -21,5 +21,11 @@ jobs:
           # Verify dashboard assets are consistent
           # Check golden snapshots exist
           test -d tests/golden || (echo "ERROR: Golden snapshot directory missing" && exit 1)
-          test -f tests/a11y.html || (echo "ERROR: A11y test HTML missing" && exit 1)
+          # a11y test surface: tests/a11y.rs (+ tests/a11y/). The previous
+          # check required `tests/a11y.html`, a file that never existed in
+          # any commit (introduced by 17e02d07) and that no script reads —
+          # scripts/a11y/axe-dashboard.mjs reads src/dashboard.html instead.
+          # The guard's intent (a11y test surface present) is kept, pointed
+          # at the real file.
+          test -f tests/a11y.rs || (echo "ERROR: A11y test source missing" && exit 1)
           echo "Visual regression gate passed"

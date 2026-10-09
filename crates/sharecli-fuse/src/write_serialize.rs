@@ -8,10 +8,12 @@
 use std::{
     collections::HashMap,
     fs::{self, File},
-    hash::{Hash, Hasher},
     io::Write,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex,
+    },
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -88,31 +90,58 @@ impl WriteSerialize {
         Ok(f())
     }
 
-    fn staging_path_for(&self, backing: &Path) -> PathBuf {
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        backing.hash(&mut hasher);
-        let digest = hasher.finish();
-        self.staging_root.join(format!("{digest:016x}.staging"))
+    fn staging_path_for(&self) -> PathBuf {
+        self.staging_root.join(Self::unique_staging_name())
     }
 
-    /// Write `contents` into a staging file for `backing` (hashed under staging root).
+    /// Collision-safe name for one staging file: pid + wall-clock nanos + a
+    /// process-local counter, so no two staging operations share a file name
+    /// (replaces the previous hash-of-backing-path name).
+    fn unique_staging_name() -> String {
+        let seq = STAGE_SEQ.fetch_add(1, Ordering::Relaxed);
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        format!(".sharecli-staging-{}-{}-{seq:016x}", std::process::id(), nanos)
+    }
+
+    /// Create a new staging file under the staging root, retrying on the
+    /// (astronomically unlikely) name collision.
+    fn create_unique_staging(&self) -> Result<(File, PathBuf), WriteSerializeError> {
+        const ATTEMPTS: usize = 16;
+        fs::create_dir_all(&self.staging_root)?;
+        for _ in 0..ATTEMPTS {
+            let candidate = self.staging_path_for();
+            match fs::OpenOptions::new().write(true).create_new(true).open(&candidate) {
+                Ok(file) => return Ok((file, candidate)),
+                Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(err) => return Err(err.into()),
+            }
+        }
+        Err(WriteSerializeError::Io(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            "write-serialize: could not allocate a unique staging file",
+        )))
+    }
+
+    /// Write `contents` into a fresh, uniquely named staging file for `backing`.
     ///
-    /// Marks the path pending. Does not modify the backing file.
+    /// Marks the path pending and removes any superseded staging file. Does not
+    /// modify the backing file.
     pub fn stage_bytes(&self, backing: &Path, contents: &[u8]) -> Result<(), WriteSerializeError> {
         let backing = backing.to_path_buf();
-        let staging = self.staging_path_for(&backing);
         let arc = self.lock_arc(&backing)?;
         let _guard = arc.lock().map_err(|_| WriteSerializeError::Poisoned)?;
 
-        if let Some(parent) = staging.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let mut file = File::create(&staging)?;
+        let (mut file, staging) = self.create_unique_staging()?;
         file.write_all(contents)?;
         file.sync_all()?;
 
-        let mut pending = self.pending.lock().map_err(|_| WriteSerializeError::Poisoned)?;
-        pending.insert(backing, staging);
+        let superseded = {
+            let mut pending = self.pending.lock().map_err(|_| WriteSerializeError::Poisoned)?;
+            pending.insert(backing, staging)
+        };
+        if let Some(prev) = superseded {
+            let _ = fs::remove_file(prev);
+        }
         record_stage();
         Ok(())
     }
@@ -143,12 +172,12 @@ impl WriteSerialize {
             fs::create_dir_all(parent)?;
         }
 
-        // Same-filesystem atomic replace; fall back to copy+remove on EXDEV.
+        // Same-filesystem atomic replace; on EXDEV stage next to the
+        // destination and rename within that directory (atomic replace).
         match fs::rename(&staging, &backing_buf) {
             Ok(()) => {}
             Err(err) if err.raw_os_error() == Some(libc_exdev()) => {
-                fs::copy(&staging, &backing_buf)?;
-                let _ = fs::remove_file(&staging);
+                self.promote_via_destination_dir(&backing_buf, &staging)?;
             }
             Err(err) => return Err(err.into()),
         }
@@ -192,12 +221,86 @@ impl WriteSerialize {
         let pending = self.pending.lock().map_err(|_| WriteSerializeError::Poisoned)?;
         Ok(pending.keys().cloned().collect())
     }
+
+    /// Staging file currently held for `backing`, if any.
+    pub fn pending_staging_path(
+        &self,
+        backing: &Path,
+    ) -> Result<Option<PathBuf>, WriteSerializeError> {
+        let pending = self.pending.lock().map_err(|_| WriteSerializeError::Poisoned)?;
+        Ok(pending.get(backing).cloned())
+    }
+
+    /// Staging path used by the EXDEV fallback: created next to the destination
+    /// so the final promote is a same-filesystem, atomic rename (PLAN.md:206).
+    pub fn exdev_staging_path(&self, backing: &Path) -> PathBuf {
+        let dir = match backing.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => parent.to_path_buf(),
+            _ => PathBuf::from("."),
+        };
+        dir.join(Self::unique_staging_name())
+    }
+
+    /// Cross-device promote: copy `staging` next to `backing`, then atomically
+    /// rename it over the destination (never leaves a partially written file).
+    /// Caller must already hold the per-path lock for `backing`.
+    fn promote_via_destination_dir(
+        &self,
+        backing: &Path,
+        staging: &Path,
+    ) -> Result<(), WriteSerializeError> {
+        if let Some(parent) = backing.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let temp = self.exdev_staging_path(backing);
+        fs::copy(staging, &temp)?;
+        if let Err(err) = fs::rename(&temp, backing) {
+            let _ = fs::remove_file(&temp);
+            return Err(err.into());
+        }
+        let _ = fs::remove_file(staging);
+        Ok(())
+    }
+
+    /// Commit through the EXDEV path explicitly (cross-device staging).
+    ///
+    /// Equivalent to [`Self::commit_pending`] when the same-filesystem rename
+    /// cannot be used; exposed so the fallback is testable without a second
+    /// mounted filesystem.
+    pub fn commit_pending_exdev(&self, backing: &Path) -> Result<(), WriteSerializeError> {
+        let backing_buf = backing.to_path_buf();
+        let arc = self.lock_arc(&backing_buf)?;
+        let _guard = arc.lock().map_err(|_| WriteSerializeError::Poisoned)?;
+
+        let staging = {
+            let pending = self.pending.lock().map_err(|_| WriteSerializeError::Poisoned)?;
+            pending
+                .get(&backing_buf)
+                .cloned()
+                .ok_or_else(|| WriteSerializeError::NoPending(backing_buf.clone()))?
+        };
+        if !staging.exists() {
+            let mut pending = self.pending.lock().map_err(|_| WriteSerializeError::Poisoned)?;
+            pending.remove(&backing_buf);
+            return Err(WriteSerializeError::NoPending(backing_buf));
+        }
+
+        self.promote_via_destination_dir(&backing_buf, &staging)?;
+
+        let mut pending = self.pending.lock().map_err(|_| WriteSerializeError::Poisoned)?;
+        pending.remove(&backing_buf);
+        record_commit();
+        Ok(())
+    }
 }
 
 /// EXDEV (cross-device link) — portable constant (POSIX / Linux / macOS).
 fn libc_exdev() -> i32 {
     18
 }
+
+/// Process-local counter making staging file names unique across operations.
+static STAGE_SEQ: AtomicU64 = AtomicU64::new(0);
 
 #[cfg(test)]
 mod tests {

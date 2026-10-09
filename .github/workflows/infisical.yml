@@ -28,6 +28,7 @@ jobs:
           sudo apt-get install -y infisical
 
       - name: Pull secrets to .env
+        id: pull
         env:
           INFISICAL_TOKEN: ${{ secrets.INFISICAL_TOKEN }}
           INFISICAL_PROJECT_ID: ${{ vars.INFISICAL_PROJECT_ID || secrets.INFISICAL_PROJECT_ID || '8efe392e-56a6-4c3c-89f9-8141183dd7e8' }}
@@ -43,12 +44,48 @@ jobs:
             exit 1
           fi
 
-          # Pull all secrets from the configured env into .env
-          infisical run \
-            --projectId "$INFISICAL_PROJECT_ID" \
-            --env "$INFISICAL_ENV" \
-            --token "$INFISICAL_TOKEN" \
-            -- bash -c 'echo "Secrets loaded into env successfully" && env | grep -E "^[A-Z_]+=" | grep -v -E "^(PATH|HOME|PWD|SHELL|HOSTNAME|TERM|GITHUB_|RUNNER_|CARGO_|DEPLOY_|INPUT_|IMAGE_|ACTIONS_|STEP_|BOOT_|GRUB_|LS_COLORS|INVOCATION_ID|JOURNAL_)" | head -20'
+          # Pull all secrets from the configured env into a temp dotenv file.
+          # The codesign hard gate (codesign.yml) needs exactly these 5 Apple
+          # keys; validating them here surfaces the failure as a clear
+          # ::error:: before codesign.yml's harder-to-debug exit 1.
+          ENV_FILE="$(mktemp -t infisical-env.XXXXXX)"
+          trap 'rm -f "$ENV_FILE"' EXIT
+          if ! infisical export \
+              --projectId "$INFISICAL_PROJECT_ID" \
+              --env "$INFISICAL_ENV" \
+              --token "$INFISICAL_TOKEN" \
+              --format=dotenv > "$ENV_FILE" 2> "$ENV_FILE.err"; then
+            echo "::error::infisical export failed (see $ENV_FILE.err)"
+            cat "$ENV_FILE.err" | head -10
+            exit 1
+          fi
+
+          # Codesign hard gate requires these (codesign.yml WANTED list).
+          # On main (env=prod) this is a hard fail; on PRs it is advisory so
+          # the workflow still completes for branch tests.
+          declare -a WANTED=(APPLE_CERTIFICATE APPLE_CERTIFICATE_PWD APPLE_ID APPLE_TEAM_ID APPLE_APP_PASSWORD)
+          missing=0
+          for key in "${WANTED[@]}"; do
+            if grep -qE "^${key}=" "$ENV_FILE"; then
+              echo "OK  $key is set in $INFISICAL_ENV (length $(grep -E "^${key}=" "$ENV_FILE" | cut -d= -f2 | tr -d '\n' | wc -c | tr -d ' '))"
+            else
+              missing=$((missing + 1))
+              if [ "$INFISICAL_ENV" = "prod" ]; then
+                echo "::error::$key not found in Infisical env '$INFISICAL_ENV' (codesign hard gate will fail)"
+              else
+                echo "::warning::$key not found in Infisical env '$INFISICAL_ENV' (codesign hard gate requires it on prod)"
+              fi
+            fi
+          done
+
+          if [ "$INFISICAL_ENV" = "prod" ] && [ "$missing" -gt 0 ]; then
+            echo "::error::$missing of ${#WANTED[@]} required Apple signing key(s) missing in prod env"
+            echo "::error::See ~/.jcode/scratch/sharecli-audit-2026-10/agent-verification-2026-10-08.md for remediation"
+            exit 1
+          fi
+
+          echo "infisical-secrets-count=$(wc -l < "$ENV_FILE" | tr -d ' ')" >> "$GITHUB_OUTPUT"
+          echo "infisical-missing-count=$missing" >> "$GITHUB_OUTPUT"
 
       - name: Upload secrets as artifact (debug only, never published)
         if: failure()

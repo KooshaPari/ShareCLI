@@ -54,7 +54,7 @@ struct MiniCompositeHealthCard: View {
     private func content(_ metric: CompositeHealthMetric) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                Image(systemName: "heart.text.square.fill")
+                Image(systemName: StatusIcon.compositeHealth.symbolName)
                     .font(.system(size: 11))
                     .foregroundStyle(bandColor(metric.band))
                 Text("Composite")
@@ -66,14 +66,14 @@ struct MiniCompositeHealthCard: View {
                     .foregroundStyle(bandColor(metric.band))
                 Text("/ \(CompositeHealthMetric.maxScore)")
                     .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Color.statusForeground)
                 bandPill(metric.band)
             }
             if let ts = fleet?.timestamp {
                 HStack(spacing: 4) {
                     Image(systemName: "clock")
                         .font(.system(size: 9))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Color.statusForeground)
                     Text("Updated \(relativeTimestampFormatter.localizedString(for: ts, relativeTo: Date()))")
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(.secondary)
@@ -86,14 +86,14 @@ struct MiniCompositeHealthCard: View {
         HStack(spacing: 6) {
             Image(systemName: "heart.text.square")
                 .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Color.statusForeground)
             Text("Composite")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             Spacer()
             Text("Waiting…")
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Color.statusForeground)
         }
     }
 

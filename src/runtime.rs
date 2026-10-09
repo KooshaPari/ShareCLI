@@ -19,7 +19,15 @@ use tokio::sync::RwLock;
 
 use crate::audit_log;
 use crate::config;
+use crate::runtime_cache::{CachedProcessMetrics, MonotonicClock};
 use crate::spawn_policy::{is_build_harness, SpawnPolicy};
+
+/// Shared per-process metric cache — 2 s TTL, monotonic clock.
+fn cached_metrics() -> &'static CachedProcessMetrics<MonotonicClock> {
+    use std::sync::OnceLock;
+    static INSTANCE: OnceLock<CachedProcessMetrics<MonotonicClock>> = OnceLock::new();
+    INSTANCE.get_or_init(|| CachedProcessMetrics::new(Duration::from_secs(2)))
+}
 
 fn spawn_capability(cmd: &str, harness: &Option<String>) -> String {
     harness.clone().unwrap_or_else(|| cmd.to_string())
@@ -170,8 +178,8 @@ impl ProcessInfo {
             let du = p.disk_usage();
             (Some(du.total_read_bytes), Some(du.total_written_bytes))
         };
-        let fd_count = count_open_fds(pid.as_u32());
-        let thread_count = count_threads(pid.as_u32());
+        let fd_count = cached_metrics().fetch_fd_count(pid.as_u32(), count_open_fds);
+        let thread_count = cached_metrics().fetch_thread_count(pid.as_u32(), count_threads);
 
         #[cfg(not(target_os = "linux"))]
         let (disk_read_bytes, disk_write_bytes): (Option<u64>, Option<u64>) = (None, None);
@@ -199,7 +207,7 @@ impl ProcessInfo {
 
 /// Count descriptors without crossing the runtime/IPC layer boundary.
 /// Linux uses `/proc` first; macOS and other Unix systems fall back to lsof.
-fn count_open_fds(pid: u32) -> Option<u32> {
+pub fn count_open_fds(pid: u32) -> Option<u32> {
     #[cfg(target_os = "linux")]
     if let Ok(entries) = std::fs::read_dir(format!("/proc/{pid}/fd")) {
         return Some(entries.filter_map(std::result::Result::ok).count() as u32);
@@ -462,8 +470,12 @@ impl ProcessPool {
         Ok(info)
     }
 
-    /// Kill a process by PID via substrate ProcessPort
-    pub async fn kill(&self, pid: u32) -> Result<()> {
+    /// Kill a process by PID via substrate ProcessPort.
+    ///
+    /// `Ok(true)` means a pool-managed child was actually stopped;
+    /// `Ok(false)` means the pid is not managed by this pool. Callers must
+    /// never report a miss as success (lane-4 BLOCKER: `stop --pid 999999`).
+    pub async fn kill(&self, pid: u32) -> Result<bool> {
         let mut procs = self.processes.write().await;
         if let Some(managed) = procs.get(&pid) {
             let capability = spawn_capability(&managed.info.name, &managed.info.harness);
@@ -477,8 +489,9 @@ impl ProcessPool {
                 }
             }
             procs.remove(&pid);
+            return Ok(true);
         }
-        Ok(())
+        Ok(false)
     }
 
     /// Kill all managed processes
@@ -866,6 +879,17 @@ mod tests {
         let pid = insert_unowned_handle(&pool).await;
         assert!(pool.kill(pid).await.is_err());
         assert!(pool.processes.read().await.contains_key(&pid));
+    }
+
+    /// Lane-4 BLOCKER (audit 0.6): an unmanaged pid must be reported as a
+    /// miss — `stop --pid 999999` must not acknowledge a kill that never
+    /// happened. `Ok(true)` is reserved for a child this pool actually
+    /// stopped.
+    #[tokio::test]
+    async fn kill_unmanaged_pid_reports_not_found() {
+        let pool = ProcessPool::new();
+        let killed = pool.kill(999_999).await.expect("kill miss must not error");
+        assert!(!killed, "unmanaged pid must not be acknowledged as stopped");
     }
 
     #[tokio::test]

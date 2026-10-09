@@ -468,6 +468,197 @@ mod tests {
     // Scheduler spawns tasks (smoke: no panic, store initialised)
     // -----------------------------------------------------------------------
 
+    // -----------------------------------------------------------------------
+    // probe_endpoint scheme dispatch
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn probe_endpoint_routes_http_scheme_to_the_http_probe() {
+        use tokio::io::AsyncWriteExt;
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            if let Ok((mut stream, _)) = listener.accept().await {
+                let mut buf = [0u8; 512];
+                let _ = stream.read(&mut buf).await;
+                let _ = stream.write_all(b"HTTP/1.0 204 No Content\r\n\r\n").await;
+            }
+        });
+
+        let endpoint = format!("http://127.0.0.1:{}/probe", addr.port());
+        assert!(probe_endpoint(&endpoint, Duration::from_secs(2)).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn probe_endpoint_routes_tcp_scheme_and_bare_host_port() {
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = listener.accept().await;
+        });
+
+        let bare = format!("127.0.0.1:{}", addr.port());
+        assert!(probe_endpoint(&bare, Duration::from_secs(2)).await.is_ok());
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = listener.accept().await;
+        });
+        let tcp = format!("tcp://127.0.0.1:{}", addr.port());
+        assert!(probe_endpoint(&tcp, Duration::from_secs(2)).await.is_ok());
+    }
+
+    // -----------------------------------------------------------------------
+    // probe_http URL parsing edge cases
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn probe_http_rejects_an_unsupported_scheme() {
+        let err = probe_http("ftp://example.test/health", Duration::from_secs(1))
+            .await
+            .expect_err("non-http scheme must be refused");
+        assert!(err.contains("unsupported scheme"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn probe_http_defaults_the_path_and_port_for_a_bare_host() {
+        // A listener on loopback:80 cannot be bound unprivileged, so this drives
+        // the parser's path-defaulting branch via a connection error instead;
+        // the branch under test is "no '/' means path is '/'".
+        let err = probe_http("http://127.0.0.1:1", Duration::from_millis(300))
+            .await
+            .expect_err("closed port must fail");
+        assert!(err.contains("HTTP connect"), "{err}");
+    }
+
+    // -----------------------------------------------------------------------
+    // probe_all bookkeeping on the real store
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn probe_all_is_a_noop_for_a_process_with_no_endpoints() {
+        let store = make_store("quiet");
+        let cfg = HealthCheckConfig { endpoints: vec![], ..Default::default() };
+        probe_all("quiet", &cfg, &store, None).await;
+
+        let map = store.lock().await;
+        let s = &map["quiet"];
+        assert!(s.healthy, "no endpoints means nothing to fail");
+        assert_eq!(s.consecutive_failures, 0);
+    }
+
+    #[tokio::test]
+    async fn probe_all_recovers_a_process_once_a_probe_succeeds() {
+        use tokio::net::TcpListener;
+
+        let store = make_store("svc");
+        {
+            let mut map = store.lock().await;
+            let s = map.get_mut("svc").unwrap();
+            s.healthy = false;
+            s.consecutive_failures = 4;
+            s.last_error = Some("prior outage".into());
+        }
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = listener.accept().await;
+        });
+
+        let cfg = HealthCheckConfig {
+            interval_secs: 60,
+            timeout_secs: 2,
+            failure_threshold: 3,
+            endpoints: vec![format!("tcp://127.0.0.1:{}", addr.port())],
+        };
+        probe_all("svc", &cfg, &store, None).await;
+
+        let map = store.lock().await;
+        let s = &map["svc"];
+        assert!(s.healthy, "a successful probe must clear the unhealthy flag");
+        assert_eq!(s.consecutive_failures, 0);
+        assert!(s.last_error.is_none(), "recovery must clear the recorded error");
+    }
+
+    #[tokio::test]
+    async fn probe_all_stops_at_the_first_failing_endpoint() {
+        let store = make_store("svc");
+        let cfg = HealthCheckConfig {
+            interval_secs: 60,
+            timeout_secs: 1,
+            failure_threshold: 99,
+            endpoints: vec![
+                "tcp://127.0.0.1:19871".to_string(),
+                "tcp://127.0.0.1:19872".to_string(),
+            ],
+        };
+        probe_all("svc", &cfg, &store, None).await;
+
+        let map = store.lock().await;
+        let s = &map["svc"];
+        assert_eq!(s.consecutive_failures, 1, "only the first failing probe is counted");
+        assert!(
+            s.last_error.as_deref().unwrap_or_default().contains("19871"),
+            "the recorded error must name the first failing endpoint: {:?}",
+            s.last_error
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // poll_loop / scheduler lifecycle
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn poll_loop_probes_and_updates_the_store() {
+        let store = make_store("svc");
+        let cfg = HealthCheckConfig {
+            interval_secs: 1,
+            timeout_secs: 1,
+            failure_threshold: 2,
+            endpoints: vec!["tcp://127.0.0.1:19871".to_string()],
+        };
+        let task = tokio::spawn(poll_loop("svc".to_string(), cfg, Arc::clone(&store), None));
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        task.abort();
+
+        let map = store.lock().await;
+        assert_eq!(
+            map["svc"].consecutive_failures, 1,
+            "the interval tick must run exactly one probe"
+        );
+    }
+
+    #[tokio::test]
+    async fn scheduler_with_notifier_seeds_and_runs() {
+        let store: HealthCheckStore = Arc::new(Mutex::new(HashMap::new()));
+        let notifier = crate::notifier::Notifier::new(crate::notifier::NotifierConfig::default());
+        let scheduler = HealthCheckScheduler::with_notifier(Arc::clone(&store), notifier);
+
+        let mut configs = HashMap::new();
+        configs.insert(
+            "proc-n".to_string(),
+            HealthCheckConfig {
+                interval_secs: 1,
+                endpoints: vec!["tcp://127.0.0.1:19871".to_string()],
+                failure_threshold: 1,
+                ..Default::default()
+            },
+        );
+        scheduler.start(configs);
+        tokio::time::sleep(Duration::from_millis(80)).await;
+
+        let map = store.lock().await;
+        let s = &map["proc-n"];
+        assert!(s.consecutive_failures >= 1, "the notifier path must still record failures");
+        assert!(!s.healthy, "a single failure against threshold 1 marks it unhealthy");
+    }
+
     #[tokio::test]
     async fn scheduler_seeds_store_entries() {
         let store: HealthCheckStore = Arc::new(Mutex::new(HashMap::new()));

@@ -56,7 +56,7 @@ struct CompositeHealthCard: View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Image(systemName: "heart.text.square.fill")
+                    Image(systemName: StatusIcon.compositeHealth.symbolName)
                         .foregroundStyle(bandColor(metric.band))
                     Text("Composite health")
                         .font(.headline)
@@ -72,7 +72,7 @@ struct CompositeHealthCard: View {
                 .foregroundStyle(bandColor(metric.band))
             Text("/ \(CompositeHealthMetric.maxScore)")
                 .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Color.statusForeground)
             bandPill(metric.band)
         }
     }
@@ -146,7 +146,7 @@ struct CompositeHealthCard: View {
                 .minimumScaleFactor(0.7)
             Text(detail)
                 .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Color.statusForeground)
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -196,14 +196,14 @@ struct CompositeHealthCard: View {
     private var placeholder: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                Image(systemName: "heart.text.square")
-                    .foregroundStyle(.tertiary)
+                Image(systemName: StatusIcon.healthPlaceholder.symbolName)
+                    .foregroundStyle(Color.statusForeground)
                 Text("Composite health")
                     .font(.headline)
             }
             Text("Waiting for first fleet sample…")
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Color.statusForeground)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)

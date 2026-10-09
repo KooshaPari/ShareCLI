@@ -99,6 +99,38 @@ mod tests {
         assert!(Arc::ptr_eq(&a, &b));
     }
     #[test]
+    fn counters_and_gauges_default_to_zero() {
+        assert_eq!(Counter::default().get(), 0);
+        assert_eq!(Gauge::default().get(), 0);
+    }
+
+    #[test]
+    fn inc_by_accumulates_on_top_of_inc() {
+        let c = Counter::new();
+        c.inc();
+        c.inc_by(4);
+        c.inc();
+        assert_eq!(c.get(), 6);
+    }
+
+    #[test]
+    fn gauge_set_overwrites_the_previous_value() {
+        let g = Gauge::new();
+        g.set(5);
+        g.set(-3);
+        assert_eq!(g.get(), -3, "set must replace, not accumulate");
+    }
+
+    #[test]
+    fn registry_gauges_are_shared_by_name() {
+        let r = MetricsRegistry::new();
+        let a = r.gauge("lvl");
+        a.set(9);
+        assert_eq!(r.gauge("lvl").get(), 9);
+        assert!(Arc::ptr_eq(&a, &r.gauge("lvl")), "same name must resolve to the same gauge");
+    }
+
+    #[test]
     fn two_counters_independent() {
         let r = MetricsRegistry::new();
         r.counter("a").inc_by(3);

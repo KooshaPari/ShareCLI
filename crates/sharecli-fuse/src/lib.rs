@@ -60,7 +60,8 @@ pub use mount_smoke::{
     MountSession, ENV_FUSE_MOUNT_SMOKE,
 };
 pub use neg_dentry::{
-    global_neg_dentry_meters, NegDentryMeters, NegativeDentryCache, DEFAULT_NEG_TTL,
+    global_neg_dentry_meters, NegDentryMeters, NegativeDentryCache, DEFAULT_NEG_CAP,
+    DEFAULT_NEG_SWEEP_IDLE, DEFAULT_NEG_TTL,
 };
 pub use path_remap::remap_mount_to_backing;
 #[cfg(any(target_os = "linux", target_os = "macos", windows))]
@@ -123,10 +124,11 @@ use std::path::Path;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 mod platform {
     use std::{
+        collections::HashMap,
         ffi::OsStr,
-        fs::{self, OpenOptions},
+        fs::{self, File, OpenOptions},
         io::{Seek, SeekFrom, Write as IoWrite},
-        os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
+        os::unix::fs::{FileExt, MetadataExt, OpenOptionsExt, PermissionsExt},
         path::{Path, PathBuf},
         sync::Mutex,
         time::{Duration, SystemTime},
@@ -134,8 +136,9 @@ mod platform {
 
     use fuser::{
         BsdFileFlags, Errno, FileAttr, FileHandle, FileType, Filesystem, FopenFlags, Generation,
-        INodeNo, OpenFlags, RenameFlags, ReplyAttr, ReplyCreate, ReplyData, ReplyDirectory,
-        ReplyEmpty, ReplyEntry, ReplyOpen, ReplyWrite, Request, TimeOrNow, WriteFlags,
+        INodeNo, LockOwner, OpenFlags, RenameFlags, ReplyAttr, ReplyCreate, ReplyData,
+        ReplyDirectory, ReplyEmpty, ReplyEntry, ReplyOpen, ReplyWrite, Request, TimeOrNow,
+        WriteFlags,
     };
     use tracing::{debug, trace};
 
@@ -147,6 +150,11 @@ mod platform {
     use crate::read_cache::{ReadCacheMeters, ReadContentCache};
     use crate::write_serialize_meters::record_passthrough_write;
     use crate::InterceptFsOptions;
+
+    // Task 1.18 — the previously-missing FUSE ops (readlink/symlink/link/flush/
+    // fsync + the Shared release forward), kept out of this already-oversized
+    // file.
+    mod ops_missing;
 
     const TTL: Duration = Duration::from_secs(1);
 
@@ -164,6 +172,34 @@ mod platform {
         read_cache: Mutex<ReadContentCache>,
         neg_dentry: Mutex<NegativeDentryCache>,
         cow: AgentCowStore,
+        /// Live backing descriptors keyed by FUSE file handle (== inode).
+        ///
+        /// Task 1.14 — holding the descriptor (not just the path) keeps an
+        /// unlinked-but-open file readable, per POSIX.
+        open_files: Mutex<HashMap<u64, OpenHandle>>,
+    }
+
+    /// A live backing-file handle: the path captured at `open` plus the
+    /// descriptor that survives an unlink of the name.
+    #[derive(Debug)]
+    struct OpenHandle {
+        path: PathBuf,
+        file: File,
+    }
+
+    /// Positional read from a held descriptor (`pread`; offset is absolute).
+    fn read_at(file: &File, offset: u64, size: u32) -> std::io::Result<Vec<u8>> {
+        let mut buf = vec![0u8; size as usize];
+        let mut filled = 0usize;
+        while filled < buf.len() {
+            let n = file.read_at(&mut buf[filled..], offset + filled as u64)?;
+            if n == 0 {
+                break;
+            }
+            filled += n;
+        }
+        buf.truncate(filled);
+        Ok(buf)
     }
 
     impl InterceptFs {
@@ -205,6 +241,7 @@ mod platform {
                 read_cache: Mutex::new(ReadContentCache::new()),
                 neg_dentry: Mutex::new(NegativeDentryCache::with_ttl(DEFAULT_NEG_TTL)),
                 cow: AgentCowStore::new(cow_root, default_agent, opts.serialize),
+                open_files: Mutex::new(HashMap::new()),
             }
         }
 
@@ -296,6 +333,70 @@ mod platform {
         pub fn read_coalesced_rel(&self, rel: &Path) -> std::io::Result<Vec<u8>> {
             let abs = abs_under(&self.backing, rel);
             self.read_cache.lock().expect("read cache lock").read_coalesced(&abs)
+        }
+
+        /// Open `rel` and register a live handle that survives an unlink
+        /// (Task 1.14). Returns the FUSE file handle (the inode number), which
+        /// is also the `ino` used by [`Self::read_at_handle`].
+        pub fn open_rel(&self, rel: &Path) -> std::io::Result<u64> {
+            let path = abs_under(&self.backing, rel);
+            let file = File::open(&path)?;
+            let ino = self.inodes.lock().expect("inode map lock").alloc_or_get(rel.to_path_buf());
+            self.open_files.lock().expect("open files lock").insert(ino, OpenHandle { path, file });
+            Ok(ino)
+        }
+
+        /// Read `size` bytes at absolute `offset` from the handle `fh`.
+        ///
+        /// A coalesced on-disk read is used while the captured name still
+        /// denotes the same inode; once the name is unlinked or replaced
+        /// (rename-over-open) the held descriptor is read instead, so an open
+        /// handle keeps returning its original content (POSIX). An unknown
+        /// handle falls back to the inode map, preserving the pre-1.14 path.
+        pub fn read_at_handle(&self, fh: u64, offset: u64, size: u32) -> std::io::Result<Vec<u8>> {
+            // If the live handle no longer matches the path's inode, the held
+            // descriptor wins (unlink, or a rename replaced the name).
+            {
+                let guard = self.open_files.lock().expect("open files lock");
+                if let Some(handle) = guard.get(&fh) {
+                    let still_current = match (fs::metadata(&handle.path), handle.file.metadata()) {
+                        (Ok(current), Ok(held)) => current.ino() == held.ino(),
+                        _ => false,
+                    };
+                    if !still_current {
+                        return read_at(&handle.file, offset, size);
+                    }
+                }
+            }
+            let handle_path = {
+                let guard = self.open_files.lock().expect("open files lock");
+                guard.get(&fh).map(|h| h.path.clone())
+            };
+            let path = match handle_path {
+                Some(path) => path,
+                None => {
+                    match self.inodes.lock().expect("inode map lock").abs_path(&self.backing, fh) {
+                        Some(path) => path,
+                        None => return Err(std::io::Error::from(std::io::ErrorKind::NotFound)),
+                    }
+                }
+            };
+            let cached = {
+                let mut cache = self.read_cache.lock().expect("read cache lock");
+                cache.read_slice(&path, offset, size)
+            };
+            match cached {
+                Ok(buf) => Ok(buf),
+                // Race: the name vanished after the identity check; held fd wins.
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                    let guard = self.open_files.lock().expect("open files lock");
+                    match guard.get(&fh) {
+                        Some(handle) => read_at(&handle.file, offset, size),
+                        None => Err(err),
+                    }
+                }
+                Err(err) => Err(err),
+            }
         }
 
         /// Stage CoW bytes for a relative path (no mount; FR-009 helpers).
@@ -410,6 +511,56 @@ mod platform {
             Ok(n)
         }
 
+        /// Run `f` while holding the per-path write lock (Task 1.15).
+        ///
+        /// [`Self::setattr_rel`] and [`Self::write_rel`] take this same lock, so
+        /// callers can serialise a multi-step mutation of one backing path
+        /// against them. When serialisation is disabled the closure still runs.
+        pub fn with_path_lock<R, F: FnOnce() -> R>(&self, rel: &Path, f: F) -> std::io::Result<R> {
+            let abs = abs_under(&self.backing, rel);
+            self.cow
+                .with_locked_path(None, &abs, f)
+                .map_err(|e| std::io::Error::other(e.to_string()))
+        }
+
+        /// Apply truncate/mode to an absolute backing path under the per-path
+        /// write lock, then drop the path lock before touching the read cache
+        /// (Task 1.15 — no lock-order inversion with `write`/`read`).
+        fn apply_setattr_locked(
+            &self,
+            abs: &Path,
+            size: Option<u64>,
+            mode: Option<u32>,
+        ) -> std::io::Result<()> {
+            self.cow
+                .with_locked_path(None, abs, || -> std::io::Result<()> {
+                    if let Some(new_size) = size {
+                        OpenOptions::new().write(true).open(abs)?.set_len(new_size)?;
+                    }
+                    if let Some(mode) = mode {
+                        fs::set_permissions(abs, fs::Permissions::from_mode(mode))?;
+                    }
+                    Ok(())
+                })
+                .map_err(|e| std::io::Error::other(e.to_string()))??;
+            if let Ok(mut cache) = self.read_cache.lock() {
+                cache.invalidate(abs);
+            }
+            Ok(())
+        }
+
+        /// Truncate and/or chmod `rel` under the same per-path lock as
+        /// [`Self::write_rel`] (Task 1.15; `setattr` via no mount).
+        pub fn setattr_rel(
+            &self,
+            rel: &Path,
+            size: Option<u64>,
+            mode: Option<u32>,
+        ) -> std::io::Result<()> {
+            let abs = abs_under(&self.backing, rel);
+            self.apply_setattr_locked(&abs, size, mode)
+        }
+
         /// Create a new regular file at relative `rel` (no mount; FR-009 helper).
         ///
         /// Invalidates negative dentry + read cache and stamps write provenance.
@@ -473,10 +624,13 @@ mod platform {
             }
         }
 
+        /// Reply with the entry for a name just created by `mknod`/`symlink`/
+        /// `link`, using `symlink_metadata` so a symlink is reported as
+        /// `FileType::Symlink` rather than resolved to its target (Task 1.18).
         fn install_created_entry_plain(&self, rel: PathBuf, path: PathBuf, reply: ReplyEntry) {
             let mut map = self.inodes.lock().expect("inode map");
             let ino = map.alloc_or_get(rel);
-            match fs::metadata(&path) {
+            match fs::symlink_metadata(&path) {
                 Ok(meta) => reply.entry(&TTL, &Self::metadata_to_attr(ino, &meta), Generation(0)),
                 Err(err) => reply.error(Self::io_errno(err)),
             }
@@ -604,20 +758,11 @@ mod platform {
                     }
                 }
             };
-            if let Some(new_size) = size {
-                if let Err(err) =
-                    OpenOptions::new().write(true).open(&path).and_then(|f| f.set_len(new_size))
-                {
-                    reply.error(Self::io_errno(err));
-                    return;
-                }
-            }
-            if let Some(mode) = mode {
-                let perms = fs::Permissions::from_mode(mode);
-                if let Err(err) = fs::set_permissions(&path, perms) {
-                    reply.error(Self::io_errno(err));
-                    return;
-                }
+            // Task 1.15 — apply truncate/mode under the same per-path lock as
+            // `write`, so a concurrent write and truncate cannot tear.
+            if let Err(err) = self.apply_setattr_locked(&path, size, mode) {
+                reply.error(Self::io_errno(err));
+                return;
             }
             match fs::metadata(&path) {
                 Ok(meta) => {
@@ -631,15 +776,28 @@ mod platform {
         }
 
         fn open(&self, _req: &Request, ino: INodeNo, _flags: OpenFlags, reply: ReplyOpen) {
-            let map = self.inodes.lock().expect("inode map");
-            let Some(path) = map.abs_path(&self.backing, ino.0) else {
-                reply.error(Errno::ENOENT);
-                return;
+            let path = {
+                let map = self.inodes.lock().expect("inode map");
+                match map.abs_path(&self.backing, ino.0) {
+                    Some(path) => path,
+                    None => {
+                        reply.error(Errno::ENOENT);
+                        return;
+                    }
+                }
             };
             match fs::metadata(&path) {
-                Ok(meta) if meta.is_file() => {
-                    reply.opened(FileHandle(ino.0), FopenFlags::empty());
-                }
+                Ok(meta) if meta.is_file() => match File::open(&path) {
+                    Ok(file) => {
+                        // Task 1.14 — hold the descriptor so reads survive an unlink.
+                        self.open_files
+                            .lock()
+                            .expect("open files")
+                            .insert(ino.0, OpenHandle { path, file });
+                        reply.opened(FileHandle(ino.0), FopenFlags::empty());
+                    }
+                    Err(err) => reply.error(Self::io_errno(err)),
+                },
                 Ok(_) => reply.error(Errno::EISDIR),
                 Err(err) => reply.error(Self::io_errno(err)),
             }
@@ -649,7 +807,7 @@ mod platform {
             &self,
             _req: &Request,
             ino: INodeNo,
-            _fh: FileHandle,
+            fh: FileHandle,
             offset: u64,
             size: u32,
             _flags: OpenFlags,
@@ -657,20 +815,59 @@ mod platform {
             reply: ReplyData,
         ) {
             debug!(?ino, offset, size, "read");
-            let path = {
-                let map = self.inodes.lock().expect("inode map");
-                match map.abs_path(&self.backing, ino.0) {
-                    Some(p) => p,
-                    None => {
-                        reply.error(Errno::ENOENT);
-                        return;
-                    }
-                }
-            };
-            match self.read_cache.lock().expect("read cache").read_slice(&path, offset, size) {
+            // Task 1.14 — read through the open handle so an unlinked-but-open
+            // file stays readable; fall back to the inode number when no fh.
+            let key = if fh.0 == 0 { ino.0 } else { fh.0 };
+            match self.read_at_handle(key, offset, size) {
                 Ok(buf) => reply.data(&buf),
                 Err(err) => reply.error(Self::io_errno(err)),
             }
+        }
+
+        /// Task 1.18 — return the stored symlink target (no follow).
+        fn readlink(&self, _req: &Request, ino: INodeNo, reply: ReplyData) {
+            self.op_readlink(ino.0, reply);
+        }
+
+        /// Drop the backing descriptor on close (Task 1.14 mechanism cleanup;
+        /// plan 1.18 extends this alongside flush/fsync/link/symlink).
+        fn release(
+            &self,
+            _req: &Request,
+            _ino: INodeNo,
+            fh: FileHandle,
+            _flags: OpenFlags,
+            _lock: Option<LockOwner>,
+            _flush: bool,
+            reply: ReplyEmpty,
+        ) {
+            let _ = self.release_fh(fh.0);
+            reply.ok();
+        }
+
+        /// Task 1.18 — advisory flush on close; always succeeds (see
+        /// [`InterceptFs::flush_fh`]).
+        fn flush(
+            &self,
+            _req: &Request,
+            _ino: INodeNo,
+            fh: FileHandle,
+            _lock: LockOwner,
+            reply: ReplyEmpty,
+        ) {
+            self.op_flush(fh.0, reply);
+        }
+
+        /// Task 1.18 — sync file contents for durability.
+        fn fsync(
+            &self,
+            _req: &Request,
+            ino: INodeNo,
+            fh: FileHandle,
+            _datasync: bool,
+            reply: ReplyEmpty,
+        ) {
+            self.op_fsync(ino.0, fh.0, reply);
         }
 
         fn write(
@@ -891,6 +1088,30 @@ mod platform {
                 }
                 Err(err) => reply.error(Self::io_errno(err)),
             }
+        }
+
+        /// Task 1.18 — create a symlink; a relative target is stored verbatim.
+        fn symlink(
+            &self,
+            _req: &Request,
+            parent: INodeNo,
+            link_name: &OsStr,
+            target: &Path,
+            reply: ReplyEntry,
+        ) {
+            self.op_symlink(parent.0, link_name, target, reply);
+        }
+
+        /// Task 1.18 — create a hard link to an existing inode.
+        fn link(
+            &self,
+            _req: &Request,
+            ino: INodeNo,
+            newparent: INodeNo,
+            newname: &OsStr,
+            reply: ReplyEntry,
+        ) {
+            self.op_link(ino.0, newparent.0, newname, reply);
         }
 
         fn unlink(&self, _req: &Request, parent: INodeNo, name: &OsStr, reply: ReplyEmpty) {
@@ -1166,6 +1387,63 @@ mod platform {
             reply: ReplyEmpty,
         ) {
             self.0.rename(req, parent, name, newparent, newname, flags, reply);
+        }
+        // Task 1.18 — forward the previously-missing ops (and release) so a
+        // registry/spawn-mounted session matches the InterceptFs behaviour.
+        fn readlink(&self, req: &Request, ino: INodeNo, reply: ReplyData) {
+            self.0.readlink(req, ino, reply);
+        }
+        fn symlink(
+            &self,
+            req: &Request,
+            parent: INodeNo,
+            link_name: &OsStr,
+            target: &Path,
+            reply: ReplyEntry,
+        ) {
+            self.0.symlink(req, parent, link_name, target, reply);
+        }
+        fn link(
+            &self,
+            req: &Request,
+            ino: INodeNo,
+            newparent: INodeNo,
+            newname: &OsStr,
+            reply: ReplyEntry,
+        ) {
+            self.0.link(req, ino, newparent, newname, reply);
+        }
+        fn flush(
+            &self,
+            req: &Request,
+            ino: INodeNo,
+            fh: FileHandle,
+            lock: LockOwner,
+            reply: ReplyEmpty,
+        ) {
+            self.0.flush(req, ino, fh, lock, reply);
+        }
+        fn fsync(
+            &self,
+            req: &Request,
+            ino: INodeNo,
+            fh: FileHandle,
+            datasync: bool,
+            reply: ReplyEmpty,
+        ) {
+            self.0.fsync(req, ino, fh, datasync, reply);
+        }
+        fn release(
+            &self,
+            req: &Request,
+            ino: INodeNo,
+            fh: FileHandle,
+            flags: OpenFlags,
+            lock: Option<LockOwner>,
+            flush: bool,
+            reply: ReplyEmpty,
+        ) {
+            self.0.release(req, ino, fh, flags, lock, flush, reply);
         }
     }
 }

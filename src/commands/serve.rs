@@ -99,6 +99,31 @@ struct AppState {
     rate_limit: Arc<ServeRateLimitState>,
     /// OTel-style trace-context observability counters (inject / extract).
     metrics: Arc<MetricsRegistry>,
+    /// Shared process pool for metrics and dashboard snapshots.
+    pool: Arc<crate::runtime::ProcessPool>,
+}
+
+/// Resolve the config file the hot-reload watcher must watch.
+///
+/// Delegates to [`Config::config_path`], the exact resolver `Config::load`
+/// uses, so `sharecli serve` can never load one file and watch another. Before
+/// this existed the watch path was rebuilt inline from `dirs::config_dir()`,
+/// which ignores `SHARECLI_CONFIG_PATH`: with the override set the server
+/// loaded the overridden file but watched the default location, so saving to
+/// the file it had actually loaded produced no reload at all. Guarded by
+/// `config_watch_path_uses_config_path_override` here and by
+/// `tests/e2e_serve_hot_reload.rs`.
+fn config_watch_path() -> std::path::PathBuf {
+    match Config::config_path() {
+        Ok(p) => p,
+        // `config_path` only fails when `dirs::config_dir` is unavailable. Fall
+        // back to the same relative location `Config::load` would have failed
+        // to find, rather than silently watching a different file.
+        Err(e) => {
+            warn!("serve: could not resolve config path ({e}); watching ./config.toml");
+            std::path::PathBuf::from("config.toml")
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -156,9 +181,7 @@ pub async fn run(bind: &str, on_conflict: OnConflict) -> Result<()> {
     let config_arc = Arc::new(RwLock::new(initial_config.clone()));
     let (cfg_tx, mut cfg_rx) = watch::channel(initial_config.clone());
 
-    let config_path = dirs::config_dir()
-        .map(|d| d.join("sharecli").join("config.toml"))
-        .unwrap_or_else(|| std::path::PathBuf::from("config.toml"));
+    let config_path = config_watch_path();
 
     // `_config_watcher` is kept alive by the AppState so the file watch persists
     // for the lifetime of the server.
@@ -232,6 +255,7 @@ pub async fn run(bind: &str, on_conflict: OnConflict) -> Result<()> {
         http_red: Arc::new(HttpRedMetrics::default()),
         rate_limit: Arc::new(std::sync::Mutex::new(rate_limit)),
         metrics: Arc::new(MetricsRegistry::new()),
+        pool: Arc::new(crate::runtime::ProcessPool::new()),
     };
 
     // Spawn background thermal poller (uses parse_pressure_level as the canonical parser).
@@ -243,20 +267,7 @@ pub async fn run(bind: &str, on_conflict: OnConflict) -> Result<()> {
 
     println!("sharecli serve listening on {url}");
 
-    let app = Router::new()
-        .route("/", get(dashboard))
-        .route("/assets/dashboard/ui/{*path}", get(crate::dashboard_assets::serve))
-        .route("/healthz", get(healthz))
-        .route("/readyz", get(readyz))
-        .route("/config", get(config_handler))
-        .route("/health/processes", get(health_processes_handler))
-        .route("/metrics/prometheus", get(metrics_prometheus_handler))
-        .route("/debug/pprof/profile", get(crate::pprof_http::profile_handler))
-        .route("/ws", get(ws_handler))
-        .layer(middleware::from_fn_with_state(state.clone(), http_observability_middleware))
-        .layer(middleware::from_fn_with_state(state.clone(), serve_rate_limit_middleware))
-        .layer(middleware::from_fn_with_state(auth, serve_auth::require_bearer))
-        .with_state(state);
+    let app = build_router(state.clone(), auth);
 
     let listener = tokio::net::TcpListener::bind(bind).await?;
 
@@ -272,6 +283,56 @@ pub async fn run(bind: &str, on_conflict: OnConflict) -> Result<()> {
     audit_log::emit("serve_stop", json!({ "bind": bind }));
     crate::otel::shutdown();
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Router construction
+// ---------------------------------------------------------------------------
+
+/// Build the serve `Router` with the full middleware stack.
+///
+/// Extracted from `run()` so tests drive the *real* stack instead of a copy
+/// that could silently drift from production.
+fn build_router(state: AppState, auth: ServeAuth) -> Router<()> {
+    let routes = Router::new()
+        .route("/", get(dashboard))
+        .route("/assets/dashboard/ui/{*path}", get(crate::dashboard_assets::serve))
+        .route("/healthz", get(healthz))
+        .route("/readyz", get(readyz))
+        .route("/config", get(config_handler))
+        .route("/health/processes", get(health_processes_handler))
+        .route("/metrics/prometheus", get(metrics_prometheus_handler))
+        .route("/debug/pprof/profile", get(crate::pprof_http::profile_handler))
+        .route("/ws", get(ws_handler));
+    apply_middleware(routes, &state, auth).with_state(state)
+}
+
+/// Apply the three cross-cutting layers to a router.
+///
+/// **Ordering contract.** `Router::layer` wraps everything added before it, so
+/// the *last* `.layer(...)` call is outermost at request time: first to see the
+/// request, last to see the response. Observability is applied **last** so it
+/// observes every outcome, including ones produced by the layers beneath it:
+///
+/// ```text
+/// observability -> auth -> rate limit -> route
+/// (outermost)
+/// ```
+///
+/// Reordering this so observability sits inside `auth` reproduces the phase 1
+/// task 1.1 defect: an auth `401` or a rate-limit `429` short-circuits before
+/// reaching it, so those failures are never counted in RED metrics and never
+/// receive a `traceparent` header. Guarded by `observability_records_auth_401`
+/// and `observability_records_rate_limit_429`, which drive the real router.
+fn apply_middleware(
+    router: Router<AppState>,
+    state: &AppState,
+    auth: ServeAuth,
+) -> Router<AppState> {
+    router
+        .layer(middleware::from_fn_with_state(state.clone(), serve_rate_limit_middleware))
+        .layer(middleware::from_fn_with_state(auth, serve_auth::require_bearer))
+        .layer(middleware::from_fn_with_state(state.clone(), http_observability_middleware))
 }
 
 // ---------------------------------------------------------------------------
@@ -549,8 +610,7 @@ async fn health_processes_handler(State(state): State<AppState>) -> impl IntoRes
 /// `GET /metrics/prometheus` — Prometheus text-format metrics for all tracked processes.
 #[instrument(skip(state))]
 async fn metrics_prometheus_handler(State(state): State<AppState>) -> impl IntoResponse {
-    let pool = ProcessPool::new();
-    let processes = pool.list().await;
+    let processes = state.pool.list().await;
     let health_map = state.health_store.lock().await;
     let mut body = render_prometheus_metrics(&processes, &health_map);
     render_http_red_metrics(&mut body, &state.http_red.snapshot());
@@ -584,11 +644,7 @@ pub fn render_prometheus_metrics(
     out.push_str("# HELP sharecli_process_memory_mb Resident memory usage in MiB per process\n");
     out.push_str("# TYPE sharecli_process_memory_mb gauge\n");
     for p in processes {
-        let name = escape_label_value(&p.name);
-        out.push_str(&format!(
-            "sharecli_process_memory_mb{{process=\"{}\"}} {}\n",
-            name, p.memory_mb
-        ));
+        out.push_str(&format!("sharecli_process_memory_mb{{pid=\"{}\"}} {}\n", p.pid, p.memory_mb));
     }
 
     // -- sharecli_process_up -------------------------------------------------
@@ -597,7 +653,6 @@ pub fn render_prometheus_metrics(
     );
     out.push_str("# TYPE sharecli_process_up gauge\n");
     for p in processes {
-        let name = escape_label_value(&p.name);
         let up = if let Some(status) = health_map.get(&p.name) {
             if status.healthy {
                 1u8
@@ -608,7 +663,7 @@ pub fn render_prometheus_metrics(
             // No health-check configured → process is running, treat as up.
             1u8
         };
-        out.push_str(&format!("sharecli_process_up{{process=\"{}\"}} {}\n", name, up));
+        out.push_str(&format!("sharecli_process_up{{pid=\"{}\"}} {}\n", p.pid, up));
     }
 
     // -- sharecli_health_check_consecutive_failures --------------------------
@@ -724,6 +779,36 @@ mod tests {
 
     use super::*;
     use crate::serve_lock::{decide, Decision, OnConflict, ServeInfo, ServeState};
+
+    // --- config watch path resolution (phase 1 task 1.2) ---
+
+    /// The watch path must be the exact file `Config::load` reads.
+    ///
+    /// `serve` previously rebuilt the path inline from `dirs::config_dir()`,
+    /// which ignores `SHARECLI_CONFIG_PATH`, so the server loaded one file and
+    /// watched another. This pins the override case, which is where the two
+    /// resolutions disagreed. End-to-end: `tests/e2e_serve_hot_reload.rs`.
+    #[test]
+    #[serial_test::serial]
+    fn config_watch_path_uses_config_path_override() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let override_path = dir.path().join("isolated.toml");
+
+        let previous = std::env::var_os("SHARECLI_CONFIG_PATH");
+        // SAFETY: `#[serial]` makes this test exclusive with any other test in
+        // this binary that touches the process environment.
+        unsafe { std::env::set_var("SHARECLI_CONFIG_PATH", &override_path) };
+        // Both resolutions must be observed *while* the override is set.
+        let watch_path = config_watch_path();
+        let load_path = Config::config_path().expect("config path");
+        match previous {
+            Some(v) => unsafe { std::env::set_var("SHARECLI_CONFIG_PATH", v) },
+            None => unsafe { std::env::remove_var("SHARECLI_CONFIG_PATH") },
+        }
+
+        assert_eq!(watch_path, override_path, "serve must watch the overridden file");
+        assert_eq!(watch_path, load_path, "serve must watch exactly the file Config::load reads");
+    }
 
     // --- serve_lock decision tests ---
 
@@ -979,7 +1064,7 @@ mod tests {
         healthy_map.insert("svc".to_string(), make_health(true, 0));
         let healthy_out = render_prometheus_metrics(&processes, &healthy_map);
         assert!(
-            healthy_out.contains("sharecli_process_up{process=\"svc\"} 1"),
+            healthy_out.contains("sharecli_process_up{pid=\"1234\"} 1"),
             "healthy process should have process_up=1"
         );
 
@@ -987,7 +1072,7 @@ mod tests {
         unhealthy_map.insert("svc".to_string(), make_health(false, 3));
         let unhealthy_out = render_prometheus_metrics(&processes, &unhealthy_map);
         assert!(
-            unhealthy_out.contains("sharecli_process_up{process=\"svc\"} 0"),
+            unhealthy_out.contains("sharecli_process_up{pid=\"1234\"} 0"),
             "unhealthy process should have process_up=0"
         );
     }
@@ -998,7 +1083,7 @@ mod tests {
         let mut hmap = std::collections::HashMap::new();
         hmap.insert("worker".to_string(), make_health(true, 7));
         let out = render_prometheus_metrics(&processes, &hmap);
-        assert!(out.contains("sharecli_process_memory_mb{process=\"worker\"} 512"));
+        assert!(out.contains("sharecli_process_memory_mb{pid=\"1234\"} 512"));
         assert!(out.contains("sharecli_health_check_consecutive_failures{process=\"worker\"} 7"));
     }
 
@@ -1006,9 +1091,10 @@ mod tests {
     fn prometheus_label_escaping_handles_special_chars() {
         // Process name with double-quote and backslash
         let processes = vec![make_process("my\"app\\test", 128)];
-        let hmap = std::collections::HashMap::new();
+        let mut hmap = std::collections::HashMap::new();
+        hmap.insert("my\"app\\test".to_string(), make_health(true, 0));
         let out = render_prometheus_metrics(&processes, &hmap);
-        // Escaped label value should appear; raw chars must not appear unescaped inside quotes
+        // Escaped label value should appear in health-series; raw chars must not appear unescaped inside quotes
         assert!(
             out.contains(r#"process="my\"app\\test""#),
             "label value not properly escaped: {out}"
@@ -1022,7 +1108,7 @@ mod tests {
         let hmap = std::collections::HashMap::new(); // empty
         let out = render_prometheus_metrics(&processes, &hmap);
         assert!(
-            out.contains("sharecli_process_up{process=\"orphan\"} 1"),
+            out.contains("sharecli_process_up{pid=\"1234\"} 1"),
             "process without health check should default to up=1"
         );
     }
@@ -1280,5 +1366,158 @@ mod tests {
         assert!(json.contains("\"status\""));
         assert!(json.contains("\"agents\""));
         assert!(json.contains("\"processes\""));
+    }
+
+    // --- phase 1 task 1.1: observability must be the outermost layer ---
+    //
+    // These drive the REAL router built by `build_router`, not a copy, so they
+    // fail if the production layer order regresses.
+
+    use axum::http::Method;
+    use tower::ServiceExt;
+
+    /// Minimal AppState for router-level tests. Rate limit starts wide so each
+    /// test can tighten it explicitly; metrics and RED start at zero.
+    fn router_test_state(rate_limit: ServeRateLimit) -> AppState {
+        let (thermal_tx, _thermal_rx) = broadcast::channel::<ThermalEvent>(8);
+        let (shutdown_tx, _shutdown_rx) = watch::channel(false);
+        AppState {
+            thermal_tx: Arc::new(thermal_tx),
+            shutdown_tx: Arc::new(shutdown_tx),
+            config: Arc::new(RwLock::new(Config::default())),
+            health_store: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            http_red: Arc::new(HttpRedMetrics::default()),
+            rate_limit: Arc::new(std::sync::Mutex::new(Some(rate_limit))),
+            metrics: Arc::new(MetricsRegistry::new()),
+            pool: Arc::new(crate::runtime::ProcessPool::new()),
+        }
+    }
+
+    fn bearer_auth() -> ServeAuth {
+        let cfg = crate::config::ServeConfig {
+            bearer_token: Some("test-secret".into()),
+            ..crate::config::ServeConfig::default()
+        };
+        let auth = ServeAuth::from_env_or_config(&cfg).expect("bearer auth builds");
+        assert!(auth.enabled(), "test auth must be enabled to exercise the 401 path");
+        auth
+    }
+
+    fn get_request(path: &str) -> Request {
+        Request::builder().method(Method::GET).uri(path).body(Body::empty()).expect("build request")
+    }
+
+    /// An auth `401` must be visible to observability: counted in RED metrics
+    /// and stamped with a `traceparent`. If observability sits *inside* auth,
+    /// the 401 short-circuits before it and both assertions fail.
+    #[tokio::test]
+    async fn observability_records_auth_401() {
+        let state =
+            router_test_state(ServeRateLimit::new(1000, std::time::Duration::from_secs(60)));
+        let red_before = state.http_red.snapshot();
+        let injected_before = state.metrics.counter("sharecli_tracecontext_injected_total").get();
+
+        let app = build_router(state.clone(), bearer_auth());
+        let resp = app.oneshot(get_request("/config")).await.expect("response");
+
+        assert_eq!(
+            resp.status(),
+            StatusCode::UNAUTHORIZED,
+            "/config without credentials must be rejected"
+        );
+
+        let red_after = state.http_red.snapshot();
+        assert!(
+            red_after.unauthorized_total > red_before.unauthorized_total,
+            "auth 401 must be counted in RED metrics: before={} after={}",
+            red_before.unauthorized_total,
+            red_after.unauthorized_total
+        );
+        assert!(
+            red_after.requests_total > red_before.requests_total,
+            "auth 401 must be counted as a request"
+        );
+        assert!(
+            resp.headers().contains_key("traceparent"),
+            "auth 401 response must carry a traceparent header"
+        );
+        assert!(
+            state.metrics.counter("sharecli_tracecontext_injected_total").get() > injected_before,
+            "auth 401 must increment the tracecontext inject counter"
+        );
+    }
+
+    /// `/config` with valid credentials must serve the live config JSON, which
+    /// proves the auth layer passes the request through rather than only
+    /// rejecting bad ones.
+    #[tokio::test]
+    async fn config_serves_json_with_valid_bearer() {
+        let state =
+            router_test_state(ServeRateLimit::new(1000, std::time::Duration::from_secs(60)));
+        let app = build_router(state, bearer_auth());
+
+        let mut req = get_request("/config");
+        req.headers_mut().insert(
+            axum::http::header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer test-secret"),
+        );
+        let resp = app.oneshot(req).await.expect("response");
+        assert_eq!(resp.status(), StatusCode::OK, "valid bearer must be admitted");
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.expect("body");
+        let json: serde_json::Value = serde_json::from_slice(&body).expect("config JSON");
+        assert!(json.is_object(), "config handler must return an object: {json}");
+    }
+
+    /// `/healthz` and `/readyz` are public in every mode: they must answer 200
+    /// without credentials and must not consume the rate-limit budget.
+    #[tokio::test]
+    async fn public_probes_bypass_auth_and_rate_limit() {
+        let state = router_test_state(ServeRateLimit::new(0, std::time::Duration::from_secs(60)));
+        let app = build_router(state, bearer_auth());
+
+        for path in ["/healthz", "/readyz"] {
+            let resp = app.clone().oneshot(get_request(path)).await.expect("probe response");
+            assert_eq!(resp.status(), StatusCode::OK, "{path} must stay public");
+
+            let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.expect("body");
+            let json: serde_json::Value = serde_json::from_slice(&body).expect("probe JSON");
+            assert_eq!(json["status"], "ok", "{path} must report ok");
+        }
+    }
+
+    /// A rate-limit `429` must likewise be observable.
+    #[tokio::test]
+    async fn observability_records_rate_limit_429() {
+        let state = router_test_state(ServeRateLimit::new(1, std::time::Duration::from_secs(60)));
+        let red_before = state.http_red.snapshot();
+
+        // Open auth so the request reaches the rate-limit layer at all.
+        let open_auth = ServeAuth::from_env_or_config(&crate::config::ServeConfig::default())
+            .expect("open auth builds");
+        assert!(!open_auth.enabled(), "auth must be off to reach the rate limiter");
+
+        let app = build_router(state.clone(), open_auth);
+
+        // First request consumes the single token; the second must be 429.
+        let first = app.clone().oneshot(get_request("/config")).await.expect("first");
+        assert_eq!(first.status(), StatusCode::OK, "first request must be allowed");
+
+        let resp = app.oneshot(get_request("/config")).await.expect("second");
+        assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS, "second request must be limited");
+
+        let red_after = state.http_red.snapshot();
+        assert_eq!(
+            red_after.unauthorized_total, red_before.unauthorized_total,
+            "no 401 expected on an open-auth run"
+        );
+        assert!(
+            resp.headers().contains_key("traceparent"),
+            "429 response must carry a traceparent header"
+        );
+        assert!(
+            red_after.requests_total >= red_before.requests_total + 1,
+            "429 must be counted in RED metrics"
+        );
     }
 }

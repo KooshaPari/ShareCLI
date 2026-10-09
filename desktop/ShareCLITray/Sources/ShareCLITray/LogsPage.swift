@@ -22,13 +22,48 @@
 import SwiftUI
 import ShareCLICore
 
+// MARK: - Failed-action model (PLAN.md:228-231, task 1.22)
+
+/// Which failed action a Logs page error banner belongs to. Each kind maps to
+/// exactly one Retry control that re-runs the operation that failed, so the
+/// page never shows a bare developer string with no way to recover.
+enum LogsFailure: Equatable {
+    /// `FileHandle(forReadingFrom:)` (or the read) failed.
+    case openLogFile(String)
+    /// Writing the filtered view to disk failed.
+    case export(String)
+
+    /// User-visible message: an actionable lead plus the raw error as detail.
+    var message: String {
+        switch self {
+        case .openLogFile(let detail): return "Couldn't open the log file — \(detail)"
+        case .export(let detail): return "Couldn't export the visible logs — \(detail)"
+        }
+    }
+
+    /// The single action label for this failure kind ("one Retry button").
+    var retryLabel: String { RetryCopy.retryLabel }
+
+    /// Tooltip explaining what Retry will re-run.
+    var actionHint: String {
+        switch self {
+        case .openLogFile: return "Retry opening the log file"
+        case .export: return "Retry export"
+        }
+    }
+
+    /// Exactly one action affordance per failure.
+    var actionTitles: [String] { [retryLabel] }
+}
+
 struct LogsPage: View {
     @ObservedObject var state: AppState
     @AppStorage("logs.tailpaused") var tailPaused: Bool = false
     @AppStorage("logs.filterText") var filterText: String = ""
     @AppStorage("logs.filterLevels") var filterLevelsCSV: String = "DEBUG,INFO,WARN,ERROR"
+    @FocusState private var filterFocused: Bool
     @State private var lines: [LogLine] = []
-    @State private var streamError: String? = nil
+    @State private var logsFailure: LogsFailure? = nil
     @State private var lastRefresh: Date = .distantPast
     @State private var fileHandle: FileHandle? = nil
     @State private var fileSource: DispatchSourceFileSystemObject? = nil
@@ -71,7 +106,7 @@ struct LogsPage: View {
                             .font(.system(.body, design: .monospaced))
                     }
                 } else {
-                    Label("No log file — sidecar didn't emit log_location", systemImage: "exclamationmark.triangle.fill")
+                    Label("No log file reported — set SHARECLI_LOG_PATH for the sidecar", systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
                         .font(.caption)
                 }
@@ -83,6 +118,7 @@ struct LogsPage: View {
                 LabeledContent("Filter text") {
                     TextField("substring…", text: $filterText)
                         .textFieldStyle(.roundedBorder)
+                        .filterFieldFocus($filterFocused)
                 }
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Levels")
@@ -114,10 +150,16 @@ struct LogsPage: View {
                     }
                     .disabled(filtered.isEmpty)
                 }
-                if let err = streamError {
-                    Text(err)
-                        .font(.caption)
-                        .foregroundStyle(.red)
+                if let failure = logsFailure {
+                    FailedActionBanner(
+                        title: failure.message,
+                        systemImage: "exclamationmark.triangle.fill",
+                        actionTitle: failure.retryLabel,
+                        actionSystemImage: "arrow.clockwise",
+                        actionHint: failure.actionHint,
+                        action: { retry(failure) }
+                    )
+                    .font(.caption)
                 }
                 if let toast = copyToast {
                     Text(toast)
@@ -162,7 +204,7 @@ struct LogsPage: View {
     private func startStreaming() async {
         guard let path = state.statusSnapshot?.live_log_path else {
             lines = []
-            streamError = nil
+            logsFailure = nil
             return
         }
         stopStreaming()
@@ -190,11 +232,11 @@ struct LogsPage: View {
             src.setCancelHandler { }
             src.resume()
             self.fileSource = src
-            streamError = nil
+            logsFailure = nil
         } catch {
             self.fileHandle = nil
             self.fileSource = nil
-            streamError = "Failed to open log file: \(error.localizedDescription)"
+            logsFailure = .openLogFile(error.localizedDescription)
         }
     }
 
@@ -278,7 +320,18 @@ struct LogsPage: View {
                 await MainActor.run { copyToast = nil }
             }
         } catch {
-            streamError = "Export failed: \(error.localizedDescription)"
+            logsFailure = .export(error.localizedDescription)
+        }
+    }
+
+    /// Re-run the exact action that failed. One control per failure kind
+    /// (PLAN.md:228-231, task 1.22).
+    private func retry(_ failure: LogsFailure) {
+        switch failure {
+        case .openLogFile:
+            Task { await startStreaming() }
+        case .export:
+            exportVisibleToFile()
         }
     }
 }
@@ -324,6 +377,8 @@ private struct LogsListView: View {
     let lines: [LogLine]
     let followTail: Bool
     let onUserScroll: () -> Void
+    /// Reduce motion (PLAN 1.23): gates the tail auto-scroll animation.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -343,7 +398,7 @@ private struct LogsListView: View {
             )
             .onChange(of: lines.last?.id) { _, newID in
                 if followTail, let id = newID {
-                    withAnimation(.linear(duration: 0.1)) {
+                    Motion.run(.linear(duration: 0.1), reduceMotion: reduceMotion) {
                         proxy.scrollTo(id, anchor: .bottom)
                     }
                 }
@@ -386,89 +441,3 @@ private struct LogsLineRow: View {
     }
 }
 
-// MARK: - LogLine model
-
-struct LogLine: Identifiable, Hashable {
-    enum Level: String, Hashable {
-        case trace, debug, info, warn, error, unknown = ""
-        var color: Color {
-            switch self {
-            case .trace: return .gray
-            case .debug: return .blue.opacity(0.7)
-            case .info: return .green.opacity(0.7)
-            case .warn: return .orange
-            case .error: return .red
-            case .unknown: return .secondary
-            }
-        }
-        var bgTint: Color {
-            switch self {
-            case .warn: return Color.orange.opacity(0.06)
-            case .error: return Color.red.opacity(0.08)
-            default: return Color.clear
-            }
-        }
-    }
-    let id: UUID = UUID()
-    let raw: String
-    let level: Level
-    let timestamp: Date?
-    let target: String
-    let message: String
-
-    var timestampString: String {
-        guard let ts = timestamp else { return "—" }
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm:ss"
-        return f.string(from: ts)
-    }
-
-    static func parse(_ line: String) -> LogLine {
-        // tracing-subscriber default format:
-        //   2024-05-01T12:00:00.123456Z  LEVEL target: message
-        // JSON format:
-        //   {"timestamp":"...","level":"INFO","target":"...","message":"..."}
-        if line.hasPrefix("{") {
-            if let data = line.data(using: .utf8),
-               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                let lvl = (obj["level"] as? String).flatMap(Level.init(rawValue:)) ?? .unknown
-                let target = (obj["target"] as? String) ?? ""
-                let message = (obj["fields"] as? [String: Any]).flatMap { ($0["message"] as? String) }
-                    ?? (obj["message"] as? String)
-                    ?? line
-                let timestamp: Date? = {
-                    if let s = obj["timestamp"] as? String {
-                        let iso = ISO8601DateFormatter()
-                        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-                        return iso.date(from: s) ?? ISO8601DateFormatter().date(from: s)
-                    }
-                    return nil
-                }()
-                return LogLine(raw: line, level: lvl, timestamp: timestamp, target: target, message: message)
-            }
-        }
-        // Plain-text format: `<ts>  <level> <target>: <message>`
-        let parts = line.split(separator: " ", maxSplits: 3, omittingEmptySubsequences: true)
-        if parts.count >= 4 {
-            let tsString = String(parts[0])
-            let levelRaw = String(parts[1]).lowercased()
-            let level = Level(rawValue: levelRaw) ?? .unknown
-            let rest = String(parts[3])
-            let colonIdx = rest.firstIndex(of: ":")
-            let target: String
-            let message: String
-            if let ci = colonIdx {
-                target = String(rest[..<ci])
-                message = String(rest[rest.index(after: ci)...]).trimmingCharacters(in: .whitespaces)
-            } else {
-                target = ""
-                message = rest
-            }
-            let iso = ISO8601DateFormatter()
-            iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            let timestamp = iso.date(from: tsString) ?? ISO8601DateFormatter().date(from: tsString)
-            return LogLine(raw: line, level: level, timestamp: timestamp, target: target, message: message)
-        }
-        return LogLine(raw: line, level: .unknown, timestamp: nil, target: "", message: line)
-    }
-}

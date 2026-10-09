@@ -48,10 +48,10 @@
 
 ### 0.3 Hypervisor lock with deadline (lane 7 BLOCKER)
 - **Files:** `ipc/lib.rs:300-303`
-- **Steps:**
-  - Replace `lock_exclusive()` with `with_deadline(Duration::from_secs(30))`.
-  - On deadline, return `Err(HypervisorError::Timeout)`; sibling agents log + retry
-    under backoff.
+- **Status:** ✅ shipped `4600ceea` — `acquire_lock_with_deadline(file, 30s)` polls
+  `try_lock_exclusive` with backoff 5 ms -> 250 ms; returns `anyhow` error on timeout.
+  Test `acquire_lock_with_deadline_errors_when_held` green; `with_lock_lock_deadline_does_not_hang`
+  tagged `#[ignore]` for Linux-only verification (macOS flock is per-process).
 - **Receipt:** the 2.5 s probe now fails with the documented error code, not hangs.
 
 ### 0.4 RAII WaiterTicket with aging (lane 7 BLOCKER)
@@ -65,27 +65,71 @@
 
 ### 0.5 Implement or delete phantom IPC methods (lane 3 BLOCKERs)
 - **Files:** `crates/sharecli-ipc/src/handler.rs`, `IPCClient.swift`, `ProcessesPage.swift:1684`
-- **Steps:**
-  - Implement `process.spawn` (server-assigned pid; spawn through `runtime::spawn`).
-  - Implement `pool.effectiveness` (aggregate from `CoalesceCache` hit/miss counters).
-  - If a method is not implementable in v0.9, remove the corresponding page + client
-    method, not silently break it.
+- **Status:** ✅ shipped — `process.spawn` dispatch validates a non-blank
+  `command` and array-of-string `args` (empty args allowed: it is the Spawn
+  form default), routes through the handler-owned `ProcessPool` with the newly
+  wired `cwd`/`project`/`harness`, and distinguishes envelope validation
+  errors from typed runtime failures `{pid: 0, success: false, error}`.
+  `pool.effectiveness` returns `{coalesce, slot_queue, sampled_at}` from the
+  `sharecli-fleet` process-global atomic meters (FR-008 / AC-008.11-12).
+  Dead surface deleted, not faked: `fetchFdcount`/`fetchIo`/`fetchProcessTree`
+  plus their model types (zero UI call sites, server methods phantom) and the
+  Spawn form's Env CSV field + memory slider (`memoryMB` was never sent; env
+  is not honorable through `ProcessPool::spawn`); `SpawnHistoryEntry`
+  dropped `memoryLimitMB` and now records a `workingDir` that is actually
+  transmitted. Validated: full `cargo test -p sharecli-ipc` green (13
+  dispatch tests, 3 written red first and observed red); `swift build` +
+  `swift test` green (16 tests, 4 UDS-gated skips, 0 failures); scratch-UDS
+  round trip `PHASE05_ROUNDTRIP_ALL_OK` (effectiveness shape matches the
+  Swift decoder keys 1:1 — page render itself not visually gated; spawn
+  retains+kills the child; typed failure; envelope validation; empty-args
+  spawn).
 - **Receipt:** both methods return typed results over a scratch UDS; the Pool
   Effectiveness page renders numbers; the Spawn form succeeds on a valid pid.
 
 ### 0.6 Stop `stop --pid 999999` lying (lane 4 BLOCKER)
 - **Files:** `src/commands/mod.rs:646-649`
-- **Steps:**
-  - Inspect `pool.kill()`'s `Result`; print "no such pid" and exit 2 for misses.
+- **Status:** ✅ shipped — `ProcessPool::kill` now returns `Result<bool>`
+  (`Ok(true)` = pool-managed child stopped, `Ok(false)` = pid not managed by
+  this pool); all five callers updated: CLI `stop --pid` (prints
+  `no such pid: {pid}` to stderr and exits 2 on a miss), `stop` filter loop
+  and `project stop` match (list-derived pids: miss = already gone, never
+  counted as stopped), `prune --force` loop, and the IPC `process.kill` arm
+  (answers `false` instead of a phantom `true`; Swift discards the result so
+  the tray surface is unchanged). Observed red first: pre-change
+  `stop --pid 999999` printed `Process 999999 stopped.` with exit 0, and the
+  unit test was written red (E0600 against the old `Result<()>` signature).
+  Validated: `kill_unmanaged_pid_reports_not_found` green; full `--lib` 566
+  green; 9 kill/stop/prune integration targets 28 green; `cargo test
+  -p sharecli-ipc` 153 green (1 pre-existing Linux-only ignore); CLI probe
+  exit 2 observed.
 - **Receipt:** `sharecli stop --pid 999999` → exit 2, "no such pid: 999999".
 
-### 0.7 Swift IPC read loop has a deadline (lane 2 BLOCKER)
-- **Files:** `desktop/ShareCLITray/Sources/ShareCLICore/IPCClient.swift:600-605`
+### 0.7 Swift IPC read loop has a deadline (lane 2 BLOCKER) — ✅ shipped (2026-09-24)
+- **Files:** `desktop/ShareCLITray/Sources/ShareCLICore/IPCClient.swift`
 - **Steps:**
   - `setsockopt(SO_RCVTIMEO, …)`; cap concurrent probes at the measured 64 ceiling
     with a semaphore.
   - Move read off `Darwin.read` to `poll(2)`/`DispatchSourceRead` with deadline.
 - **Receipt:** block-forever probe fails with `IPCError.timeout`; supervisor recovers.
+- **Status (2026-09-24):** ✅ shipped.
+  - `IPCClient` now has a per-request deadline (`init(socketPath:timeout:)`, default
+    5.0 s) covering connect + write + read; the byte-read loop waits in `poll(2)` for
+    only the remaining time and fails with the new `IPCError.timeout`; `SO_RCVTIMEO` /
+    `SO_SNDTIMEO` are set as belt-and-braces; write handles `EINTR`/`EAGAIN`.
+  - Concurrent probes are capped by a shared `DispatchSemaphore(64)` (the measured
+    utility-queue ceiling), so a burst of wedged probes can no longer occupy the whole
+    pool and starve supervisor recovery.
+  - Red observed twice: compile red (`extra argument 'timeout' in call`), then
+    behavioral red — in-process `WedgedSidecarServer` (accepts, never answers):
+    `testBlockForeverProbeFailsWithTimeoutNotAHang` waiter `.timedOut` (elapsed 5.93 s)
+    and `testWedgedProbeFloodResolvesAndThePoolServesFollowUpWork` failed — 70 wedged
+    probes never resolved AND the healthy follow-up call was starved (the BLOCKER
+    reproduced). A harness bug (`NSTemporaryDirectory()` path > 104-byte `sun_path`)
+    was fixed first by using short `/tmp/` socket paths.
+  - Green: both deadline tests pass (0.503 s / 1.019 s — the 64-slot cap visible as
+    two probe waves); full `swift test` = 18 executed, 4 UDS-gated skipped, 0 failures;
+    `swift build` clean.
 
 ---
 
@@ -264,6 +308,20 @@
 - Re-spawn the 10 lanes with the same prompts and the same probes. Expect only
   LOW / POLISH findings.
 - Capture diff in `docs/audit/2026-09-20/RESULTS.md`.
+
+### Phase 0.5–0.7 close-out status (observed 2026-09-27)
+
+Phases 0.5–0.7 shipped at `b804fdbe`. Every gate that could complete honestly is green:
+`sharecli-ipc` (153 passed, 2 ignored), `cargo build -p sharecli`, the
+`stop --pid 999999` exit-2 receipt, `swift build`, and `swift test` (18 executed,
+4 UDS-gated skips, 0 failures).
+
+`cargo test -p sharecli --tests --no-fail-fast` (212 targets) is **UNKNOWN**: the host ran
+at load 120–231 from other agents' processes, run 1 stopped at 151/212, and a replacement
+run hung in `config_watcher`. Each surfaced failure was re-run as an isolated target —
+8 of 10 green; the 2 open failures are pre-existing load-sensitive gates on code paths
+this branch does not touch. Full evidence and per-failure provenance are in
+`docs/audit/2026-09-20/RESULTS.md`.
 
 ---
 

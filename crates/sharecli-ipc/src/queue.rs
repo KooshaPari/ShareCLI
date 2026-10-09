@@ -187,15 +187,12 @@ impl SlotQueue {
             Err(e) => return Err(e).with_context(|| format!("read waiting dir {}", dir.display())),
         };
 
-        let now_secs = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
+        let now_secs =
+            SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
 
         // My age-adjusted rank: a Critical ticket I have been holding
         // expires from priority over time.
-        let my_effective =
-            Self::effective_rank(my_ticket, my_priority, my_enqueued_at.elapsed());
+        let my_effective = Self::effective_rank(my_ticket, my_priority, my_enqueued_at.elapsed());
 
         let mut best_effective = u8::MAX;
         let mut tickets_at_best: Vec<String> = Vec::new();
@@ -215,11 +212,8 @@ impl SlotQueue {
             // (segment 1 of `<rank>.<secs>.<pid>.<seq>`) and age the peer
             // by `now_secs - ticket_secs`. Cross-process peers share the
             // wall-clock hint; same-process tickets correlate via pid.
-            let ticket_secs = ticket
-                .split('.')
-                .nth(1)
-                .and_then(|s| s.parse::<u64>().ok())
-                .unwrap_or(now_secs);
+            let ticket_secs =
+                ticket.split('.').nth(1).and_then(|s| s.parse::<u64>().ok()).unwrap_or(now_secs);
             let peer_waited_ms: u64 = if now_secs >= ticket_secs {
                 let diff = (now_secs - ticket_secs) as u128;
                 let ms = diff.saturating_mul(1_000);
@@ -238,11 +232,8 @@ impl SlotQueue {
                 3 => QueuePriority::Low,
                 _ => QueuePriority::Background,
             };
-            let peer_effective = Self::effective_rank(
-                &ticket,
-                base_priority,
-                Duration::from_millis(peer_waited_ms),
-            );
+            let peer_effective =
+                Self::effective_rank(&ticket, base_priority, Duration::from_millis(peer_waited_ms));
 
             if peer_effective < best_effective {
                 best_effective = peer_effective;
@@ -267,11 +258,7 @@ impl SlotQueue {
             return Ok(true);
         }
 
-        let winner = tickets_at_best
-            .iter()
-            .min()
-            .map(String::as_str)
-            .unwrap_or(my_ticket);
+        let winner = tickets_at_best.iter().min().map(String::as_str).unwrap_or(my_ticket);
         Ok(winner == my_ticket)
     }
 
@@ -630,9 +617,7 @@ mod tests {
             thread::sleep(Duration::from_millis(5));
         }
 
-        let res = q.with_slot("timeout", QueuePriority::Normal, || {
-            Ok::<_, anyhow::Error>(())
-        });
+        let res = q.with_slot("timeout", QueuePriority::Normal, || Ok::<_, anyhow::Error>(()));
         assert!(res.is_err(), "second caller must time out");
         // The timing-out waiter must have cleaned its ticket. The holder's
         // ticket has already been removed by its own success-path `release()`.
@@ -724,11 +709,8 @@ mod tests {
 
         // Pre-place an orphan Critical ticket that "appeared" > 3 seconds ago.
         fs::create_dir_all(&waiting).unwrap();
-        let old_secs = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs()
-            .saturating_sub(4);
+        let old_secs =
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs().saturating_sub(4);
         let orphan = format!("00.{old_secs}.{}.0", std::process::id());
         fs::write(waiting.join(&orphan), "0\n").unwrap();
 
@@ -737,12 +719,8 @@ mod tests {
         // Normal ticket is now best (rank 2). It must proceed without
         // waiting for the orphan — but the orphan's ticket file is still in
         // the dir, which our function handles by checking only base ranks.
-        let q = SlotQueue::with_options(
-            q_root,
-            1,
-            Duration::from_secs(2),
-            Duration::from_millis(20),
-        );
+        let q =
+            SlotQueue::with_options(q_root, 1, Duration::from_secs(2), Duration::from_millis(20));
         let started = Instant::now();
         q.with_slot("orphan", QueuePriority::Normal, || {
             assert!(
