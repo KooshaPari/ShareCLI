@@ -125,23 +125,37 @@ final class SemanticColorTests: XCTestCase {
         XCTAssertNotNil(token)
     }
 
+    /// Drive `Color.warningForeground` / `Color.successForeground`
+    /// through a specific branch via the test seam in
+    /// `SemanticColors.swift`. Without this, the test only exercises
+    /// whatever the test runner's effective appearance is (dark on
+    /// most CI boxes).
+    private func withAppearance(_ isDark: Bool, _ body: () throws -> Void) rethrows {
+        let previous = Color.isDarkModeOverride
+        Color.isDarkModeOverride = isDark
+        defer { Color.isDarkModeOverride = previous }
+        try body()
+    }
+
     func testWarningForegroundLightModeIsDarkerThanStandardOrange() {
         // In light appearance, warningForeground must use a darker amber
         // (#994C00) instead of standard SwiftUI .orange (~2.1:1 fails AA).
         // Verify R channel is reduced (darker amber vs bright orange).
-        let nsToken = NSColor(Color.warningForeground)
-        let nsOrange = NSColor.orange
-        guard let tRGB = nsToken.usingColorSpace(.deviceRGB),
-              let oRGB = nsOrange.usingColorSpace(.deviceRGB) else {
-            XCTFail("could not convert colours to deviceRGB")
-            return
+        withAppearance(false) {
+            let nsToken = NSColor(Color.warningForeground)
+            let nsOrange = NSColor.orange
+            guard let tRGB = nsToken.usingColorSpace(.deviceRGB),
+                  let oRGB = nsOrange.usingColorSpace(.deviceRGB) else {
+                XCTFail("could not convert colours to deviceRGB")
+                return
+            }
+            // The dark amber has a lower red channel than standard orange
+            // (0.60 vs ~1.0) and a much lower green channel (0.30 vs ~0.6).
+            XCTAssertLessThan(tRGB.redComponent, oRGB.redComponent,
+                "warningForeground light: red channel must be dimmer than .orange")
+            XCTAssertLessThan(tRGB.greenComponent, oRGB.greenComponent,
+                "warningForeground light: green channel must be dimmer than .orange")
         }
-        // The dark amber has a lower red channel than standard orange
-        // (0.60 vs ~1.0) and a much lower green channel (0.30 vs ~0.6).
-        XCTAssertLessThan(tRGB.redComponent, oRGB.redComponent,
-            "warningForeground light: red channel must be dimmer than .orange")
-        XCTAssertLessThan(tRGB.greenComponent, oRGB.greenComponent,
-            "warningForeground light: green channel must be dimmer than .orange")
     }
 
     // MARK: - SuccessForeground adaptive token (B3: AA residual .green)
@@ -156,16 +170,18 @@ final class SemanticColorTests: XCTestCase {
         // In light appearance, successForeground must use a darker forest
         // green (#1A6B1A) instead of standard SwiftUI .green (~2.5:1 fails AA).
         // Verify G channel is reduced (darker green vs bright green).
-        let nsToken = NSColor(Color.successForeground)
-        let nsGreen = NSColor.green
-        guard let tRGB = nsToken.usingColorSpace(.deviceRGB),
-              let gRGB = nsGreen.usingColorSpace(.deviceRGB) else {
-            XCTFail("could not convert colours to deviceRGB")
-            return
+        withAppearance(false) {
+            let nsToken = NSColor(Color.successForeground)
+            let nsGreen = NSColor.green
+            guard let tRGB = nsToken.usingColorSpace(.deviceRGB),
+                  let gRGB = nsGreen.usingColorSpace(.deviceRGB) else {
+                XCTFail("could not convert colours to deviceRGB")
+                return
+            }
+            // The forest green has a much lower green channel than standard green
+            // (0.42 vs ~1.0) — this is the primary indicator of reduced brightness.
+            XCTAssertLessThan(tRGB.greenComponent, gRGB.greenComponent,
+                "successForeground light: green channel must be dimmer than .green")
         }
-        // The forest green has a much lower green channel than standard green
-        // (0.42 vs ~1.0) — this is the primary indicator of reduced brightness.
-        XCTAssertLessThan(tRGB.greenComponent, gRGB.greenComponent,
-            "successForeground light: green channel must be dimmer than .green")
     }
 }
