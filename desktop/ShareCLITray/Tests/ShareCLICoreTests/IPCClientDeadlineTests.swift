@@ -156,6 +156,91 @@ private final class TestGate: @unchecked Sendable {
     }
 }
 
+// MARK: - Shared in-process socket harness
+
+/// Creates, binds, and starts listening on a Unix-domain socket at `path`,
+/// returning the non-blocking listen fd. Shared by every in-process test
+/// server (this suite and `IPCClientKillContractTests`) so the setup cannot
+/// drift between suites.
+func makeListeningUnixSocket(
+    at path: String,
+    backlog: Int32,
+    listenFailureMessage: String
+) -> Int32 {
+    unlink(path)
+
+    let listenFD = socket(AF_UNIX, SOCK_STREAM, 0)
+    precondition(listenFD >= 0, "socket() failed")
+
+    var addr = sockaddr_un()
+    addr.sun_family = sa_family_t(AF_UNIX)
+    let capacity = MemoryLayout.size(ofValue: addr.sun_path)
+    let copied = path.withCString { cstr -> Bool in
+        withUnsafeMutableBytes(of: &addr.sun_path) { raw in
+            guard let base = raw.baseAddress else { return false }
+            let limit = min(capacity, raw.count)
+            memset(base, 0, limit)
+            guard strlen(cstr) < limit else { return false }
+            strncpy(base.assumingMemoryBound(to: CChar.self), cstr, limit - 1)
+            return true
+        }
+    }
+    precondition(copied, "socket path too long")
+    precondition(
+        bind(listenFD, withUnsafePointer(to: &addr) { ptr in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { $0 }
+        }, socklen_t(MemoryLayout<sockaddr_un>.size)) == 0,
+        "bind() failed"
+    )
+    precondition(listen(listenFD, backlog) == 0, listenFailureMessage)
+
+    let flags = fcntl(listenFD, F_GETFL, 0)
+    _ = fcntl(listenFD, F_SETFL, flags | O_NONBLOCK)
+    return listenFD
+}
+
+/// Accepts connections on a non-blocking listener until `isStopped` returns
+/// true (checked under `lock`), handing each accepted fd to `onAccept` and then
+/// `serve`. Shared by every in-process test server so the accept loop cannot
+/// drift between suites.
+func runAcceptLoop(
+    listenFD: Int32,
+    lock: NSLock,
+    isStopped: @escaping () -> Bool,
+    onAccept: @escaping (Int32) -> Void,
+    serve: @escaping (Int32) -> Void
+) {
+    let loop = Thread {
+        while true {
+            lock.lock()
+            let stopped = isStopped()
+            lock.unlock()
+            if stopped { return }
+
+            let conn = accept(listenFD, nil, nil)
+            guard conn >= 0 else {
+                if errno == EAGAIN || errno == EWOULDBLOCK {
+                    usleep(20_000)
+                    continue
+                }
+                return
+            }
+            onAccept(conn)
+            serve(conn)
+        }
+    }
+    loop.start()
+}
+
+/// Closes the accepted connections, the listener, and removes the socket path.
+func closeListeningSocket(_ listenFD: Int32, connections: [Int32], path: String) {
+    for fd in connections {
+        Darwin.close(fd)
+    }
+    Darwin.close(listenFD)
+    unlink(path)
+}
+
 // MARK: - In-process wedged sidecar
 
 /// A Unix-socket listener that accepts connections and never writes a byte —
@@ -169,59 +254,24 @@ private final class WedgedSidecarServer: @unchecked Sendable {
 
     init() {
         path = "/tmp/sharecli-wedged-\(UUID().uuidString).sock"
-        unlink(path)
-
-        listenFD = socket(AF_UNIX, SOCK_STREAM, 0)
-        precondition(listenFD >= 0, "socket() failed")
-
-        var addr = sockaddr_un()
-        addr.sun_family = sa_family_t(AF_UNIX)
-        let capacity = MemoryLayout.size(ofValue: addr.sun_path)
-        let copied = path.withCString { cstr -> Bool in
-            withUnsafeMutableBytes(of: &addr.sun_path) { raw in
-                guard let base = raw.baseAddress else { return false }
-                let limit = min(capacity, raw.count)
-                memset(base, 0, limit)
-                guard strlen(cstr) < limit else { return false }
-                strncpy(base.assumingMemoryBound(to: CChar.self), cstr, limit - 1)
-                return true
-            }
-        }
-        precondition(copied, "socket path too long")
-        precondition(
-            bind(listenFD, withUnsafePointer(to: &addr) { ptr in
-                ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { $0 }
-            }, socklen_t(MemoryLayout<sockaddr_un>.size)) == 0,
-            "bind() failed"
+        listenFD = makeListeningUnixSocket(
+            at: path,
+            backlog: 128,
+            listenFailureMessage: "listen() failed — 128 must cover the 70-probe flood"
         )
-        precondition(listen(listenFD, 128) == 0, "listen() failed — 128 must cover the 70-probe flood")
-
-        let flags = fcntl(listenFD, F_GETFL, 0)
-        _ = fcntl(listenFD, F_SETFL, flags | O_NONBLOCK)
 
         let server = self
-        let thread = Thread {
-            while true {
+        runAcceptLoop(
+            listenFD: listenFD,
+            lock: lock,
+            isStopped: { server.stopped },
+            onAccept: { conn in
                 server.lock.lock()
-                if server.stopped {
-                    server.lock.unlock()
-                    return
-                }
+                server.accepted.append(conn)
                 server.lock.unlock()
-
-                let conn = accept(server.listenFD, nil, nil)
-                if conn >= 0 {
-                    server.lock.lock()
-                    server.accepted.append(conn)
-                    server.lock.unlock()
-                } else if errno == EAGAIN || errno == EWOULDBLOCK {
-                    usleep(20_000)
-                } else {
-                    return
-                }
-            }
-        }
-        thread.start()
+            },
+            serve: { _ in }
+        )
     }
 
     func stop() {
@@ -230,11 +280,7 @@ private final class WedgedSidecarServer: @unchecked Sendable {
         let conns = accepted
         accepted = []
         lock.unlock()
-        for fd in conns {
-            Darwin.close(fd)
-        }
-        Darwin.close(listenFD)
-        unlink(path)
+        closeListeningSocket(listenFD, connections: conns, path: path)
     }
 }
 
@@ -251,61 +297,24 @@ private final class HealthyConfigServer: @unchecked Sendable {
 
     init() {
         path = "/tmp/sharecli-healthy-\(UUID().uuidString).sock"
-        unlink(path)
-
-        listenFD = socket(AF_UNIX, SOCK_STREAM, 0)
-        precondition(listenFD >= 0, "socket() failed")
-
-        var addr = sockaddr_un()
-        addr.sun_family = sa_family_t(AF_UNIX)
-        let capacity = MemoryLayout.size(ofValue: addr.sun_path)
-        let copied = path.withCString { cstr -> Bool in
-            withUnsafeMutableBytes(of: &addr.sun_path) { raw in
-                guard let base = raw.baseAddress else { return false }
-                let limit = min(capacity, raw.count)
-                memset(base, 0, limit)
-                guard strlen(cstr) < limit else { return false }
-                strncpy(base.assumingMemoryBound(to: CChar.self), cstr, limit - 1)
-                return true
-            }
-        }
-        precondition(copied, "socket path too long")
-        precondition(
-            bind(listenFD, withUnsafePointer(to: &addr) { ptr in
-                ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { $0 }
-            }, socklen_t(MemoryLayout<sockaddr_un>.size)) == 0,
-            "bind() failed"
+        listenFD = makeListeningUnixSocket(
+            at: path,
+            backlog: 16,
+            listenFailureMessage: "listen() failed"
         )
-        precondition(listen(listenFD, 16) == 0, "listen() failed")
-
-        let flags = fcntl(listenFD, F_GETFL, 0)
-        _ = fcntl(listenFD, F_SETFL, flags | O_NONBLOCK)
 
         let server = self
-        let thread = Thread {
-            while true {
-                server.lock.lock()
-                if server.stopped {
-                    server.lock.unlock()
-                    return
-                }
-                server.lock.unlock()
-
-                let conn = accept(server.listenFD, nil, nil)
-                guard conn >= 0 else {
-                    if errno == EAGAIN || errno == EWOULDBLOCK {
-                        usleep(20_000)
-                        continue
-                    }
-                    return
-                }
+        runAcceptLoop(
+            listenFD: listenFD,
+            lock: lock,
+            isStopped: { server.stopped },
+            onAccept: { conn in
                 server.lock.lock()
                 server.conns.append(conn)
                 server.lock.unlock()
-                server.serve(conn)
-            }
-        }
-        thread.start()
+            },
+            serve: { conn in server.serve(conn) }
+        )
     }
 
     private func serve(_ fd: Int32) {
@@ -337,10 +346,6 @@ private final class HealthyConfigServer: @unchecked Sendable {
         let open = conns
         conns = []
         lock.unlock()
-        for fd in open {
-            Darwin.close(fd)
-        }
-        Darwin.close(listenFD)
-        unlink(path)
+        closeListeningSocket(listenFD, connections: open, path: path)
     }
 }

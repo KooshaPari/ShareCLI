@@ -20,13 +20,12 @@ final class IPCClientKillContractTests: XCTestCase {
 
     /// A refused kill must be an error, not a silent success.
     func testKillOfUnmanagedPidSurfacesAsError() async throws {
-        let server = ScriptedDaemon { id, _ in
+        let (server, client) = makeScriptedDaemonPair { id, _ in
             // The real daemon answers `result: false, error: null` for a pid it
             // does not manage. The client must not swallow that.
             return #"{"id":\#(id),"result":false,"error":null}"#
         }
         defer { server.stop() }
-        let client = IPCClient(socketPath: server.path, timeout: 5.0)
 
         do {
             _ = try await client.kill(pid: 999_999)
@@ -41,11 +40,10 @@ final class IPCClientKillContractTests: XCTestCase {
 
     /// A managed pid really was stopped, so the happy path keeps working.
     func testKillOfManagedPidReturnsTrue() async throws {
-        let server = ScriptedDaemon { id, _ in
+        let (server, client) = makeScriptedDaemonPair { id, _ in
             #"{"id":\#(id),"result":true,"error":null}"#
         }
         defer { server.stop() }
-        let client = IPCClient(socketPath: server.path, timeout: 5.0)
 
         do {
             let killed = try await client.kill(pid: 1234)
@@ -59,11 +57,10 @@ final class IPCClientKillContractTests: XCTestCase {
     /// alone. The refusal must not be a silent no-op: a user who presses Stop
     /// needs to learn that nothing was stopped.
     func testAppStateReportsRefusedKillAsAnError() async throws {
-        let server = ScriptedDaemon { id, _ in
+        let (server, client) = makeScriptedDaemonPair { id, _ in
             #"{"id":\#(id),"result":false,"error":null}"#
         }
         defer { server.stop() }
-        let client = IPCClient(socketPath: server.path, timeout: 5.0)
 
         do {
             _ = try await client.kill(pid: 4242)
@@ -75,11 +72,10 @@ final class IPCClientKillContractTests: XCTestCase {
 
     /// A daemon that refuses with a populated `error` must surface that string.
     func testKillWithServerErrorSurfacesMessage() async throws {
-        let server = ScriptedDaemon { id, _ in
+        let (server, client) = makeScriptedDaemonPair { id, _ in
             #"{"id":\#(id),"result":null,"error":"no such pid: 999999"}"#
         }
         defer { server.stop() }
-        let client = IPCClient(socketPath: server.path, timeout: 5.0)
 
         do {
             _ = try await client.kill(pid: 999_999)
@@ -90,6 +86,16 @@ final class IPCClientKillContractTests: XCTestCase {
             XCTFail("expected IPCError.server, got \(error)")
         }
     }
+}
+
+/// Builds a scripted daemon that replies via `reply` plus a client wired to it.
+/// Returned together so each test keeps its own `defer { server.stop() }`.
+private func makeScriptedDaemonPair(
+    reply: @escaping (Int, String) -> String
+) -> (server: ScriptedDaemon, client: IPCClient) {
+    let server = ScriptedDaemon(reply: reply)
+    let client = IPCClient(socketPath: server.path, timeout: 5.0)
+    return (server, client)
 }
 
 /// A real Unix-socket daemon that reads one NDJSON request and answers with a
@@ -108,61 +114,24 @@ private final class ScriptedDaemon: @unchecked Sendable {
     init(reply: @escaping (Int, String) -> String) {
         self.reply = reply
         path = "/tmp/sharecli-kill-\(UUID().uuidString).sock"
-        unlink(path)
-
-        listenFD = socket(AF_UNIX, SOCK_STREAM, 0)
-        precondition(listenFD >= 0, "socket() failed")
-
-        var addr = sockaddr_un()
-        addr.sun_family = sa_family_t(AF_UNIX)
-        let capacity = MemoryLayout.size(ofValue: addr.sun_path)
-        let copied = path.withCString { cstr -> Bool in
-            withUnsafeMutableBytes(of: &addr.sun_path) { raw in
-                guard let base = raw.baseAddress else { return false }
-                let limit = min(capacity, raw.count)
-                memset(base, 0, limit)
-                guard strlen(cstr) < limit else { return false }
-                strncpy(base.assumingMemoryBound(to: CChar.self), cstr, limit - 1)
-                return true
-            }
-        }
-        precondition(copied, "socket path too long")
-        precondition(
-            bind(listenFD, withUnsafePointer(to: &addr) { ptr in
-                ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { $0 }
-            }, socklen_t(MemoryLayout<sockaddr_un>.size)) == 0,
-            "bind() failed"
+        listenFD = makeListeningUnixSocket(
+            at: path,
+            backlog: 16,
+            listenFailureMessage: "listen() failed"
         )
-        precondition(listen(listenFD, 16) == 0, "listen() failed")
-
-        let flags = fcntl(listenFD, F_GETFL, 0)
-        _ = fcntl(listenFD, F_SETFL, flags | O_NONBLOCK)
 
         let server = self
-        let thread = Thread {
-            while true {
-                server.lock.lock()
-                if server.stopped {
-                    server.lock.unlock()
-                    return
-                }
-                server.lock.unlock()
-
-                let conn = accept(server.listenFD, nil, nil)
-                guard conn >= 0 else {
-                    if errno == EAGAIN || errno == EWOULDBLOCK {
-                        usleep(20_000)
-                        continue
-                    }
-                    return
-                }
+        runAcceptLoop(
+            listenFD: listenFD,
+            lock: lock,
+            isStopped: { server.stopped },
+            onAccept: { conn in
                 server.lock.lock()
                 server.conns.append(conn)
                 server.lock.unlock()
-                server.serve(conn)
-            }
-        }
-        thread.start()
+            },
+            serve: { conn in server.serve(conn) }
+        )
     }
 
     private func serve(_ fd: Int32) {
@@ -198,8 +167,6 @@ private final class ScriptedDaemon: @unchecked Sendable {
         let open = conns
         conns = []
         lock.unlock()
-        for fd in open { Darwin.close(fd) }
-        Darwin.close(listenFD)
-        unlink(path)
+        closeListeningSocket(listenFD, connections: open, path: path)
     }
 }

@@ -41,54 +41,18 @@ final class LineSidecarServer: @unchecked Sendable {
 
     init() {
         path = "/tmp/sharecli-line-sidecar-\(UUID().uuidString).sock"
-        unlink(path)
-
-        listenFD = socket(AF_UNIX, SOCK_STREAM, 0)
-        precondition(listenFD >= 0, "socket() failed")
-
-        var addr = sockaddr_un()
-        addr.sun_family = sa_family_t(AF_UNIX)
-        let capacity = MemoryLayout.size(ofValue: addr.sun_path)
-        let copied = path.withCString { cstr -> Bool in
-            withUnsafeMutableBytes(of: &addr.sun_path) { raw in
-                guard let base = raw.baseAddress else { return false }
-                let limit = min(capacity, raw.count)
-                memset(base, 0, limit)
-                guard strlen(cstr) < limit else { return false }
-                strncpy(base.assumingMemoryBound(to: CChar.self), cstr, limit - 1)
-                return true
-            }
-        }
-        precondition(copied, "socket path too long")
-        precondition(
-            bind(listenFD, withUnsafePointer(to: &addr) { ptr in
-                ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { $0 }
-            }, socklen_t(MemoryLayout<sockaddr_un>.size)) == 0,
-            "bind() failed"
+        listenFD = makeListeningUnixSocket(
+            at: path,
+            backlog: 16,
+            listenFailureMessage: "listen() failed"
         )
-        precondition(listen(listenFD, 16) == 0, "listen() failed")
-
-        let flags = fcntl(listenFD, F_GETFL, 0)
-        _ = fcntl(listenFD, F_SETFL, flags | O_NONBLOCK)
 
         let server = self
-        let acceptor = Thread {
-            while true {
-                server.lock.lock()
-                if server.stopped {
-                    server.lock.unlock()
-                    return
-                }
-                server.lock.unlock()
-
-                let fd = accept(server.listenFD, nil, nil)
-                guard fd >= 0 else {
-                    if errno == EAGAIN || errno == EWOULDBLOCK {
-                        usleep(20_000)
-                        continue
-                    }
-                    return
-                }
+        runAcceptLoop(
+            listenFD: listenFD,
+            lock: lock,
+            isStopped: { server.stopped },
+            onAccept: { fd in
                 server.lock.lock()
                 server.connections.append(fd)
                 server.lock.unlock()
@@ -103,9 +67,9 @@ final class LineSidecarServer: @unchecked Sendable {
                 // A separate thread per connection, so a client that does
                 // reconnect cannot be blocked behind the one it left open.
                 Thread { server.serve(fd) }.start()
-            }
-        }
-        acceptor.start()
+            },
+            serve: { _ in }
+        )
     }
 
     /// Block (bounded) until at least `count` connections have been accepted.
@@ -204,10 +168,6 @@ final class LineSidecarServer: @unchecked Sendable {
         let open = connections
         connections = []
         lock.unlock()
-        for fd in open {
-            Darwin.close(fd)
-        }
-        Darwin.close(listenFD)
-        unlink(path)
+        closeListeningSocket(listenFD, connections: open, path: path)
     }
 }
