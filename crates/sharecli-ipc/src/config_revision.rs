@@ -28,12 +28,44 @@ use sha2::{Digest, Sha256};
 use sharecli::config::Config;
 
 /// Hex SHA-256 of the canonical JSON encoding of `config`.
+///
+/// Pure *content* fingerprint of the in-memory value. Prefer
+/// [`revision_with_disk`] for guard decisions — on its own it is blind to
+/// edits made to the config file by other processes.
 pub fn revision_of(config: &Config) -> Result<String> {
     let value = serde_json::to_value(config).context("config is not serializable")?;
     let canonical =
         serde_json::to_string(&value).context("config revision could not be encoded")?;
     let mut hasher = Sha256::new();
     hasher.update(canonical.as_bytes());
+    Ok(hex::encode(hasher.finalize()))
+}
+
+/// Guard token: content fingerprint of `config` mixed with the bytes currently
+/// on disk at [`Config::config_path`].
+///
+/// CodeRabbit CRITICAL #3 (task 1.5): hashing only the in-memory value let an
+/// *out-of-process* edit of the config file pass the `if_revision` guard —
+/// the daemon's digest never moved, so a held token stayed valid while the
+/// file underneath it changed, and the guarded write clobbered the external
+/// edit. Mixing the on-disk bytes into the digest means any external write
+/// (even a comment-only change) advances the revision and invalidates held
+/// tokens.
+///
+/// Tokens are issued by the `config.revision` endpoint and echoed back by
+/// clients; no client recomputes them, so folding local disk state in does not
+/// break the protocol. Absent/unreadable file hashes to a fixed sentinel so a
+/// first-time save still advances the token.
+pub fn revision_with_disk(config: &Config) -> Result<String> {
+    let base = revision_of(config)?;
+    let disk = match Config::config_path() {
+        Ok(path) => std::fs::read(path).unwrap_or_else(|_| b"<absent>".to_vec()),
+        Err(_) => b"<no-path>".to_vec(),
+    };
+    let mut hasher = Sha256::new();
+    hasher.update(base.as_bytes());
+    hasher.update(b"\n");
+    hasher.update(&disk);
     Ok(hex::encode(hasher.finalize()))
 }
 

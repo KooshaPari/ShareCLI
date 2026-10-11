@@ -148,3 +148,34 @@ async fn revision_changes_after_a_successful_set() {
 
     assert_ne!(before, after, "a successful write must advance the revision");
 }
+
+/// CodeRabbit CRITICAL #3 (PR-introduced by task 1.5): the guard hashed only
+/// the *in-memory* Config, so an out-of-process edit of the config FILE left
+/// the digest unchanged and a stale `if_revision` still passed — the exact
+/// clobber the If-Match guard exists to prevent. The revision must mix
+/// on-disk state so an external write invalidates held tokens.
+#[tokio::test]
+#[serial]
+async fn out_of_process_file_edit_invalidates_a_held_if_revision() {
+    let fixture = Fixture::new();
+
+    // Persist an initial config so the file exists, then hold a token.
+    fixture.set(1, "runtime.max_processes", serde_json::json!(40), None).await;
+    let held = fixture.revision().await;
+
+    // Out-of-process edit: rewrite the file directly, bypassing the handler.
+    let path = std::env::var("SHARECLI_CONFIG_PATH").expect("fixture sets the config path");
+    let original = std::fs::read_to_string(&path).expect("config file exists after set");
+    std::fs::write(&path, format!("{original}\n# edited outside the daemon\n"))
+        .expect("external write must succeed");
+
+    let req = serde_json::json!({
+        "id": 2,
+        "method": "config.set",
+        "params": { "key": "pool.max_per_type", "value": 7, "if_revision": held }
+    });
+    let resp = fixture.dispatch(&req.to_string()).await;
+
+    let error = resp.error.expect("an out-of-process edit must invalidate a held if_revision");
+    assert!(error.contains("CONFLICT"), "expected CONFLICT, got: {error}");
+}

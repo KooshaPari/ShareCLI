@@ -650,7 +650,7 @@ impl Handler {
 
             "config.revision" => {
                 let cfg = self.config.read().await;
-                Ok(serde_json::json!({ "revision": config_revision::revision_of(&cfg)? }))
+                Ok(serde_json::json!({ "revision": config_revision::revision_with_disk(&cfg)? }))
             }
 
             "config.set" => {
@@ -739,8 +739,12 @@ impl Handler {
     /// `if_revision` is the RFC 9110 `If-Match` guard: when present it is
     /// compared against the revision of the config currently held under the
     /// write lock, so the check and the mutation cannot be interleaved by a
-    /// concurrent writer. A mismatch is reported as `CONFLICT` naming the
-    /// revision that won, which the client needs in order to refetch and retry.
+    /// concurrent writer. The revision mixes on-disk bytes
+    /// ([`config_revision::revision_with_disk`]) so an *out-of-process* edit
+    /// of the config file also invalidates held tokens — otherwise the guard
+    /// would pass while the file underneath it changed and this write would
+    /// clobber the external edit. A mismatch is reported as `CONFLICT` naming
+    /// the revision that won, which the client needs in order to refetch and retry.
     async fn apply_config_patch(
         &self,
         key: &str,
@@ -750,7 +754,7 @@ impl Handler {
         let mut cfg = self.config.write().await;
 
         if let Some(expected) = if_revision {
-            let current = config_revision::revision_of(&cfg)?;
+            let current = config_revision::revision_with_disk(&cfg)?;
             if current != expected {
                 anyhow::bail!(
                     "CONFLICT: config.set {key} refused; if_revision {expected} is stale, \
