@@ -16,14 +16,36 @@ use std::path::Path;
 use std::process::{Command, Output};
 
 /// Spawn the real sharecli binary with an isolated HOME.
+///
+/// `rust_backtrace` selects the child's `RUST_BACKTRACE` value: `None` removes
+/// it (the production default; `debug_causes_enabled()` is then false) and
+/// `Some(value)` sets it.
+fn spawn(home: &Path, args: &[&str], rust_backtrace: Option<&str>) -> Output {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_sharecli"));
+    command.args(args).env("HOME", home).env_remove("SHARECLI_LOG_PATH");
+    match rust_backtrace {
+        Some(value) => {
+            command.env("RUST_BACKTRACE", value);
+        }
+        None => {
+            command.env_remove("RUST_BACKTRACE");
+        }
+    }
+    command.output().unwrap_or_else(|e| panic!("spawn sharecli {args:?}: {e}"))
+}
+
+/// Spawn the real sharecli binary with an isolated HOME and no debug detail.
 fn run(home: &Path, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_sharecli"))
-        .args(args)
-        .env("HOME", home)
-        .env_remove("SHARECLI_LOG_PATH")
-        .env_remove("RUST_BACKTRACE")
-        .output()
-        .unwrap_or_else(|e| panic!("spawn sharecli {args:?}: {e}"))
+    spawn(home, args, None)
+}
+
+/// Spawn with `RUST_BACKTRACE=1`, the value `debug_causes_enabled()` accepts.
+///
+/// `SharecliError::render_stderr` appends the `↳ caused by:` continuation only
+/// when that predicate is true (src/error.rs:219-221), so this is the only
+/// configuration in which a duplicated cause can reach stderr.
+fn run_with_debug_causes(home: &Path, args: &[&str]) -> Output {
+    spawn(home, args, Some("1"))
 }
 
 fn stderr(out: &Output) -> String {
@@ -63,18 +85,39 @@ fn internal_failure_exits_1() {
 
 /// PLAN.md:181 — the same message MUST NOT be printed twice.
 ///
-/// A bare `anyhow::bail!` reaches `From<anyhow::Error>`, which stored the
-/// message as both the top frame and the source, so stderr carried
-/// `error: X` immediately followed by `caused by: X`.
+/// A bare `anyhow::bail!` reaches `From<anyhow::Error>`, which stores the
+/// message as both the top frame and the source, so the cause renders
+/// identically to the frame above it. Pre-1.10 `eprint` printed that cause
+/// unconditionally, so stderr carried `error: X` immediately followed by
+/// `caused by: X`.
+///
+/// The only line that can duplicate the message is the `↳ caused by:`
+/// continuation, emitted solely while `debug_causes_enabled()` is true — i.e.
+/// while `RUST_BACKTRACE` is set. A run that removes the variable therefore
+/// never reaches the line it guards, and the count is trivially one. Assert
+/// with debug causes ON as well: that is the configuration in which the dedupe
+/// must hold, so the check can actually fail if it regresses.
 #[test]
 fn error_message_is_printed_once() {
     let home = tempfile::tempdir().expect("tempdir");
-    let out = run(home.path(), &["stop"]);
-    let err = stderr(&out);
+
+    let plain = stderr(&run(home.path(), &["stop"]));
     assert_eq!(
-        err.matches("to select what to stop").count(),
+        plain.matches("to select what to stop").count(),
         1,
-        "the internal message MUST appear once (PLAN.md:181); stderr={err}"
+        "the internal message MUST appear once (PLAN.md:181); stderr={plain}"
+    );
+
+    let debug = stderr(&run_with_debug_causes(home.path(), &["stop"]));
+    assert_eq!(
+        debug.matches("to select what to stop").count(),
+        1,
+        "the internal message MUST still appear once with debug causes on (PLAN.md:181); \
+         stderr={debug}"
+    );
+    assert!(
+        !debug.contains("↳ caused by:"),
+        "a cause that only repeats the top frame MUST be suppressed; stderr={debug}"
     );
 }
 
