@@ -27,7 +27,11 @@ pub fn config_from_rule_opts(harness_home: &Path, opts: &RuleOpts) -> Hypervisor
         coalesce_debounce: Duration::from_millis(opts.debounce_ms),
         cache_key_mode: CacheKeyMode::parse(&opts.cache_key),
         semantic: opts.semantic,
-        error_ttl: Duration::from_secs(opts.error_ttl),
+        // FR-008: cache failures for at most `coalesce_ttl`. `error_ttl` above
+        // that would be served for the full success TTL once the short-TTL
+        // backdate is skipped (see `CoalesceCache::store_inner`), silently
+        // outliving the shorter failure window the operator asked for.
+        error_ttl: Duration::from_secs(opts.error_ttl).min(coalesce_ttl),
     }
 }
 
@@ -135,6 +139,21 @@ mod tests {
             cfg.error_ttl,
             Duration::from_secs(15),
             "error_ttl MUST be wired from RuleOpts to HypervisorConfig"
+        );
+    }
+
+    /// FR-008 — an `error_ttl` larger than the coalesce TTL is clamped, so the
+    /// failure window can never outlive the success TTL.
+    #[test]
+    fn rule_opts_error_ttl_is_clamped_to_coalesce_ttl() {
+        let tmp = TempDir::new().expect("tempdir");
+        let opts = RuleOpts { ttl: 5, error_ttl: 999, ..RuleOpts::default() };
+        let cfg = config_from_rule_opts(tmp.path(), &opts);
+        assert_eq!(cfg.coalesce_ttl, Duration::from_secs(5));
+        assert_eq!(
+            cfg.error_ttl,
+            Duration::from_secs(5),
+            "error_ttl must be clamped to coalesce_ttl"
         );
     }
 }

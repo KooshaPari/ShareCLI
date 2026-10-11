@@ -271,6 +271,9 @@ async fn fr003_ipc_handler_pool_effectiveness_returns_typed_snapshot() {
 
 /// A successful spawn must return a server-assigned PID, retain the child in
 /// `process.list`, and stop it through the same handler-owned pool.
+///
+/// Unix-only: the fixture spawns `/bin/sleep`, which is absent on Windows.
+#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fr003_ipc_handler_process_spawn_retains_and_kills_child() {
     let fixture = HandlerFixture::new();

@@ -39,10 +39,16 @@ pub fn should_bypass_coalesce(argv: &[impl AsRef<str>], nocache_args: &[impl AsR
 
 /// Parse a comma-separated `nocache_args=X,Y` option value (rules.conf style).
 ///
-/// If `csv` contains a `key=value` pair (e.g. `nocache_args=--fix,--force`),
-/// only the value portion after the first `=` is split on commas.
+/// If `csv` is wrapped as `key=value` (e.g. `nocache_args=--fix,--force`),
+/// only the value portion after the first `=` is split on commas. A bare flag
+/// list that merely *contains* `=` (e.g. `--opt=val,--other`) is kept whole,
+/// so the flag name is not mistaken for a key: only a leading non-flag token
+/// (no dashes) is treated as the `key=` prefix.
 pub fn parse_nocache_args_csv(csv: &str) -> Vec<String> {
-    let value = csv.split_once('=').map(|(_, v)| v).unwrap_or(csv);
+    let value = match csv.split_once('=') {
+        Some((key, rest)) if !key.is_empty() && !key.starts_with('-') => rest,
+        _ => csv,
+    };
     value.split(',').map(str::trim).filter(|s| !s.is_empty()).map(str::to_string).collect()
 }
 
@@ -84,5 +90,19 @@ mod tests {
         let flags = parse_nocache_args_csv("nocache_args=--fix,--force");
         assert_eq!(flags, vec!["--fix", "--force"], "must strip key= prefix");
         assert!(has_nocache_arg(&["ruff", "--fix", "."], &flags));
+    }
+
+    /// A bare flag that itself contains `=` must be kept whole: the flag name
+    /// before the `=` is part of the flag, not a `key=` prefix to strip.
+    #[test]
+    fn parse_csv_keeps_flag_containing_equals() {
+        let flags = parse_nocache_args_csv("--opt=val,--other");
+        assert_eq!(
+            flags,
+            vec!["--opt=val", "--other"],
+            "a bare flag containing '=' must not lose its name"
+        );
+        assert!(has_nocache_arg(&["tool", "--opt=val"], &flags));
+        assert!(!has_nocache_arg(&["tool", "val"], &flags));
     }
 }

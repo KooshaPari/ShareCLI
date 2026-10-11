@@ -567,8 +567,8 @@ impl Handler {
                         ))
                     }
                 };
-                let project = req.params.get("project").and_then(Value::as_str).map(str::to_owned);
-                let harness = req.params.get("harness").and_then(Value::as_str).map(str::to_owned);
+                let project = optional_label(&req.params, "project")?;
+                let harness = optional_label(&req.params, "harness")?;
                 let cwd = req
                     .params
                     .get("cwd")
@@ -589,7 +589,7 @@ impl Handler {
                     Err(e) => Ok(serde_json::json!({
                         "pid": 0,
                         "success": false,
-                        "error": e.to_string(),
+                        "error": bounded_error(&e),
                     })),
                 }
             }
@@ -734,7 +734,6 @@ impl Handler {
     /// `Config::save` only serialises and `validate_config` previously ran at
     /// CLI startup only. Rejecting here leaves both the in-memory config and
     /// the file untouched, and the failure surfaces to the caller as an error.
-    /// Persist `key = value` into the in-memory config and onto disk.
     ///
     /// `if_revision` is the RFC 9110 `If-Match` guard: when present it is
     /// compared against the revision of the config currently held under the
@@ -781,6 +780,52 @@ impl Handler {
         *cfg = candidate;
         Ok(())
     }
+}
+
+/// Longest accepted `project` / `harness` label, in bytes.
+///
+/// The value lands verbatim in `ProcessSummary` and is rendered by the tray;
+/// an unbounded label from a local peer grows every `process.list` reply (and
+/// the tray's row text) without limit, so cap it well above any real project
+/// or harness name.
+const MAX_LABEL_BYTES: usize = 256;
+
+/// Longest error detail echoed on the typed-failure path, in bytes.
+///
+/// `process.spawn` reports a real spawn failure as `{success:false, error}`
+/// rather than a thrown envelope error. The string is an OS errno rendering
+/// and is normally short, but the value crosses the wire into the tray, so
+/// bound it instead of forwarding an arbitrarily long `to_string()`.
+const MAX_ERROR_BYTES: usize = 4096;
+
+/// Read an optional string parameter, rejecting a wrong-typed or oversized
+/// value instead of silently dropping it (`and_then(Value::as_str)` mapped a
+/// non-string `project`/`harness` to `None`, which hid client bugs).
+fn optional_label(params: &Value, field: &str) -> Result<Option<String>> {
+    match params.get(field) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(s)) if s.len() <= MAX_LABEL_BYTES => Ok(Some(s.clone())),
+        Some(Value::String(_)) => {
+            Err(anyhow::anyhow!("process.spawn: {field} exceeds {MAX_LABEL_BYTES} bytes"))
+        }
+        Some(_) => Err(anyhow::anyhow!("process.spawn: {field} must be a string or null")),
+    }
+}
+
+/// Render an error for the typed-failure path, truncated on a character
+/// boundary so an oversized message cannot bloat the reply frame.
+fn bounded_error(e: &anyhow::Error) -> String {
+    let rendered = e.to_string();
+    if rendered.len() <= MAX_ERROR_BYTES {
+        return rendered;
+    }
+    // Back up to a UTF-8 boundary; MAX_ERROR_BYTES is far below any allocation
+    // concern, so the loop is bounded by at most three steps.
+    let mut end = MAX_ERROR_BYTES;
+    while end > 0 && !rendered.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}… (truncated; {} bytes total)", &rendered[..end], rendered.len())
 }
 
 fn set_nested(val: &mut Value, path: &[&str], new: Value) -> Result<(), String> {
@@ -1243,5 +1288,71 @@ mod dispatch_tests {
         let resp = handler.dispatch(raw).await;
         assert!(resp.error.is_none(), "session.list should not error: {:?}", resp.error);
         assert!(resp.result.is_array(), "result must be an array");
+    }
+
+    /// A spawn request may carry `project`/`harness` as strings or null; any
+    /// other type is a client bug and must be rejected, not silently dropped.
+    #[tokio::test]
+    async fn dispatch_spawn_rejects_non_string_project_and_harness() {
+        let handler = Handler::with_session_store(SessionStore::open_memory().unwrap());
+
+        let bad_project = handler
+            .dispatch(
+                r#"{"id":30,"method":"process.spawn","params":{"command":"true","project":123}}"#,
+            )
+            .await;
+        assert!(
+            bad_project.error.as_deref().is_some_and(|e| e.contains("project")),
+            "non-string project must be rejected: {:?}",
+            bad_project.error
+        );
+
+        let bad_harness = handler
+            .dispatch(
+                r#"{"id":31,"method":"process.spawn","params":{"command":"true","harness":["x"]}}"#,
+            )
+            .await;
+        assert!(
+            bad_harness.error.as_deref().is_some_and(|e| e.contains("harness")),
+            "non-string harness must be rejected: {:?}",
+            bad_harness.error
+        );
+    }
+
+    /// An oversized `project` label must be rejected rather than forwarded.
+    #[tokio::test]
+    async fn dispatch_spawn_rejects_oversized_project() {
+        let handler = Handler::with_session_store(SessionStore::open_memory().unwrap());
+        let long = "p".repeat(MAX_LABEL_BYTES + 1);
+        let raw = serde_json::json!({
+            "id": 32,
+            "method": "process.spawn",
+            "params": {"command": "true", "project": long},
+        })
+        .to_string();
+        let resp = handler.dispatch(&raw).await;
+        assert!(
+            resp.error.as_deref().is_some_and(|e| e.contains("project")),
+            "oversized project must be rejected: {:?}",
+            resp.error
+        );
+    }
+
+    /// The typed-failure error is truncated on a character boundary so an
+    /// oversized message cannot bloat the reply frame.
+    #[test]
+    fn bounded_error_truncates_on_char_boundary() {
+        // Two bytes per char, so MAX_ERROR_BYTES lands mid-character.
+        let err = anyhow::anyhow!("{}", "é".repeat(MAX_ERROR_BYTES));
+        let rendered = bounded_error(&err);
+        assert!(rendered.len() < err.to_string().len(), "must be shorter than input");
+        assert!(rendered.contains("truncated"), "must mark the truncation: {rendered}");
+    }
+
+    /// A short error is forwarded verbatim.
+    #[test]
+    fn bounded_error_passes_short_errors_through() {
+        let err = anyhow::anyhow!("ENOENT: no such file");
+        assert_eq!(bounded_error(&err), "ENOENT: no such file");
     }
 }

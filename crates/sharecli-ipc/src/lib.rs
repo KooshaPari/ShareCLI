@@ -332,12 +332,20 @@ impl CoalesceCache {
 
         // FR-008: when storing with a shorter TTL (error_ttl), backdate the
         // mtime so `is_fresh` (which compares age against self.ttl) returns
-        // true for only `effective_ttl` from now.
+        // true for only `effective_ttl` from now. If the backdate cannot be
+        // applied, the entry would instead be served for the full `self.ttl`,
+        // silently extending the failure window — so drop it and let the next
+        // caller re-run rather than serve a wrongly-aged result.
         if effective_ttl < self.ttl {
             let backdate = self.ttl - effective_ttl;
             let mtime = SystemTime::now() - backdate;
-            if let Ok(f) = fs::OpenOptions::new().write(true).open(&dest) {
-                let _ = f.set_times(fs::FileTimes::new().set_modified(mtime));
+            let backdated = fs::OpenOptions::new()
+                .write(true)
+                .open(&dest)
+                .and_then(|f| f.set_times(fs::FileTimes::new().set_modified(mtime)))
+                .is_ok();
+            if !backdated {
+                let _ = fs::remove_file(&dest);
             }
         }
 
@@ -414,9 +422,12 @@ impl CoalesceCache {
         let cached: CachedResult = value.into();
 
         // Lane-7 BLOCKER (tiger): failed runs were stored and replayed to siblings
-        // for the full TTL. Skip persistence for any non-success result so siblings
-        // re-run on their own; success results are stored as before.
-        // FR-008: when error_ttl > 0, cache the error for the shorter window.
+        // for the full TTL. With the default `error_ttl` of zero we skip
+        // persistence for any non-success result so siblings re-run on their own.
+        // FR-008 is the explicit opt-in that qualifies that: a non-zero
+        // `error_ttl` caches the failure for the shorter window only, so the
+        // replay is bounded and deliberate rather than the unbounded full-TTL
+        // caching lane-7 removed. Success results are stored as before.
         if cached.exit_code != 0 {
             if !self.error_ttl.is_zero() {
                 self.store_with_ttl(key, &cached, self.error_ttl)?;
@@ -784,6 +795,27 @@ mod tests {
         }
 
         drop(holder);
+    }
+
+    /// FR-008: storing with a shorter TTL backdates the entry's mtime so
+    /// `is_fresh` returns true for only that shorter window, not the full ttl.
+    #[test]
+    fn store_with_ttl_backdates_the_entry_mtime() {
+        let dir = TempDir::new().expect("tempdir");
+        let ttl = Duration::from_secs(300);
+        let cache = CoalesceCache::with_ttl(dir.path(), ttl);
+        let key = command_key(&["errtool".into()], Path::new("/p"), &[]);
+        let result = CachedResult { exit_code: 1, stdout: vec![], stderr: vec![] };
+
+        cache.store_with_ttl(&key, &result, Duration::from_secs(5)).expect("store");
+
+        let path = cache.entry_path(&key);
+        let modified = fs::metadata(&path).unwrap().modified().unwrap();
+        let age = SystemTime::now().duration_since(modified).unwrap_or(Duration::ZERO);
+        assert!(
+            age >= Duration::from_secs(290),
+            "mtime must be backdated by (ttl - custom_ttl); age={age:?}"
+        );
     }
 
     // -----------------------------------------------------------------------

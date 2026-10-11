@@ -111,6 +111,24 @@ mod tests {
         assert_eq!(original, revision_of(&base).unwrap());
     }
 
+    /// The canonicalization invariant the revision actually depends on: this
+    /// crate's `serde_json` is built *without* `preserve_order`, so a
+    /// `Value::Object` emits its keys in sorted order regardless of insertion
+    /// order. If a dependency ever turns `preserve_order` on, this test fails
+    /// rather than the revision silently drifting with map order.
+    #[test]
+    fn object_keys_are_canonical_sorted() {
+        let mut map = serde_json::Map::new();
+        for key in ["z", "m", "a", "b"] {
+            map.insert(key.to_string(), serde_json::Value::from(1));
+        }
+        let encoded = serde_json::to_string(&serde_json::Value::Object(map)).unwrap();
+        assert_eq!(
+            encoded, r#"{"a":1,"b":1,"m":1,"z":1}"#,
+            "Value::Object keys must serialize in sorted order (no preserve_order feature)"
+        );
+    }
+
     /// Idempotence: asking twice about the same value gives the same answer.
     #[test]
     fn revision_of_the_same_config_is_repeatable() {
