@@ -740,7 +740,7 @@ impl Hypervisor {
     pub async fn run_queued(&self, req: SpawnRequest, lane: &str) -> Result<SpawnOutcome> {
         self.thermal_gate_check().await?;
 
-        let watch = ResourceWatchSample::capture()?;
+        let watch = capture_resource_watch()?;
         let detected_agent = detect_caller_agent();
         debug!(lane, argv = ?req.argv, "hypervisor::run_queued — queue lane");
         record_nocache_run();
@@ -800,7 +800,7 @@ impl Hypervisor {
         self.thermal_gate_check().await?;
 
         // ── Resource watch (FR-007 live hypervisor path) ───────────────────────
-        let watch = ResourceWatchSample::capture()?;
+        let watch = capture_resource_watch()?;
         let detected_agent = detect_caller_agent();
         if let Some(ref agent) = detected_agent {
             debug!(
@@ -980,6 +980,33 @@ impl Hypervisor {
 // ---------------------------------------------------------------------------
 // Process execution
 // ---------------------------------------------------------------------------
+
+/// Capture a live [`ResourceWatchSample`] for the hypervisor run paths.
+///
+/// FR-007 defines FD/net/RSS/load as *telemetry* signals. On Linux/macOS the
+/// samplers in `sharecli_fleet::resource_watch` provide them; on other targets
+/// (Windows) every sampler bails with "... is unsupported on this OS". A
+/// missing telemetry signal MUST NOT fail the spawn itself, so on unsupported
+/// targets the sample degrades to zeros. On Linux/macOS the error path is
+/// unchanged — a genuine sampling error is still propagated.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn capture_resource_watch() -> Result<ResourceWatchSample> {
+    ResourceWatchSample::capture()
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn capture_resource_watch() -> Result<ResourceWatchSample> {
+    match ResourceWatchSample::capture() {
+        Ok(watch) => Ok(watch),
+        Err(err) => {
+            debug!(
+                error = %err,
+                "hypervisor — resource watch unsupported on this OS; spawning with zeroed sample"
+            );
+            Ok(ResourceWatchSample::default())
+        }
+    }
+}
 
 /// Lane key for SlotQueue routing from argv (basename of argv[0]).
 fn queue_lane_from_argv(argv: &[String]) -> &str {

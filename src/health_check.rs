@@ -663,6 +663,11 @@ mod tests {
             "proc-n".to_string(),
             HealthCheckConfig {
                 interval_secs: 1,
+                // Fail-fast probe (matches `poll_loop_probes_and_updates_the_store`):
+                // the default 5s probe timeout exceeded the wait bound below, so a
+                // loopback connect that does not fail fast on the Windows runner
+                // recorded no failure before the test gave up.
+                timeout_secs: 1,
                 endpoints: vec!["tcp://127.0.0.1:19871".to_string()],
                 failure_threshold: 1,
                 ..Default::default()
@@ -670,9 +675,11 @@ mod tests {
         );
         scheduler.start(configs);
 
-        // Bounded wait (see poll_loop_probes_and_updates_the_store): a fixed
-        // 80ms window is too tight for heavily loaded Windows CI runners.
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        // Bounded wait (see poll_loop_probes_and_updates_the_store): the wait
+        // MUST comfortably exceed the probe timeout, otherwise the deadline
+        // expires before a single probe can record its failure. 10s >= 1s probe
+        // timeout + generous scheduling margin for loaded Windows CI runners.
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
         while store.lock().await.get("proc-n").map_or(0, |s| s.consecutive_failures) == 0 {
             assert!(
                 tokio::time::Instant::now() < deadline,
