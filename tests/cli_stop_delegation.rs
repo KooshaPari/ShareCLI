@@ -12,6 +12,11 @@
 //! stop --pid`. It fails on the current code (stop exits 2 and the child
 //! survives) and passes once `stop` delegates to the sidecar.
 
+// Unix-only: the sidecar IPC transport is a unix socket (as is the no-sidecar
+// fallback taxonomy). Gating the whole file keeps Windows compiling to zero
+// tests here instead of failing on `std::os::unix`.
+#![cfg(unix)]
+
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
