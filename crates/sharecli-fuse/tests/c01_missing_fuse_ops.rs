@@ -55,6 +55,37 @@ fn symlink_readlink_roundtrip_preserves_target_text() {
     assert!(!backing.join("node_modules/.bin/../pkg/bin.js").exists());
 }
 
+/// FR-009 / task 1.18 — `readlink` must NOT follow the target. A symlink whose
+/// target is a NON-EXISTENT path reads back the raw target text verbatim; a
+/// following read (`fs::read`) fails NotFound. This pins the no-follow
+/// behaviour: if `readlink` resolved the link, a dangling target would not
+/// round-trip to its own text.
+#[test]
+fn readlink_of_a_dangling_symlink_returns_the_raw_target() {
+    let dir = TempDir::new().expect("tempdir");
+    let backing = backing_dir(&dir);
+    let fs = InterceptFs::new(&backing);
+
+    let target = "does/not/exist/anywhere.txt";
+    fs.symlink_rel(Path::new(target), Path::new("dangling")).expect("symlink");
+
+    // The path the link points at genuinely dangles.
+    assert!(!backing.join(target).exists(), "target must not exist on the backing");
+
+    // Verbatim: the raw stored target string, not a resolved/absolutized path.
+    assert_eq!(
+        fs.readlink_rel(Path::new("dangling")).expect("readlink"),
+        Path::new(target),
+        "a dangling symlink must still read back its raw target text"
+    );
+
+    // Following it (a plain read) fails NotFound — proof the link really dangles,
+    // so the verbatim result above could only come from a no-follow read.
+    let followed =
+        fs::read(backing.join("dangling")).expect_err("following a dangling link must fail");
+    assert_eq!(followed.kind(), std::io::ErrorKind::NotFound);
+}
+
 /// FR-009 / task 1.18 — creating a symlink under a missing directory creates
 /// the parent, mirroring `create_rel`'s mkdir semantics.
 #[test]

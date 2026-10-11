@@ -787,12 +787,25 @@ pub async fn stop(
 
     let progress = StepProgress::new("Stopping processes", targets.len());
     let line_mode = progress.uses_line_output();
+    // A sidecar that vanishes AFTER the `process.list` snapshot (it was
+    // reachable at start, then died mid-batch) leaves the remaining targets
+    // unverifiable: the transport is gone, so a stop cannot be confirmed.
+    // Count them and warn rather than finishing silently — the old `None`
+    // arm reported success no matter how many processes were left running.
+    // NOTE: this is distinct from the sidecar-absent-at-START fallback
+    // (handled above, preserving the exit-2 `not_found` taxonomy).
+    let mut unverified: usize = 0;
     for (target_pid, name) in targets {
         let killed = if sidecar_targets.is_some() {
             match sidecar_rpc(&client, "process.kill", serde_json::json!({ "pid": target_pid })) {
                 Some(Ok(value)) => value.as_bool().unwrap_or(false),
                 Some(Err(error)) => return Err(error),
-                None => false, // sidecar vanished mid-loop; the snapshot is stale
+                None => {
+                    // Sidecar vanished mid-loop; the snapshot is stale and this
+                    // target could not be checked or stopped.
+                    unverified += 1;
+                    false
+                }
             }
         } else {
             pool.kill(*target_pid).await?
@@ -805,6 +818,11 @@ pub async fn stop(
         }
     }
     progress.finish("Processes stopped");
+    if unverified > 0 {
+        eprintln!(
+            "warning: sidecar connection lost mid-batch; {unverified} processes not verified"
+        );
+    }
 
     Ok(())
 }
