@@ -697,6 +697,14 @@ mod tests {
     // forever when the holder is wedged. Exercises the helper directly with
     // a 200ms deadline so the unit test stays fast.
     // -----------------------------------------------------------------------
+    // Windows `LockFileEx` reports contention on an already-locked region as
+    // ERROR_LOCK_VIOLATION (os error 33), surfaced by `fs2` as a raw error
+    // rather than `io::ErrorKind::WouldBlock`. The deadline-retry contract this
+    // test pins (poll `try_lock_exclusive` until the deadline, then bail with
+    // a "could not acquire exclusive lock" error) is therefore unix-only. Gated to
+    // unix so Windows, where file-region locks cannot block, does not report a
+    // false failure. On unix this test still runs unchanged.
+    #[cfg(unix)]
     #[test]
     fn acquire_lock_with_deadline_errors_when_held() {
         let dir = TempDir::new().expect("tempdir");

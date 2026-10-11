@@ -1123,14 +1123,23 @@ mod tests {
         matches!(received, ThermalEvent::ThermalWarning { pressure: 2 });
     }
 
+    // The dashboard snapshot samples `host_watch.fd_count` via
+    // `sample_self_fds`, which is unix-only (`resource_watch` bails with
+    // "sample_self_fds is unsupported on this OS" elsewhere). Tests that drive
+    // the real `build_dashboard_ws_snapshot` therefore only run on unix; on
+    // Windows the snapshot cannot be produced at all, which is the documented
+    // fd-sampling platform gap, not an assertion failure.
+    #[cfg(unix)]
     const HOST_WATCH_KEYS: [&str; 5] =
         ["fd_count", "net_rx_bytes", "net_tx_bytes", "mem_rss_bytes", "load_1m"];
 
+    #[cfg(unix)]
     fn ensure_test_config() {
         let _ = crate::config::init_global();
     }
 
     /// FR-007 / AC-007.41 — dashboard WS snapshot carries gate + host_watch operator envelope.
+    #[cfg(unix)]
     #[tokio::test]
     async fn dashboard_ws_snapshot_includes_gate_and_host_watch() {
         ensure_test_config();
@@ -1151,6 +1160,7 @@ mod tests {
     }
 
     /// FR-007 / AC-007.70 — dashboard WS snapshot carries pool + status IPC siblings.
+    #[cfg(unix)]
     #[tokio::test]
     async fn dashboard_ws_snapshot_includes_pool_and_status() {
         ensure_test_config();
@@ -1173,6 +1183,7 @@ mod tests {
     }
 
     /// FR-007 / AC-007.41 — dashboard WS snapshot preserves gate → host_watch key ordering.
+    #[cfg(unix)]
     #[tokio::test]
     async fn dashboard_ws_snapshot_gate_before_host_watch() {
         ensure_test_config();
@@ -1187,6 +1198,7 @@ mod tests {
     }
 
     /// FR-007 / AC-007.70 — dashboard WS snapshot preserves gate → host_watch → pool → status → agents order.
+    #[cfg(unix)]
     #[tokio::test]
     async fn dashboard_ws_snapshot_operator_key_order() {
         ensure_test_config();

@@ -618,13 +618,31 @@ mod tests {
     async fn poll_loop_probes_and_updates_the_store() {
         let store = make_store("svc");
         let cfg = HealthCheckConfig {
-            interval_secs: 1,
+            // A long interval keeps the second tick far away: the first
+            // `interval.tick()` is immediate, so exactly one probe runs at
+            // t=0 and the "exactly one" assertion below can never be raced by
+            // a second tick inside the wait window.
+            interval_secs: 30,
             timeout_secs: 1,
             failure_threshold: 2,
             endpoints: vec!["tcp://127.0.0.1:19871".to_string()],
         };
         let task = tokio::spawn(poll_loop("svc".to_string(), cfg, Arc::clone(&store), None));
-        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Bounded wait instead of a fixed 50ms sleep: task scheduling + timer
+        // tick + TCP connect must all complete before the store is updated. On
+        // loaded Windows CI runners the fixed window expired first and the
+        // store still read 0 failures. `probe_all_stops_at_the_first_failing_endpoint`
+        // proves the closed-loopback probe itself works on Windows, so this is
+        // purely a scheduling race.
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        while store.lock().await["svc"].consecutive_failures == 0 {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "the interval tick must run the first probe within 2s"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
         task.abort();
 
         let map = store.lock().await;
@@ -651,7 +669,17 @@ mod tests {
             },
         );
         scheduler.start(configs);
-        tokio::time::sleep(Duration::from_millis(80)).await;
+
+        // Bounded wait (see poll_loop_probes_and_updates_the_store): a fixed
+        // 80ms window is too tight for heavily loaded Windows CI runners.
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        while store.lock().await.get("proc-n").map_or(0, |s| s.consecutive_failures) == 0 {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "the notifier path must run its first probe within 2s"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
 
         let map = store.lock().await;
         let s = &map["proc-n"];
