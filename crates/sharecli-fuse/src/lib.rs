@@ -380,39 +380,32 @@ mod platform {
         /// A coalesced on-disk read is used while the captured name still
         /// denotes the same inode; once the name is unlinked or replaced
         /// (rename-over-open) the held descriptor is read instead, so an open
-        /// handle keeps returning its original content (POSIX). An unknown
-        /// handle falls back to the inode map, preserving the pre-1.14 path.
+        /// handle keeps returning its original content (POSIX).
+        ///
+        /// The handle is the sole key: an `fh` that was never allocated (or was
+        /// already released) is an error, never reinterpreted as an inode
+        /// number (handles start at [`FIRST_OPEN_FH`], distinct from inodes).
+        /// Callers with no handle (`fh == 0`) read through [`Self::read_at_ino`].
         pub fn read_at_handle(&self, fh: u64, offset: u64, size: u32) -> std::io::Result<Vec<u8>> {
             // If the live handle no longer matches the path's inode, the held
             // descriptor wins (unlink, or a rename replaced the name).
-            {
-                let guard = self.open_files.lock().expect("open files lock");
-                if let Some(handle) = guard.get(&fh) {
-                    let still_current = match (fs::metadata(&handle.path), handle.file.metadata()) {
-                        (Ok(current), Ok(held)) => current.ino() == held.ino(),
-                        _ => false,
-                    };
-                    if !still_current {
-                        return read_at(&handle.file, offset, size);
-                    }
-                }
-            }
             let handle_path = {
                 let guard = self.open_files.lock().expect("open files lock");
-                guard.get(&fh).map(|h| h.path.clone())
-            };
-            let path = match handle_path {
-                Some(path) => path,
-                None => {
-                    match self.inodes.lock().expect("inode map lock").abs_path(&self.backing, fh) {
-                        Some(path) => path,
-                        None => return Err(std::io::Error::from(std::io::ErrorKind::NotFound)),
-                    }
+                let Some(handle) = guard.get(&fh) else {
+                    return Err(std::io::Error::from(std::io::ErrorKind::NotFound));
+                };
+                let still_current = match (fs::metadata(&handle.path), handle.file.metadata()) {
+                    (Ok(current), Ok(held)) => current.ino() == held.ino(),
+                    _ => false,
+                };
+                if !still_current {
+                    return read_at(&handle.file, offset, size);
                 }
+                handle.path.clone()
             };
             let cached = {
                 let mut cache = self.read_cache.lock().expect("read cache lock");
-                cache.read_slice(&path, offset, size)
+                cache.read_slice(&handle_path, offset, size)
             };
             match cached {
                 Ok(buf) => Ok(buf),
@@ -426,6 +419,20 @@ mod platform {
                 }
                 Err(err) => Err(err),
             }
+        }
+
+        /// Read `size` bytes at absolute `offset` for inode `ino` without a
+        /// live handle (the `fh == 0` path). Resolves `ino` to its backing path
+        /// and reads through the coalesce cache.
+        pub fn read_at_ino(&self, ino: u64, offset: u64, size: u32) -> std::io::Result<Vec<u8>> {
+            let path = self
+                .inodes
+                .lock()
+                .expect("inode map lock")
+                .abs_path(&self.backing, ino)
+                .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::NotFound))?;
+            let mut cache = self.read_cache.lock().expect("read cache lock");
+            cache.read_slice(&path, offset, size)
         }
 
         /// Stage CoW bytes for a relative path (no mount; FR-009 helpers).
@@ -848,9 +855,13 @@ mod platform {
         ) {
             debug!(?ino, offset, size, "read");
             // Task 1.14 — read through the open handle so an unlinked-but-open
-            // file stays readable; fall back to the inode number when no fh.
-            let key = if fh.0 == 0 { ino.0 } else { fh.0 };
-            match self.read_at_handle(key, offset, size) {
+            // file stays readable; `fh == 0` means no handle, so resolve by inode.
+            let result = if fh.0 == 0 {
+                self.read_at_ino(ino.0, offset, size)
+            } else {
+                self.read_at_handle(fh.0, offset, size)
+            };
+            match result {
                 Ok(buf) => reply.data(&buf),
                 Err(err) => reply.error(Self::io_errno(err)),
             }

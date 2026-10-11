@@ -150,7 +150,8 @@ fn link_rel_rejects_missing_source_without_leaving_a_name() {
 }
 
 /// FR-009 / task 1.18 — `fsync` flushes a live handle's bytes to stable
-/// storage and reports unknown handles rather than pretending success.
+/// storage and reports an unknown handle as EBADF rather than pretending
+/// success (or syncing a different file through the inode-number fallback).
 #[test]
 fn fsync_handle_syncs_live_handle_and_errors_on_unknown() {
     let dir = TempDir::new().expect("tempdir");
@@ -163,7 +164,7 @@ fn fsync_handle_syncs_live_handle_and_errors_on_unknown() {
     assert_eq!(fs::read(backing.join("f.txt")).expect("read"), b"durable");
 
     let err = fs.fsync_handle(99_991, 99_991).expect_err("unknown handle must fail");
-    assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+    assert_eq!(err.raw_os_error(), Some(9), "unknown fh must surface EBADF");
 }
 
 /// FR-009 / task 1.18 — `flush` syncs a live handle and is always `Ok`, even

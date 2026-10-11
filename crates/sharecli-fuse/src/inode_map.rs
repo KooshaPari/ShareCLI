@@ -91,6 +91,12 @@ impl InodeMap {
     /// re-rooted under the new path (descend) so no descendant is left
     /// resolving to the stale pre-rename prefix.
     pub fn rename_rel(&mut self, old: &Path, new: PathBuf) {
+        // POSIX: `rename(x, x)` is a no-op. Treating it as a rename would run
+        // the destination-invalidation below and delete the entry.
+        if old == new.as_path() {
+            return;
+        }
+
         // Destination entry + any subtree the destination occupied are stale.
         self.remove_rel(new.as_path());
         self.remove_subtree_rel(new.as_path());
@@ -217,6 +223,18 @@ mod tests {
         map.remove_rel(Path::new("b"));
         assert!(map.resolve(ino).is_none());
         let _ = OsString::new();
+    }
+
+    /// POSIX: `rename(x, x)` is a no-op — the name must keep resolving, not be
+    /// deleted (a real hazard: the pre-fix `rename_rel` removed the entry as if
+    /// the destination had overwritten it).
+    #[test]
+    fn inode_map_rename_self_is_noop() {
+        let mut map = InodeMap::new();
+        let (ino, _) = map.lookup_or_alloc(ROOT_INO, OsStr::new("a")).expect("alloc");
+        map.rename_rel(Path::new("a"), PathBuf::from("a"));
+        assert_eq!(map.resolve(ino), Some(Path::new("a")), "self-rename must not delete the entry");
+        assert_eq!(map.rel_to_ino.get(Path::new("a")), Some(&ino));
     }
 
     /// Task 1.13 — renaming over an existing destination must not leave the

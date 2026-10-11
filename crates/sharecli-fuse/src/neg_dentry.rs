@@ -270,7 +270,20 @@ impl NegativeDentryCache {
     }
 
     /// Drop a negative entry (e.g. after create / mkdir / rename-into).
+    ///
+    /// Dropping a directory also drops every cached negative strictly below it
+    /// (component-wise, so `dir` matches `dir/child` but not `dirx`): a
+    /// rename/replacement of `dir` would otherwise leave `dir/child` stale.
     pub fn invalidate(&mut self, rel: &Path) {
+        let subtree: Vec<PathBuf> = self
+            .entries
+            .keys()
+            .filter(|cached| cached.as_path() != rel && cached.as_path().starts_with(rel))
+            .cloned()
+            .collect();
+        for cached in subtree {
+            self.remove_entry(&cached);
+        }
         self.remove_entry(rel);
     }
 }
@@ -304,6 +317,19 @@ mod tests {
         cache.invalidate(&rel);
         assert!(!cache.is_negative(&rel));
         assert_eq!(cache.meters().hits, 0);
+    }
+
+    /// FR-009 — invalidating a directory must also drop cached negatives under
+    /// it (a rename/replacement of `dir` leaves `dir/child` stale otherwise).
+    /// Component-wise: `dirx/child` shares only a string prefix and is kept.
+    #[test]
+    fn neg_dentry_invalidate_removes_subtree() {
+        let mut cache = NegativeDentryCache::with_ttl(Duration::from_secs(30));
+        cache.remember_miss(PathBuf::from("dir/child"));
+        cache.remember_miss(PathBuf::from("dirx/child"));
+        cache.invalidate(Path::new("dir"));
+        assert!(!cache.is_negative(Path::new("dir/child")), "subtree negative must be dropped");
+        assert!(cache.is_negative(Path::new("dirx/child")), "prefix-trap sibling must survive");
     }
 
     /// FR-009 / AC-009.7 — expired entries are dropped (no hit).

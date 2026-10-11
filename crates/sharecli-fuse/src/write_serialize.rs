@@ -132,8 +132,14 @@ impl WriteSerialize {
         let _guard = arc.lock().map_err(|_| WriteSerializeError::Poisoned)?;
 
         let (mut file, staging) = self.create_unique_staging()?;
-        file.write_all(contents)?;
-        file.sync_all()?;
+        // A failed write/sync must not orphan the freshly created staging file:
+        // reclaim it before surfacing the error.
+        if let Err(err) = file.write_all(contents).and_then(|()| file.sync_all()) {
+            drop(file);
+            let _ = fs::remove_file(&staging);
+            return Err(err.into());
+        }
+        drop(file);
 
         let superseded = {
             let mut pending = self.pending.lock().map_err(|_| WriteSerializeError::Poisoned)?;
@@ -254,6 +260,15 @@ impl WriteSerialize {
         }
         let temp = self.exdev_staging_path(backing);
         fs::copy(staging, &temp)?;
+        // Durability: fsync the copied bytes before the atomic rename, so a
+        // crash after commit cannot resurrect a zero/partial-length file that
+        // the rename already made visible at the destination.
+        if let Err(err) =
+            fs::OpenOptions::new().read(true).write(true).open(&temp).and_then(|f| f.sync_all())
+        {
+            let _ = fs::remove_file(&temp);
+            return Err(err.into());
+        }
         if let Err(err) = fs::rename(&temp, backing) {
             let _ = fs::remove_file(&temp);
             return Err(err.into());

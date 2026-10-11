@@ -16,13 +16,32 @@ use std::ffi::OsStr;
 use std::fs::{self, File};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
+use std::sync::MutexGuard;
 
 use fuser::{Errno, Generation, ReplyData, ReplyEmpty, ReplyEntry};
 
 use super::{InterceptFs, TTL};
-use crate::inode_map::abs_under;
+use crate::inode_map::{abs_under, InodeMap};
+
+/// Recoverable error for a poisoned lock (maps to `Errno::EIO`): a handler must
+/// reply with an error rather than panic, which would unwind the FUSE session.
+fn eio() -> std::io::Error {
+    std::io::Error::other("sharecli-fuse: lock poisoned")
+}
+
+/// A stale/unknown file handle (maps to `Errno::EBADF`). EBADF is 9 across the
+/// Unix targets this module compiles for.
+fn ebadf() -> std::io::Error {
+    std::io::Error::from_raw_os_error(9)
+}
 
 impl InterceptFs {
+    /// Acquire the inode map, converting a poisoned mutex into a recoverable
+    /// [`eio`] error instead of panicking inside a request handler.
+    fn inode_map(&self) -> std::io::Result<MutexGuard<'_, InodeMap>> {
+        self.inodes.lock().map_err(|_| eio())
+    }
+
     /// Create a symlink at relative `link` storing `target` verbatim (a
     /// relative target is resolved by the kernel relative to `link`'s
     /// directory, so a `node_modules/.bin` style link is not rewritten).
@@ -57,7 +76,7 @@ impl InterceptFs {
         }
         fs::hard_link(&abs_existing, &abs_new)?;
         {
-            let mut map = self.inodes.lock().expect("inode map");
+            let mut map = self.inode_map()?;
             let src_ino = map.alloc_or_get(existing.to_path_buf());
             map.alias_rel(new.to_path_buf(), src_ino);
         }
@@ -66,14 +85,26 @@ impl InterceptFs {
 
     /// Sync a live handle's descriptor when held, else open the backing path
     /// for `ino` and sync that. Durability primitive for `fsync`.
+    ///
+    /// A nonzero `fh` must name a live handle: an unknown one is [`ebadf`],
+    /// never silently resolved through `ino` (which would sync a *different*
+    /// file and report success). The descriptor is cloned under the lock and
+    /// synced after the lock is released, so the syscall is not serialized
+    /// behind the global `open_files` mutex and the fd is pinned across the
+    /// sync (no path re-resolve / TOCTOU).
     pub fn fsync_handle(&self, ino: u64, fh: u64) -> std::io::Result<()> {
-        if let Some(handle) = self.open_files.lock().expect("open files lock").get(&fh) {
-            return handle.file.sync_all();
+        if fh != 0 {
+            let held = self
+                .open_files
+                .lock()
+                .map_err(|_| eio())?
+                .get(&fh)
+                .map(|h| h.file.try_clone())
+                .ok_or_else(ebadf)??;
+            return held.sync_all();
         }
         let path = self
-            .inodes
-            .lock()
-            .expect("inode map lock")
+            .inode_map()?
             .abs_path(&self.backing, ino)
             .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::NotFound))?;
         File::open(path)?.sync_all()
@@ -82,10 +113,16 @@ impl InterceptFs {
     /// Advisory flush of a live handle: sync its descriptor when present and
     /// always report success. fuser calls `flush` on every `close()`, where an
     /// error cannot reach the caller, so a late sync failure must not surface
-    /// on a write that already landed.
+    /// on a write that already landed. The descriptor is cloned under the lock
+    /// and synced after it is released.
     pub fn flush_fh(&self, fh: u64) -> std::io::Result<()> {
-        if let Some(handle) = self.open_files.lock().expect("open files lock").get(&fh) {
-            let _ = handle.file.sync_data();
+        let cloned = self
+            .open_files
+            .lock()
+            .ok()
+            .and_then(|guard| guard.get(&fh).and_then(|h| h.file.try_clone().ok()));
+        if let Some(file) = cloned {
+            let _ = file.sync_data();
         }
         Ok(())
     }
@@ -98,9 +135,12 @@ impl InterceptFs {
 
     /// `readlink` dispatch: return the stored symlink target (no follow).
     pub(crate) fn op_readlink(&self, ino: u64, reply: ReplyData) {
-        let path = {
-            let map = self.inodes.lock().expect("inode map");
-            map.abs_path(&self.backing, ino)
+        let path = match self.inode_map() {
+            Ok(map) => map.abs_path(&self.backing, ino),
+            Err(err) => {
+                reply.error(Self::io_errno(err));
+                return;
+            }
         };
         match path {
             Some(path) => match fs::read_link(&path) {
@@ -120,32 +160,48 @@ impl InterceptFs {
         target: &Path,
         reply: ReplyEntry,
     ) {
-        let Some(rel) = self.inodes.lock().expect("inode map").child_rel(parent, link_name) else {
+        let rel = match self.inode_map() {
+            Ok(map) => map.child_rel(parent, link_name),
+            Err(err) => {
+                reply.error(Self::io_errno(err));
+                return;
+            }
+        };
+        let Some(rel) = rel else {
             reply.error(Errno::ENOENT);
             return;
         };
         let abs = abs_under(&self.backing, &rel);
-        match std::os::unix::fs::symlink(target, &abs) {
-            Ok(()) => {
-                self.invalidate_neg_rel(&rel);
-                self.install_created_entry_plain(rel, abs, reply);
-            }
+        // Delegate to `symlink_rel` so the handler matches the helper: missing
+        // parent directories are created and the negative-dentry / read caches
+        // are invalidated by `after_create_at`.
+        match self.symlink_rel(target, &rel) {
+            Ok(()) => self.install_created_entry_plain(rel, abs, reply),
             Err(err) => reply.error(Self::io_errno(err)),
         }
     }
 
     /// `link` dispatch: create a hard link to an existing inode.
     pub(crate) fn op_link(&self, ino: u64, newparent: u64, newname: &OsStr, reply: ReplyEntry) {
-        let existing = {
-            let map = self.inodes.lock().expect("inode map");
-            map.resolve(ino).map(Path::to_path_buf)
+        let existing = match self.inode_map() {
+            Ok(map) => map.resolve(ino).map(Path::to_path_buf),
+            Err(err) => {
+                reply.error(Self::io_errno(err));
+                return;
+            }
         };
         let Some(existing) = existing else {
             reply.error(Errno::ENOENT);
             return;
         };
-        let Some(new_rel) = self.inodes.lock().expect("inode map").child_rel(newparent, newname)
-        else {
+        let new_rel = match self.inode_map() {
+            Ok(map) => map.child_rel(newparent, newname),
+            Err(err) => {
+                reply.error(Self::io_errno(err));
+                return;
+            }
+        };
+        let Some(new_rel) = new_rel else {
             reply.error(Errno::ENOENT);
             return;
         };
@@ -164,7 +220,13 @@ impl InterceptFs {
     /// it as an alias of the SOURCE inode (POSIX) rather than allocating a new
     /// inode. `symlink_metadata` keeps the link's own kind in the reply.
     fn install_linked_entry(&self, rel: PathBuf, ino: u64, path: PathBuf, reply: ReplyEntry) {
-        self.inodes.lock().expect("inode map").alias_rel(rel, ino);
+        match self.inode_map() {
+            Ok(mut map) => map.alias_rel(rel, ino),
+            Err(err) => {
+                reply.error(Self::io_errno(err));
+                return;
+            }
+        }
         match fs::symlink_metadata(&path) {
             Ok(meta) => reply.entry(&TTL, &Self::metadata_to_attr(ino, &meta), Generation(0)),
             Err(err) => reply.error(Self::io_errno(err)),
@@ -206,5 +268,42 @@ mod tests {
 
         let new_ino = fs.inodes.lock().expect("inode map").alloc_or_get(PathBuf::from("b.txt"));
         assert_eq!(new_ino, src_ino, "hard link allocated a fresh inode instead of aliasing");
+    }
+
+    /// lib.rs keying — `read_at_handle` is keyed by the per-open handle only. An
+    /// `fh` that was never allocated must NOT be reinterpreted as an inode
+    /// number (which would read a different file than the caller asked for).
+    #[test]
+    fn read_at_handle_rejects_unallocated_handle() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let backing = dir.path().join("back");
+        fs::create_dir_all(&backing).expect("backing");
+        fs::write(backing.join("a.txt"), b"AAA").expect("seed");
+        let fs = InterceptFs::new(&backing);
+
+        let ino = fs.inodes.lock().expect("inode map").alloc_or_get(PathBuf::from("a.txt"));
+        assert!(ino < super::super::FIRST_OPEN_FH, "premise: inodes are below the handle base");
+        assert!(
+            fs.read_at_handle(ino, 0, 3).is_err(),
+            "an unallocated handle must not resolve through the inode map"
+        );
+    }
+
+    /// ops_missing — `fsync` for a live inode but an unknown (released) handle
+    /// must fail with EBADF, not sync a different file and report success.
+    #[test]
+    fn fsync_handle_rejects_unknown_handle_with_ebadf() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let backing = dir.path().join("back");
+        fs::create_dir_all(&backing).expect("backing");
+        fs::write(backing.join("f.txt"), b"durable").expect("seed");
+        let fs = InterceptFs::new(&backing);
+
+        let fh = fs.open_rel(Path::new("f.txt")).expect("open");
+        let ino = fs.inodes.lock().expect("inode map").alloc_or_get(PathBuf::from("f.txt"));
+        assert!(fs.release_fh(fh), "handle must be live before release");
+
+        let err = fs.fsync_handle(ino, fh).expect_err("released handle must fail");
+        assert_eq!(err.raw_os_error(), Some(9), "unknown fh must surface EBADF");
     }
 }
