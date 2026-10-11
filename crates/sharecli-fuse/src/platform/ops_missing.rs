@@ -17,9 +17,9 @@ use std::fs::{self, File};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
-use fuser::{Errno, ReplyData, ReplyEmpty, ReplyEntry};
+use fuser::{Errno, Generation, ReplyData, ReplyEmpty, ReplyEntry};
 
-use super::InterceptFs;
+use super::{InterceptFs, TTL};
 use crate::inode_map::abs_under;
 
 impl InterceptFs {
@@ -46,6 +46,9 @@ impl InterceptFs {
 
     /// Create a hard link: relative `new` becomes a second name for the inode
     /// behind relative `existing`.
+    ///
+    /// POSIX: both names must resolve to the SAME inode, so `new` is registered
+    /// as an alias of the source inode rather than receiving a fresh allocation.
     pub fn link_rel(&self, existing: &Path, new: &Path) -> std::io::Result<()> {
         let (abs_existing, abs_new) =
             (abs_under(&self.backing, existing), abs_under(&self.backing, new));
@@ -53,6 +56,11 @@ impl InterceptFs {
             fs::create_dir_all(parent)?;
         }
         fs::hard_link(&abs_existing, &abs_new)?;
+        {
+            let mut map = self.inodes.lock().expect("inode map");
+            let src_ino = map.alloc_or_get(existing.to_path_buf());
+            map.alias_rel(new.to_path_buf(), src_ino);
+        }
         self.after_create_at(new, &abs_new)
     }
 
@@ -146,8 +154,19 @@ impl InterceptFs {
         match fs::hard_link(&abs_existing, &abs_new) {
             Ok(()) => {
                 self.invalidate_neg_rel(&new_rel);
-                self.install_created_entry_plain(new_rel, abs_new, reply);
+                self.install_linked_entry(new_rel, ino, abs_new, reply);
             }
+            Err(err) => reply.error(Self::io_errno(err)),
+        }
+    }
+
+    /// Reply with the entry for a name just created as a hard link, registering
+    /// it as an alias of the SOURCE inode (POSIX) rather than allocating a new
+    /// inode. `symlink_metadata` keeps the link's own kind in the reply.
+    fn install_linked_entry(&self, rel: PathBuf, ino: u64, path: PathBuf, reply: ReplyEntry) {
+        self.inodes.lock().expect("inode map").alias_rel(rel, ino);
+        match fs::symlink_metadata(&path) {
+            Ok(meta) => reply.entry(&TTL, &Self::metadata_to_attr(ino, &meta), Generation(0)),
             Err(err) => reply.error(Self::io_errno(err)),
         }
     }
@@ -164,5 +183,28 @@ impl InterceptFs {
             Ok(()) => reply.ok(),
             Err(err) => reply.error(Self::io_errno(err)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// CRITICAL fix — `link` must register the new name against the SOURCE
+    /// path's existing inode (POSIX hard-link alias). Allocating a fresh inode
+    /// for `new` breaks the invariant that both names denote one inode.
+    #[test]
+    fn link_rel_aliases_the_source_inode() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let backing = dir.path().join("back");
+        fs::create_dir_all(&backing).expect("backing");
+        fs::write(backing.join("a.txt"), b"shared").expect("seed");
+        let fs = InterceptFs::new(&backing);
+
+        let src_ino = fs.inodes.lock().expect("inode map").alloc_or_get(PathBuf::from("a.txt"));
+        fs.link_rel(Path::new("a.txt"), Path::new("b.txt")).expect("hard link");
+
+        let new_ino = fs.inodes.lock().expect("inode map").alloc_or_get(PathBuf::from("b.txt"));
+        assert_eq!(new_ino, src_ino, "hard link allocated a fresh inode instead of aliasing");
     }
 }

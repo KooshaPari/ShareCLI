@@ -95,3 +95,30 @@ fn rename_over_open_handle_keeps_original_content() {
     let fresh = fs.open_rel(Path::new("a.txt")).expect("open fresh");
     assert_eq!(fs.read_at_handle(fresh, 0, 64).expect("read fresh"), b"replacement");
 }
+
+/// CRITICAL fix — per-open fd isolation: two `open`s of one path must yield
+/// DISTINCT FUSE file handles and independent open state, so releasing one does
+/// not drop the other (keying `open_files` by inode would collide here).
+#[test]
+fn concurrent_opens_of_one_path_are_isolated() {
+    let dir = TempDir::new().expect("tempdir");
+    let backing = dir.path().join("back");
+    fs::create_dir_all(&backing).expect("backing");
+    fs::write(backing.join("shared.txt"), b"content").expect("seed");
+
+    let fs = InterceptFs::new(&backing);
+    let first = fs.open_rel(Path::new("shared.txt")).expect("first open");
+    let second = fs.open_rel(Path::new("shared.txt")).expect("second open");
+    assert_ne!(first, second, "two opens of one path must not share a handle");
+
+    assert_eq!(fs.read_at_handle(first, 0, 64).expect("read first"), b"content");
+    assert_eq!(fs.read_at_handle(second, 0, 64).expect("read second"), b"content");
+
+    assert!(fs.release_fh(first), "first handle must be present");
+    assert_eq!(
+        fs.read_at_handle(second, 0, 64).expect("sibling handle survives"),
+        b"content",
+        "releasing one open must not drop the sibling handle"
+    );
+    assert!(fs.read_at_handle(first, 0, 64).is_err(), "the released handle must not serve reads");
+}

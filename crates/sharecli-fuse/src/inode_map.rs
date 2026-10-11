@@ -61,10 +61,25 @@ impl InodeMap {
         Some((ino, rel))
     }
 
+    /// Register `rel` as an additional name for an existing `ino` (POSIX hard
+    /// link) without allocating a new inode.
+    ///
+    /// Only the forward map is touched; the reverse map stays authoritative for
+    /// the original name, so `resolve(ino)` keeps pointing at the source path.
+    pub fn alias_rel(&mut self, rel: PathBuf, ino: u64) {
+        self.rel_to_ino.insert(rel, ino);
+    }
+
     /// Remove a relative path mapping (e.g. after unlink/rmdir).
+    ///
+    /// The reverse mapping is dropped only when it still points at `rel`, so
+    /// unlinking one name of a hard-linked inode does not orphan the reverse
+    /// entry for the other name.
     pub fn remove_rel(&mut self, rel: &Path) {
         if let Some(ino) = self.rel_to_ino.remove(rel) {
-            self.ino_to_rel.remove(&ino);
+            if self.ino_to_rel.get(&ino).map(PathBuf::as_path) == Some(rel) {
+                self.ino_to_rel.remove(&ino);
+            }
         }
     }
 
@@ -109,6 +124,10 @@ impl InodeMap {
     }
 
     /// Re-root every mapping strictly below `old` onto `new`.
+    ///
+    /// The pre-remap key is removed for every re-rooted descendant: leaving it
+    /// behind would let a later `alloc_or_get` of a path that no longer exists
+    /// resurrect the moved inode through the stale forward entry.
     fn remap_subtree_rel(&mut self, old: &Path, new: &Path) {
         if old.as_os_str().is_empty() {
             return;
@@ -124,8 +143,13 @@ impl InodeMap {
                 continue;
             };
             let new_rel = new.join(suffix);
+            // Drop the pre-remap key before re-keying, so no stale forward
+            // entry survives the rename.
+            self.rel_to_ino.remove(&rel);
             if let Some(previous) = self.rel_to_ino.insert(new_rel.clone(), ino) {
-                self.ino_to_rel.remove(&previous);
+                if previous != ino {
+                    self.ino_to_rel.remove(&previous);
+                }
             }
             self.ino_to_rel.insert(ino, new_rel);
         }
@@ -256,5 +280,45 @@ mod tests {
             "deep descendant orphaned"
         );
         assert_eq!(map.resolve(trap_ino), Some(Path::new("dirx")), "prefix-trap sibling rehomed");
+    }
+
+    /// CRITICAL fix — a directory rename must drop every pre-remap key from the
+    /// forward map (`rel_to_ino`), not just rewrite the reverse map. A surviving
+    /// forward key for `old`/`old/desc` lets a later `alloc_or_get` of a path
+    /// that no longer exists resurrect the moved inode as a stale alias.
+    #[test]
+    fn inode_map_rename_dir_drops_stale_forward_keys() {
+        let mut map = InodeMap::new();
+        let (dir_ino, _) = map.lookup_or_alloc(ROOT_INO, OsStr::new("dir")).expect("dir");
+        let (child_ino, _) = map.lookup_or_alloc(dir_ino, OsStr::new("sub")).expect("child");
+        let (leaf_ino, _) = map.lookup_or_alloc(child_ino, OsStr::new("f.txt")).expect("leaf");
+        map.rename_rel(Path::new("dir"), PathBuf::from("moved"));
+
+        assert!(!map.rel_to_ino.contains_key(Path::new("dir")), "old root key left stale");
+        assert!(!map.rel_to_ino.contains_key(Path::new("dir/sub")), "old child key left stale");
+        assert!(
+            !map.rel_to_ino.contains_key(Path::new("dir/sub/f.txt")),
+            "old leaf key left stale"
+        );
+
+        // The reverse map stays authoritative; the new keys resolve the originals.
+        assert_eq!(map.rel_to_ino.get(Path::new("moved")), Some(&dir_ino));
+        assert_eq!(map.rel_to_ino.get(Path::new("moved/sub")), Some(&child_ino));
+        assert_eq!(map.rel_to_ino.get(Path::new("moved/sub/f.txt")), Some(&leaf_ino));
+    }
+
+    /// CRITICAL fix (public-API view) — after a directory rename, re-resolving a
+    /// pre-remap descendant path must mint a fresh inode rather than return the
+    /// moved inode through a stale forward key.
+    #[test]
+    fn inode_map_rename_dir_old_path_does_not_resurrect_moved_inode() {
+        let mut map = InodeMap::new();
+        let (dir_ino, _) = map.lookup_or_alloc(ROOT_INO, OsStr::new("dir")).expect("dir");
+        let (child_ino, _) = map.lookup_or_alloc(dir_ino, OsStr::new("sub")).expect("child");
+        map.rename_rel(Path::new("dir"), PathBuf::from("moved"));
+
+        let stale_alloc = map.alloc_or_get(PathBuf::from("dir/sub"));
+        assert_ne!(stale_alloc, child_ino, "stale key resurrected the moved inode");
+        assert_eq!(map.alloc_or_get(PathBuf::from("moved/sub")), child_ino, "moved path lost");
     }
 }

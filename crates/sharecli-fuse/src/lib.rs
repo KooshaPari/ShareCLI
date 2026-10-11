@@ -158,6 +158,12 @@ mod platform {
 
     const TTL: Duration = Duration::from_secs(1);
 
+    /// Base for per-open FUSE file handles. Handles are allocated from a
+    /// monotonic counter starting here, far above any realistic inode number,
+    /// so a handle can never be mistaken for an inode by the inode-map fallback
+    /// in [`InterceptFs::read_at_handle`].
+    const FIRST_OPEN_FH: u64 = 1 << 32;
+
     /// Passthrough FUSE filesystem with read coalesce + write-serialize hooks.
     pub struct InterceptFs {
         /// Root of the real filesystem subtree being mirrored.
@@ -172,11 +178,15 @@ mod platform {
         read_cache: Mutex<ReadContentCache>,
         neg_dentry: Mutex<NegativeDentryCache>,
         cow: AgentCowStore,
-        /// Live backing descriptors keyed by FUSE file handle (== inode).
+        /// Live backing descriptors keyed by FUSE file handle (a unique
+        /// per-open id, not the inode: two opens of one path must be isolated).
         ///
         /// Task 1.14 — holding the descriptor (not just the path) keeps an
         /// unlinked-but-open file readable, per POSIX.
         open_files: Mutex<HashMap<u64, OpenHandle>>,
+        /// Monotonic counter handing out unique per-open FUSE file handles
+        /// (see [`FIRST_OPEN_FH`]).
+        next_open_fh: Mutex<u64>,
     }
 
     /// A live backing-file handle: the path captured at `open` plus the
@@ -242,6 +252,7 @@ mod platform {
                 neg_dentry: Mutex::new(NegativeDentryCache::with_ttl(DEFAULT_NEG_TTL)),
                 cow: AgentCowStore::new(cow_root, default_agent, opts.serialize),
                 open_files: Mutex::new(HashMap::new()),
+                next_open_fh: Mutex::new(FIRST_OPEN_FH),
             }
         }
 
@@ -335,15 +346,33 @@ mod platform {
             self.read_cache.lock().expect("read cache lock").read_coalesced(&abs)
         }
 
+        /// Allocate a fresh FUSE file handle for a single `open`.
+        ///
+        /// Handles come from a monotonic counter (see [`FIRST_OPEN_FH`]), so two
+        /// opens of the same path get distinct handles and isolated open state
+        /// (position, flags, the held descriptor) rather than clobbering one
+        /// another.
+        fn alloc_open_handle(&self) -> u64 {
+            let mut next = self.next_open_fh.lock().expect("open handle counter");
+            let fh = *next;
+            *next = next.saturating_add(1);
+            fh
+        }
+
         /// Open `rel` and register a live handle that survives an unlink
-        /// (Task 1.14). Returns the FUSE file handle (the inode number), which
-        /// is also the `ino` used by [`Self::read_at_handle`].
+        /// (Task 1.14). Returns a fresh, per-open FUSE file handle that is
+        /// distinct from the inode number, so concurrent opens stay isolated.
+        ///
+        /// The opened name is also registered in the inode map (mirroring a
+        /// FUSE `lookup`), and the live handle is keyed by the unique handle
+        /// used by [`Self::read_at_handle`].
         pub fn open_rel(&self, rel: &Path) -> std::io::Result<u64> {
             let path = abs_under(&self.backing, rel);
             let file = File::open(&path)?;
-            let ino = self.inodes.lock().expect("inode map lock").alloc_or_get(rel.to_path_buf());
-            self.open_files.lock().expect("open files lock").insert(ino, OpenHandle { path, file });
-            Ok(ino)
+            self.inodes.lock().expect("inode map lock").alloc_or_get(rel.to_path_buf());
+            let fh = self.alloc_open_handle();
+            self.open_files.lock().expect("open files lock").insert(fh, OpenHandle { path, file });
+            Ok(fh)
         }
 
         /// Read `size` bytes at absolute `offset` from the handle `fh`.
@@ -789,12 +818,15 @@ mod platform {
             match fs::metadata(&path) {
                 Ok(meta) if meta.is_file() => match File::open(&path) {
                     Ok(file) => {
-                        // Task 1.14 — hold the descriptor so reads survive an unlink.
+                        // Task 1.14 — hold the descriptor so reads survive an
+                        // unlink; key by a unique per-open handle so a second
+                        // open of the same inode stays isolated.
+                        let fh = self.alloc_open_handle();
                         self.open_files
                             .lock()
                             .expect("open files")
-                            .insert(ino.0, OpenHandle { path, file });
-                        reply.opened(FileHandle(ino.0), FopenFlags::empty());
+                            .insert(fh, OpenHandle { path, file });
+                        reply.opened(FileHandle(fh), FopenFlags::empty());
                     }
                     Err(err) => reply.error(Self::io_errno(err)),
                 },
