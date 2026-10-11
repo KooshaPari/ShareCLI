@@ -96,11 +96,50 @@ fn remove_path(path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Sidecar IPC socket path — mirrors `sharecli_ipc::socket_path`
+/// (`$SHARECLI_IPC_SOCK`, else `$XDG_DATA_HOME|~/.local/share/sharecli/ipc.sock`).
+///
+/// This lives here because a normal dependency is impossible: `sharecli-ipc`
+/// depends on `sharecli` (for `Config`), so the reverse edge would be a
+/// cycle (dev-dependencies would not help production code). The parity test
+/// below pins the two implementations together so they cannot drift.
+pub fn ipc_socket() -> PathBuf {
+    if let Ok(v) = std::env::var("SHARECLI_IPC_SOCK") {
+        return PathBuf::from(v);
+    }
+    let base = dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
+    base.join("sharecli").join("ipc.sock")
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
 
     use super::*;
+
+    /// Drift lock: the CLI-side resolver and the sidecar's canonical
+    /// `sharecli_ipc::socket_path` must agree on both the default path and
+    /// the `SHARECLI_IPC_SOCK` override (they cannot share one definition —
+    /// see `ipc_socket`'s doc — so the contract is pinned here instead).
+    #[test]
+    fn ipc_socket_matches_the_sidecars_resolver() {
+        // Default (no override in this process's environment).
+        std::env::remove_var("SHARECLI_IPC_SOCK");
+        assert_eq!(
+            ipc_socket(),
+            sharecli_ipc::socket_path(),
+            "default socket path must match the sidecar"
+        );
+
+        // Override.
+        std::env::set_var("SHARECLI_IPC_SOCK", "/tmp/parity-check.sock");
+        assert_eq!(
+            ipc_socket(),
+            sharecli_ipc::socket_path(),
+            "SHARECLI_IPC_SOCK override must be honored identically"
+        );
+        std::env::remove_var("SHARECLI_IPC_SOCK");
+    }
 
     // FR-003 — uninstall path resolution for C11 L121.
     #[test]

@@ -436,6 +436,25 @@ impl CoalesceCache {
 }
 
 // ---------------------------------------------------------------------------
+// IPC endpoint
+// ---------------------------------------------------------------------------
+
+/// Unix-socket path the sidecar binds (bin + lib + external consumers).
+///
+/// `SHARECLI_IPC_SOCK` overrides the default
+/// `$XDG_DATA_HOME|~/.local/share/sharecli/ipc.sock`. The CLI's
+/// `stop` command resolves the same path to delegate kills to a running
+/// sidecar (CRITICAL #1 fix), so bin and lib must share one definition.
+/// `sharecli-tray-linux` keeps its own copy with a pinning unit test.
+pub fn socket_path() -> PathBuf {
+    if let Ok(v) = std::env::var("SHARECLI_IPC_SOCK") {
+        return PathBuf::from(v);
+    }
+    let base = dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
+    base.join("sharecli").join("ipc.sock")
+}
+
+// ---------------------------------------------------------------------------
 // Unit tests
 // ---------------------------------------------------------------------------
 

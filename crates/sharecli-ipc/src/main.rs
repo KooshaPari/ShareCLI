@@ -14,7 +14,6 @@
 //! Request:  `{"id": N, "method": "...", "params": {...}}`
 //! Response: `{"id": N, "result": ..., "error": null}` or `{"id": N, "result": null, "error": "..."}`
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -30,6 +29,9 @@ mod log_buffer;
 
 pub use handler::Handler;
 use log_buffer::LogBufferLayer;
+// Canonical endpoint resolver lives in the lib (shared with the CLI's
+// `stop` delegation); the bin imports rather than duplicates it.
+use sharecli_ipc::socket_path;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -142,14 +144,6 @@ fn bind_unix_listener(path: &std::path::Path) -> anyhow::Result<tokio::net::Unix
     std_listener.set_nonblocking(true)?;
     let listener = tokio::net::UnixListener::from_std(std_listener)?;
     Ok(listener)
-}
-
-pub fn socket_path() -> PathBuf {
-    if let Ok(v) = std::env::var("SHARECLI_IPC_SOCK") {
-        return PathBuf::from(v);
-    }
-    let base = dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
-    base.join("sharecli").join("ipc.sock")
 }
 
 pub fn ipc_addr() -> String {

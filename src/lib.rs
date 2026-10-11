@@ -6,6 +6,12 @@
 //! - Process management via local runtime types
 //! - Multi-project orchestration
 
+// One spelling of "the sharecli lib" that works in every target: modules
+// shared by the bin and the lib (e.g. `src/commands/mod.rs`) import
+// `sharecli::…` — valid in the bin (the lib is a real dependency there)
+// and, via this alias, valid inside the lib itself.
+extern crate self as sharecli;
+
 // --- Tier A/B: product + ops (root pub surface) ---
 pub mod agent_call_policy;
 pub mod audit_log;
