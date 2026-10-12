@@ -127,6 +127,14 @@ public final class SidecarSupervisor: ObservableObject {
 
     // MARK: - Loop
 
+    /// One supervision tick.
+    ///
+    /// Concurrency is gated by `SidecarTickGate` (see `SidecarTickGate.swift:1-20`):
+    /// the gate is bounded at `wedgedAfter` (`tickSeconds × 4 = 12 s` default), so a
+    /// wedged tick is replaced by the next one rather than blocking the supervisor
+    /// forever, and a superseded tick's late `exit(_:)` is a generation-checked no-op.
+    /// That takeover is intentional — see the WARN live-operator note in
+    /// `~/.jcode/scratch/sharecli-audit-2026-10/final-handoff.md` (item 9, 2026-10-12).
     private func tick() async {
         guard let generation = tickGate.begin() else { return }
         defer { tickGate.exit(generation) }
