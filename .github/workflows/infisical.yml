@@ -49,7 +49,7 @@ jobs:
           # keys; validating them here surfaces the failure as a clear
           # ::error:: before codesign.yml's harder-to-debug exit 1.
           ENV_FILE="$(mktemp -t infisical-env.XXXXXX)"
-          trap 'rm -f "$ENV_FILE"' EXIT
+          trap 'rm -f "$ENV_FILE" "$ENV_FILE.err"' EXIT
           if ! infisical export \
               --projectId "$INFISICAL_PROJECT_ID" \
               --env "$INFISICAL_ENV" \
@@ -80,7 +80,7 @@ jobs:
 
           if [ "$INFISICAL_ENV" = "prod" ] && [ "$missing" -gt 0 ]; then
             echo "::error::$missing of ${#WANTED[@]} required Apple signing key(s) missing in prod env"
-            echo "::error::See ~/.jcode/scratch/sharecli-audit-2026-10/agent-verification-2026-10-08.md for remediation"
+            echo "::error::See docs/ops/governance/APPLE_SECRETS_SETUP.md for remediation"
             exit 1
           fi
 

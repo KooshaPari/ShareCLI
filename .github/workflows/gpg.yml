@@ -20,8 +20,11 @@ jobs:
           missing=0
           while IFS= read -r sha; do
             sig="$(git log -1 --format=%G? "$sha")"
-            if [[ "$sig" == "N" ]]; then
-              echo "MISSING GPG signature: $sha $(git log -1 --format=%s "$sha")"
+            # %G? is 'G' only for a good signature. B(bad)/U(unknown
+            # validity)/X,Y(expired)/R(revoked)/E(uncheckable)/N(absent)
+            # must all fail, so whitelist 'G' rather than blacklist 'N'.
+            if [[ "$sig" != "G" ]]; then
+              echo "REJECTED GPG signature status '$sig' (expected 'G'): $sha $(git log -1 --format=%s "$sha")"
               missing=1
             fi
           done < <(git rev-list --no-merges "${BASE}..${HEAD}")
