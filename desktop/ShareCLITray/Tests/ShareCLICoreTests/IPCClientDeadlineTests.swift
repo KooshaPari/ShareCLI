@@ -199,18 +199,40 @@ func makeListeningUnixSocket(
     return listenFD
 }
 
+/// A running accept loop plus a signal that fires when the loop exits, so a
+/// caller can join it before closing the fds it is still using. Closing a
+/// listener (or connection) fd out from under a thread still inside
+/// `accept(2)`/`read(2)` is a use-after-close: the descriptor number can be
+/// reused by another open socket and the thread then operates on the wrong one
+/// (audit warn-tier).
+struct AcceptLoop {
+    let thread: Thread
+    let exited: DispatchSemaphore
+}
+
+/// Join an accept loop after its stop flag is set. The loop re-checks the flag
+/// every ~20 ms (its `EAGAIN` sleep), so this returns promptly; it is bounded so
+/// a wedged loop can never hang a test.
+@discardableResult
+func joinAcceptLoop(_ loop: AcceptLoop, timeout: TimeInterval = 2) -> Bool {
+    loop.exited.wait(timeout: .now() + timeout) == .success
+}
+
 /// Accepts connections on a non-blocking listener until `isStopped` returns
 /// true (checked under `lock`), handing each accepted fd to `onAccept` and then
 /// `serve`. Shared by every in-process test server so the accept loop cannot
-/// drift between suites.
+/// drift between suites. Returns an `AcceptLoop` so the caller can join it
+/// before tearing the socket down.
 func runAcceptLoop(
     listenFD: Int32,
     lock: NSLock,
     isStopped: @escaping () -> Bool,
     onAccept: @escaping (Int32) -> Void,
     serve: @escaping (Int32) -> Void
-) {
+) -> AcceptLoop {
+    let exited = DispatchSemaphore(value: 0)
     let loop = Thread {
+        defer { exited.signal() }
         while true {
             lock.lock()
             let stopped = isStopped()
@@ -230,6 +252,7 @@ func runAcceptLoop(
         }
     }
     loop.start()
+    return AcceptLoop(thread: loop, exited: exited)
 }
 
 /// Closes the accepted connections, the listener, and removes the socket path.
@@ -251,6 +274,7 @@ private final class WedgedSidecarServer: @unchecked Sendable {
     private let lock = NSLock()
     private var accepted: [Int32] = []
     private var stopped = false
+    private var acceptLoop: AcceptLoop?
 
     init() {
         path = "/tmp/sharecli-wedged-\(UUID().uuidString).sock"
@@ -261,7 +285,7 @@ private final class WedgedSidecarServer: @unchecked Sendable {
         )
 
         let server = self
-        runAcceptLoop(
+        acceptLoop = runAcceptLoop(
             listenFD: listenFD,
             lock: lock,
             isStopped: { server.stopped },
@@ -280,6 +304,8 @@ private final class WedgedSidecarServer: @unchecked Sendable {
         let conns = accepted
         accepted = []
         lock.unlock()
+        // Join the accept thread before closing the fds it may still be inside.
+        if let acceptLoop { joinAcceptLoop(acceptLoop) }
         closeListeningSocket(listenFD, connections: conns, path: path)
     }
 }
@@ -294,6 +320,7 @@ private final class HealthyConfigServer: @unchecked Sendable {
     private let lock = NSLock()
     private var conns: [Int32] = []
     private var stopped = false
+    private var acceptLoop: AcceptLoop?
 
     init() {
         path = "/tmp/sharecli-healthy-\(UUID().uuidString).sock"
@@ -304,7 +331,7 @@ private final class HealthyConfigServer: @unchecked Sendable {
         )
 
         let server = self
-        runAcceptLoop(
+        acceptLoop = runAcceptLoop(
             listenFD: listenFD,
             lock: lock,
             isStopped: { server.stopped },
@@ -346,6 +373,7 @@ private final class HealthyConfigServer: @unchecked Sendable {
         let open = conns
         conns = []
         lock.unlock()
+        if let acceptLoop { joinAcceptLoop(acceptLoop) }
         closeListeningSocket(listenFD, connections: open, path: path)
     }
 }

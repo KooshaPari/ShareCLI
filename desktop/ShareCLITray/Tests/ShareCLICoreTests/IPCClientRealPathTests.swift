@@ -2,6 +2,25 @@ import Foundation
 import XCTest
 @testable import ShareCLICore
 
+/// Test-local flag shared between a detached `Task` and the test thread. A bare
+/// captured `var` is a data race; this serializes access (audit warn-tier).
+private final class LockedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+
+    func set() {
+        lock.lock()
+        value = true
+        lock.unlock()
+    }
+
+    var isSet: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+}
+
 /// Real-path acceptance for the phase-0.5/0.6/0.7 BLOCKER fixes.
 ///
 /// This is NOT the in-process synthetic server used by `IPCClientDeadlineTests`.
@@ -42,27 +61,30 @@ final class IPCClientRealPathTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: dir) }
 
         let wedge = WedgeListener(path: dir.appendingPathComponent("wedged.sock").path)
-        try wedge.start()
+        wedge.start()
         defer { wedge.stop() }
 
         let wedged = IPCClient(socketPath: wedge.path, timeout: 1.0)
         let t0 = Date()
         let wedgedExp = expectation(description: "wedged daemon must time out")
-        var timedOut = false
+        // The flag is written from the detached `Task` and read on the test
+        // thread; a bare `var` would be a data race that Swift 6 concurrency
+        // checking flags (audit warn-tier). `LockedFlag` serializes it.
+        let timedOut = LockedFlag()
         Task {
             defer { wedgedExp.fulfill() }
             do {
                 _ = try await wedged.listProcesses()
                 XCTFail("wedged daemon must never answer process.list")
             } catch IPCError.timeout {
-                timedOut = true
+                timedOut.set()
             } catch {
                 XCTFail("expected IPCError.timeout, got \(error)")
             }
         }
         wait(for: [wedgedExp], timeout: 30)
         let elapsed = Date().timeIntervalSince(t0)
-        XCTAssertTrue(timedOut, "wedged daemon must fail with IPCError.timeout")
+        XCTAssertTrue(timedOut.isSet, "wedged daemon must fail with IPCError.timeout")
         XCTAssertLessThan(
             elapsed, 5.0,
             "wedged daemon must fail near the 1.0s deadline, took \(elapsed)s"
@@ -172,58 +194,51 @@ final class IPCClientRealPathTests: XCTestCase {
 }
 
 /// A real listening Unix socket that accepts connections and never writes a
-/// reply -- the production wedge the 0.7 bounded-read fix must survive.
+/// reply -- the production wedge the 0.7 bounded-read fix must survive. Built on
+/// the shared `runAcceptLoop`/`closeListeningSocket` helpers so its teardown
+/// joins the accept thread before closing the listener, instead of leaking a
+/// 600 s sleeper thread and the accepted connection (audit warn-tier).
 final class WedgeListener {
     let path: String
-    private var fd: Int32 = -1
-    private var stopped = false
+    private var listenFD: Int32 = -1
     private let lock = NSLock()
+    private var accepted: [Int32] = []
+    private var stopped = false
+    private var acceptLoop: AcceptLoop?
 
     init(path: String) { self.path = path }
 
-    func start() throws {
-        unlink(path)
-        fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard fd >= 0 else { throw POSIXError(.EIO) }
-        var addr = sockaddr_un()
-        addr.sun_family = sa_family_t(AF_UNIX)
-        let bytes = Array(path.utf8)
-        guard bytes.count < MemoryLayout.size(ofValue: addr.sun_path) else {
-            throw POSIXError(.ENAMETOOLONG)
-        }
-        withUnsafeMutableBytes(of: &addr.sun_path) { raw in
-            raw.copyBytes(from: bytes)
-        }
-        let bindResult = withUnsafePointer(to: &addr) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                bind(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
-            }
-        }
-        guard bindResult == 0, listen(fd, 8) == 0 else { throw POSIXError(.EIO) }
-
-        DispatchQueue.global().async { [weak self] in
-            while true {
-                guard let self else { return }
-                self.lock.lock()
-                let done = self.stopped
-                self.lock.unlock()
-                if done { return }
-                let client = accept(self.fd, nil, nil)
-                if client >= 0 {
-                    // Deliberately send nothing. Hold the connection open so the
-                    // client blocks in read() until its own deadline fires.
-                    Thread.sleep(forTimeInterval: 600)
-                    close(client)
-                }
-            }
-        }
+    func start() {
+        listenFD = makeListeningUnixSocket(
+            at: path,
+            backlog: 8,
+            listenFailureMessage: "listen() failed"
+        )
+        let server = self
+        acceptLoop = runAcceptLoop(
+            listenFD: listenFD,
+            lock: lock,
+            isStopped: { server.stopped },
+            onAccept: { client in
+                // Hold the connection open and deliberately send nothing so the
+                // client blocks in read() until its own deadline fires. The fd
+                // is closed by `stop()` after the accept thread has been joined.
+                server.lock.lock()
+                server.accepted.append(client)
+                server.lock.unlock()
+            },
+            serve: { _ in }
+        )
     }
 
     func stop() {
         lock.lock()
         stopped = true
+        let conns = accepted
+        accepted = []
         lock.unlock()
-        if fd >= 0 { close(fd); fd = -1 }
-        unlink(path)
+        // Join the accept thread before closing the fds it may still be using.
+        if let acceptLoop { joinAcceptLoop(acceptLoop) }
+        closeListeningSocket(listenFD, connections: conns, path: path)
     }
 }

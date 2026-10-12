@@ -191,4 +191,76 @@ final class IPCConnectionTests: XCTestCase {
             XCTFail("expected IPCError.timeout for id 1, got \(error)")
         }
     }
+
+    // MARK: - Warn-tier: timeout validation, path length, cancellation
+
+    /// A non-finite or non-positive `timeout` used to reach
+    /// `DispatchTime + timeout`, which traps converting `NaN` to nanoseconds.
+    /// Clamping makes the request behave like the default deadline instead.
+    func testNonFiniteTimeoutIsClampedInsteadOfTrapping() async {
+        let server = LineSidecarServer()
+        server.setResponder { id in echo(id) }
+        defer { server.stop() }
+
+        let connection = IPCConnection(socketPath: server.path, timeout: .nan)
+        do {
+            let reply = try await connection.send(id: 1, frame: requestFrame(1))
+            let wire = try JSONDecoder().decode(IdOnly.self, from: reply)
+            XCTAssertEqual(wire.id, 1, "a NaN timeout must be clamped, not trap")
+        } catch {
+            XCTFail("a NaN timeout must be clamped to the default and still answer: \(error)")
+        }
+    }
+
+    func testNormalizedTimeoutClampsNonFiniteAndNonPositive() {
+        XCTAssertEqual(IPCConnection.normalizedTimeout(.nan), IPCConnection.defaultTimeout)
+        XCTAssertEqual(IPCConnection.normalizedTimeout(.infinity), IPCConnection.defaultTimeout)
+        XCTAssertEqual(IPCConnection.normalizedTimeout(-1), IPCConnection.defaultTimeout)
+        XCTAssertEqual(IPCConnection.normalizedTimeout(0), IPCConnection.defaultTimeout)
+        XCTAssertEqual(IPCConnection.normalizedTimeout(0.4), 0.4)
+        XCTAssertEqual(IPCConnection.normalizedTimeout(1e12), IPCConnection.maxTimeout)
+    }
+
+    /// An over-long socket path used to be truncated by `strncpy`, silently
+    /// targeting a different name. It must be rejected with a clear error.
+    func testOverLongSocketPathIsRejectedNotSilentlyTruncated() {
+        let longPath = "/tmp/" + String(repeating: "a", count: 200) + ".sock"
+        let connection = IPCConnection(socketPath: longPath, timeout: 1)
+        XCTAssertThrowsError(try connection.connect()) { error in
+            guard case IPCError.socketPathTooLong = error else {
+                return XCTFail("expected IPCError.socketPathTooLong, got \(error)")
+            }
+        }
+    }
+
+    /// Cancelling the calling `Task` must resume the request with
+    /// `CancellationError` promptly, instead of leaving it to time out (or to
+    /// outlive its caller).
+    func testCancellingARequestResumesWithCancellationError() async {
+        let server = LineSidecarServer()
+        server.setResponder { _ in nil } // accept the request, never answer it
+        defer { server.stop() }
+
+        let connection = IPCConnection(socketPath: server.path, timeout: 5)
+        let task = Task { () -> Error? in
+            do {
+                _ = try await connection.send(id: 1, frame: requestFrame(1))
+                return nil
+            } catch {
+                return error
+            }
+        }
+        // Let the send register and write before cancelling.
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        task.cancel()
+
+        let error = await task.value
+        guard let error else {
+            return XCTFail("a cancelled request must not return a result")
+        }
+        XCTAssertTrue(
+            error is CancellationError,
+            "cancellation must surface as CancellationError, got \(error)"
+        )
+    }
 }

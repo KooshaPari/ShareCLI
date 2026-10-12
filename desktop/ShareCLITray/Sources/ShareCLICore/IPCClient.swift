@@ -434,7 +434,11 @@ public actor IPCClient {
             method: "process.kill", params: ["pid": .uint(pid)]
         )
         guard let killed = resp.result else { throw IPCError.nilResult("process.kill") }
-        guard killed else { throw IPCError.server("no such pid: \(pid)") }
+        // The daemon answers `false` for a pid it does not manage (audit 0.6) and
+        // nothing more. The message must state only what the daemon reported —
+        // the daemon never claimed the pid does not exist, so asserting "no such
+        // pid" invents a fact (audit warn-tier).
+        guard killed else { throw IPCError.server("the daemon did not stop pid \(pid)") }
         return true
     }
 
@@ -584,6 +588,10 @@ public enum IPCError: LocalizedError {
     case alreadyConnected
     /// The daemon answered with a populated `error` field.
     case server(String)
+    /// The configured socket path is longer than `sockaddr_un.sun_path` can
+    /// hold. Truncating it would silently target a different name, so it is
+    /// rejected instead (audit warn-tier).
+    case socketPathTooLong(String, maxBytes: Int)
 
     public var errorDescription: String? {
         switch self {
@@ -595,6 +603,8 @@ public enum IPCError: LocalizedError {
         case .alreadyConnected: return "An IPC connection is already open"
         case .nilResult(let m): return "Nil result from \(m)"
         case .server(let m): return m
+        case .socketPathTooLong(let p, let maxBytes):
+            return "Unix socket path is \(maxBytes) bytes maximum: \(p)"
         }
     }
 }

@@ -33,8 +33,15 @@ final class IPCClientKillContractTests: XCTestCase {
                 "killing a pid the pool does not manage must not report success; "
                     + "the tray would claim it stopped a process that is still running"
             )
+        } catch let IPCError.server(message) {
+            // The daemon only reported `result: false`; the message must not
+            // invent a stronger fact such as "no such pid" (audit warn-tier).
+            XCTAssertEqual(
+                message, "the daemon did not stop pid 999999",
+                "the refusal message must state only what the daemon reported"
+            )
         } catch {
-            // Expected: the refused kill is surfaced, not swallowed.
+            XCTFail("expected IPCError.server, got \(error)")
         }
     }
 
@@ -108,6 +115,7 @@ private final class ScriptedDaemon: @unchecked Sendable {
     private let lock = NSLock()
     private var conns: [Int32] = []
     private var stopped = false
+    private var acceptLoop: AcceptLoop?
 
     /// `reply` receives the request id and method, and returns a JSON fragment
     /// for the `result`/`error` fields.
@@ -121,7 +129,7 @@ private final class ScriptedDaemon: @unchecked Sendable {
         )
 
         let server = self
-        runAcceptLoop(
+        acceptLoop = runAcceptLoop(
             listenFD: listenFD,
             lock: lock,
             isStopped: { server.stopped },
@@ -167,6 +175,8 @@ private final class ScriptedDaemon: @unchecked Sendable {
         let open = conns
         conns = []
         lock.unlock()
+        // Join the accept thread before closing the fds it may still be using.
+        if let acceptLoop { joinAcceptLoop(acceptLoop) }
         closeListeningSocket(listenFD, connections: open, path: path)
     }
 }

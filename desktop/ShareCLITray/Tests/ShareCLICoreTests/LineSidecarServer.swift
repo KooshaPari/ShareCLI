@@ -38,6 +38,7 @@ final class LineSidecarServer: @unchecked Sendable {
     private var connections: [Int32] = []
     private var stopped = false
     private var responder: Responder = { id in echo(id) }
+    private var acceptLoop: AcceptLoop?
 
     init() {
         path = "/tmp/sharecli-line-sidecar-\(UUID().uuidString).sock"
@@ -48,7 +49,7 @@ final class LineSidecarServer: @unchecked Sendable {
         )
 
         let server = self
-        runAcceptLoop(
+        acceptLoop = runAcceptLoop(
             listenFD: listenFD,
             lock: lock,
             isStopped: { server.stopped },
@@ -168,6 +169,8 @@ final class LineSidecarServer: @unchecked Sendable {
         let open = connections
         connections = []
         lock.unlock()
+        // Join the accept thread before closing the fds it may still be using.
+        if let acceptLoop { joinAcceptLoop(acceptLoop) }
         closeListeningSocket(listenFD, connections: open, path: path)
     }
 }
