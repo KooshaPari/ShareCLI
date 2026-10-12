@@ -201,6 +201,56 @@ final class PollLoopTests: XCTestCase {
         )
     }
 
+    // MARK: - Non-cancellation sleep failures are not silently "cancelled"
+
+    func testNonCancellationSleepErrorIsSurfacedAndEndsTheLoop() async {
+        let recorder = StartRecorder()
+        let errors = ErrorRecorder()
+        let clock = PollClock(
+            now: { ContinuousClock().now },
+            sleepUntil: { _ in throw TestClockFailure.boom }
+        )
+
+        let loop = PollLoop(
+            interval: .seconds(30),
+            clock: clock,
+            onError: { errors.record($0) }
+        ) {
+            recorder.record(ContinuousClock().now)
+        }
+
+        await loop.run()
+
+        // The first poll ran immediately; the failing sleep then ended the loop
+        // rather than spinning, and the fault was surfaced (not swallowed as a
+        // cancellation).
+        XCTAssertEqual(recorder.snapshot.count, 1)
+        XCTAssertEqual(errors.snapshot.count, 1, "the non-cancellation error must be surfaced")
+        XCTAssertTrue(errors.snapshot.first is TestClockFailure)
+    }
+
+    func testCancellationErrorIsNotSurfacedAsAFailure() async {
+        let recorder = StartRecorder()
+        let errors = ErrorRecorder()
+        let clock = PollClock(
+            now: { ContinuousClock().now },
+            sleepUntil: { _ in throw CancellationError() }
+        )
+
+        let loop = PollLoop(
+            interval: .seconds(30),
+            clock: clock,
+            onError: { errors.record($0) }
+        ) {
+            recorder.record(ContinuousClock().now)
+        }
+
+        await loop.run()
+
+        XCTAssertEqual(recorder.snapshot.count, 1)
+        XCTAssertTrue(errors.snapshot.isEmpty, "cancellation is not a fault to report")
+    }
+
     // MARK: - Helpers
 
     private static func meanSpacingSeconds(_ stamps: [ContinuousClock.Instant]) -> Double {
@@ -302,5 +352,29 @@ private final class ManualClockState: @unchecked Sendable {
     /// A `PollClock` backed by this state.
     var pollClock: PollClock {
         PollClock(now: { self.now }, sleepUntil: { try await self.sleep(until: $0) })
+    }
+}
+
+/// A clock fault that is deliberately *not* a `CancellationError`, so the loop's
+/// cancellation handling can be told apart from its fault handling.
+private enum TestClockFailure: Error, Equatable {
+    case boom
+}
+
+/// Thread-safe record of errors surfaced by `PollLoop.onError`.
+private final class ErrorRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var errors: [Error] = []
+
+    func record(_ error: Error) {
+        lock.lock()
+        errors.append(error)
+        lock.unlock()
+    }
+
+    var snapshot: [Error] {
+        lock.lock()
+        defer { lock.unlock() }
+        return errors
     }
 }

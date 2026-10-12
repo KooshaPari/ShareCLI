@@ -23,10 +23,21 @@ import Foundation
 
 public struct SidecarTickGate {
     /// How many `tickSeconds` a tick may run before it counts as wedged.
-    /// 4 covers the slowest legitimate tick — health probe (3 s) + connect
-    /// probe (1 s) + terminate grace (2 s) + a `ps` snapshot ≈ 7 s — at the
-    /// default 3 s cadence (4 × 3 s = 12 s), while still letting a
-    /// test-driven 0.2 s cadence take over in 0.8 s.
+    ///
+    /// 4 covers the slowest legitimate tick at the default 3 s cadence
+    /// (4 × 3 s = 12 s), while still letting a test-driven 0.2 s cadence take
+    /// over in 0.8 s.
+    ///
+    /// The largest term in a legitimate tick is the `ps` snapshot inside
+    /// `recover()`: `SidecarProcessProbe.snapshot()` shells out to
+    /// `/bin/ps` with **no timeout**, so it is the only unbounded wait, and a
+    /// takeover runs it twice (once before `terminate`, once after). The
+    /// bounded terms are the connect probe (1 s) and — when the socket answers
+    /// but the health probe times out — that probe (3 s); terminating a wedged
+    /// sidecar additionally pays the 2 s grace plus a 0.2 s SIGKILL settle.
+    /// `recover()` is reachable from both the unreachable branch and the
+    /// failed-health-probe branch, so the bound is sized against the sum of
+    /// the bounded terms plus both `ps` snapshots, not against any one term.
     public static let wedgedTickMultiple: Double = 4
 
     /// The takeover bound for this gate, in seconds.

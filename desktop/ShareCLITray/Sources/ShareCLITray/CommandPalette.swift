@@ -17,6 +17,10 @@ struct CommandPalette: View {
     @State private var filtered: [CommandEntry] = []
     @State private var selectedIndex: Int = 0
     @FocusState private var searchFocused: Bool
+    /// Focus target for the result list. Tab moves focus here from the search
+    /// field (and back), so a keyboard user can reach the actions; it never
+    /// leaves the modal palette.
+    @FocusState private var listFocused: Bool
     /// Destructive action awaiting confirmation (PLAN 1.24). The action is not
     /// forwarded to `onAction` until the operator confirms.
     @State private var pendingDestructive: CommandAction?
@@ -225,6 +229,8 @@ struct CommandPalette: View {
                         }
                         .padding(8)
                     }
+                    .focusable()
+                    .focused($listFocused)
                 }
             }
             .frame(width: 560, height: 380)
@@ -290,7 +296,16 @@ struct CommandPalette: View {
         case .dismiss:
             isVisible = false
         case .trapTab:
-            searchFocused = true
+            // Keep focus inside the modal palette, but let Tab escape the
+            // search field for the result list. Previously Tab re-focused the
+            // search field, so the list was unreachable without a pointer.
+            if searchFocused {
+                searchFocused = false
+                listFocused = true
+            } else {
+                listFocused = false
+                searchFocused = true
+            }
         case .passThrough:
             return .ignored
         }

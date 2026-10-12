@@ -54,6 +54,17 @@ enum LogsFailure: Equatable {
 
     /// Exactly one action affordance per failure.
     var actionTitles: [String] { [retryLabel] }
+
+    /// The failure that remains once an export has succeeded.
+    ///
+    /// A successful export resolves an `.export` failure; exporting the
+    /// in-memory lines says nothing about whether the log file can be opened,
+    /// so an `.openLogFile` failure is left in place. Without this the export
+    /// error banner outlived the successful retry that fixed it.
+    static func afterSuccessfulExport(_ current: LogsFailure?) -> LogsFailure? {
+        if case .export = current { return nil }
+        return current
+    }
 }
 
 struct LogsPage: View {
@@ -314,6 +325,9 @@ struct LogsPage: View {
         let text = filtered.map(\.raw).joined(separator: "\n") + "\n"
         do {
             try text.write(to: url, atomically: true, encoding: .utf8)
+            // Clear a stale export error: the banner must not outlive the
+            // successful retry that fixed it (an unrelated open failure stays).
+            logsFailure = LogsFailure.afterSuccessfulExport(logsFailure)
             copyToast = "Exported to \(url.lastPathComponent)"
             Task {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)

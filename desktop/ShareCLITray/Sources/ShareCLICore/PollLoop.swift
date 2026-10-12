@@ -75,14 +75,17 @@ public struct PollLoop: Sendable {
 
     private let work: @Sendable () async -> Void
     private let clock: PollClock
+    private let onError: @Sendable (Error) -> Void
 
     public init(
         interval: Duration,
         clock: PollClock = .continuous,
+        onError: @escaping @Sendable (Error) -> Void = { _ in },
         work: @escaping @Sendable () async -> Void
     ) {
         self.interval = interval
         self.clock = clock
+        self.onError = onError
         self.work = work
     }
 
@@ -94,6 +97,12 @@ public struct PollLoop: Sendable {
     /// not `interval + work`. Scheduling sleeps on the injected clock, which is
     /// also what makes cancellation terminate the loop promptly instead of
     /// waiting out a full interval.
+    ///
+    /// A sleep failure is not automatically cancellation: only a
+    /// `CancellationError` (or a cancelled task) terminates the loop quietly.
+    /// Any other failure is surfaced through `onError` and then stops the loop,
+    /// because a clock whose `sleep` is failing cannot schedule the next poll
+    /// and silently ending it would hide the fault.
     public func run() async {
         var deadline = clock.now
         while !Task.isCancelled {
@@ -101,8 +110,11 @@ public struct PollLoop: Sendable {
             deadline = PollCadence.deadline(previous: deadline, interval: interval, now: clock.now)
             do {
                 try await clock.sleep(until: deadline)
+            } catch is CancellationError {
+                return // The task is going away.
             } catch {
-                return // CancellationError — the task is going away.
+                onError(error)
+                return
             }
         }
     }

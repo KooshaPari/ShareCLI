@@ -77,6 +77,25 @@ final class TrayRetryActionTests: XCTestCase {
         }
     }
 
+    // MARK: - AC: a successful export clears the stale export failure
+
+    func testSuccessfulExportClearsAnExportFailure() {
+        XCTAssertNil(
+            LogsFailure.afterSuccessfulExport(.export("disk full")),
+            "a successful export must clear the export error banner"
+        )
+    }
+
+    func testSuccessfulExportLeavesAnUnrelatedOpenFailureAlone() {
+        // Exporting the in-memory lines says nothing about whether the log file
+        // can be opened, so an open failure must survive an export.
+        XCTAssertEqual(
+            LogsFailure.afterSuccessfulExport(.openLogFile("permission denied")),
+            .openLogFile("permission denied")
+        )
+        XCTAssertNil(LogsFailure.afterSuccessfulExport(nil))
+    }
+
     // MARK: - AC: source invariant — no page still renders the developer string
 
     func testOwnedSourceFilesNoLongerRenderDeveloperString() throws {

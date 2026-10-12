@@ -144,17 +144,34 @@ final class ClosureKillCmdFTests: XCTestCase {
     }
 
     func testProcessRowInlineKillDelegatesThroughGate() throws {
-        let text = try source("ProcessRow.swift")
-        // ProcessRowInline receives `kill:` as a closure; the caller's
-        // responsibility is to route through the gate. We assert the call
-        // site in ProcessesPage goes through the gate.
+        // ProcessRowInline receives `kill:` as a closure; the gate that guards
+        // it is ProjectGroupCard's `killGate`, and both live in
+        // ProcessRow.swift — NOT ProcessesPage.swift. The original assertion
+        // checked ProcessesPage.swift for the string `DestructiveKillGate`,
+        // which is vacuous: that file only *declares* the type, so the test
+        // passed even with no per-row wiring at all. Assert the real wiring.
+        let processRow = try source("ProcessRow.swift")
+        XCTAssertTrue(
+            processRow.contains("killGate.request("),
+            "ProjectGroupCard must route the inline kill request through killGate.request"
+        )
+        XCTAssertTrue(
+            processRow.contains("killGate.confirm()"),
+            "the confirmed scope must be handed back only via killGate.confirm()"
+        )
+        XCTAssertTrue(
+            processRow.contains("kill(p.pid)"),
+            "ProcessRowInline wires the kill via the closure it receives"
+        )
+
+        // The grouped closure ProcessesPage hands to ProjectGroupCard is the
+        // *perform* closure (it runs the kill); the gate wraps it inside
+        // ProjectGroupCard. So ProcessesPage must pass a `kill:` closure, and
+        // the gate must exist in ProcessRow — the file that consumes it.
         let processesPage = try source("ProcessesPage.swift")
         XCTAssertTrue(
-            processesPage.contains("DestructiveKillGate"),
-            "ProcessesPage ProjectGroupCard.kill must be gated; raw kill closure is not sufficient"
+            processesPage.contains("ProjectGroupCard(") && processesPage.contains("kill:"),
+            "ProcessesPage must pass the perform-only kill closure into ProjectGroupCard"
         )
-        // Sanity: ProcessRowInline still uses the delegated closure.
-        XCTAssertTrue(text.contains("kill(p.pid)"),
-                      "ProcessRowInline wires the kill via the closure it receives")
     }
 }

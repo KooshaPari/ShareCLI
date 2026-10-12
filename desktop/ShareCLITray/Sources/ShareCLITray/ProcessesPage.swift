@@ -180,7 +180,11 @@ struct ProcessesPage: View {
 
     private var treeSubpage: some View {
         // P2-9: route to Canvas-based DAG renderer (was TreeView).
-        ProcessesTreeCanvasView(state: state, onSelect: { _ in })
+        // Use the composite so the labelled tap overlay ships with the canvas:
+        // it makes every node a focusable Button with a VoiceOver label and
+        // wraps the pair in `.accessibilityElement(children: .contain)`.
+        // The bare `ProcessesTreeCanvasView` alone is not node-reachable by AT.
+        ProcessesTreeCanvasCompositeView(state: state, onSelect: { _ in })
     }
 
     // MARK: - Trends subpage
