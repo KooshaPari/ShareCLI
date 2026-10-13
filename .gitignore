@@ -16,6 +16,8 @@
 **/zig-out/
 *~
 /target/
+# Submodule: phenotype-teamcomm (absorbed 27aa1dc2) — its own build dir
+lib/teamcomm/target/
 # Agent directories
 # Editors
 # Git worktrees (embedded repos)
