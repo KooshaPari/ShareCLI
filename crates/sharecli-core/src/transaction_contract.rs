@@ -42,6 +42,8 @@ pub enum GuardError {
     InsufficientCapacity,
     Overflow,
     UnknownReservation,
+    UnknownConsumer,
+    InvalidUnits,
     NotReclaimed,
     ProducerStopping,
     StaleGeneration,
@@ -70,6 +72,9 @@ impl ReservationPool {
     pub fn reserve(&mut self, reservation_id: &str, units: u64) -> Result<(), GuardError> {
         if self.active.contains_key(reservation_id) {
             return Err(GuardError::Duplicate);
+        }
+        if units == 0 {
+            return Err(GuardError::InvalidUnits);
         }
         let used = self.active.values().try_fold(0_u64, |sum, value| {
             sum.checked_add(*value).ok_or(GuardError::Overflow)
@@ -141,7 +146,9 @@ impl SharedProducer {
         if generation != self.generation {
             return Err(GuardError::StaleGeneration);
         }
-        self.consumers.remove(consumer_id);
+        if !self.consumers.remove(consumer_id) {
+            return Err(GuardError::UnknownConsumer);
+        }
         if self.consumers.is_empty() && self.state == ProducerState::Running {
             self.state = ProducerState::Stopping;
             return Ok(true);
@@ -172,8 +179,8 @@ pub fn can_retry_effect(
 ) -> bool {
     match outcome {
         EffectOutcome::ConfirmedSuccess => false,
-        EffectOutcome::NotDispatched | EffectOutcome::ConfirmedFailure => true,
-        EffectOutcome::Unknown => {
+        EffectOutcome::NotDispatched => true,
+        EffectOutcome::ConfirmedFailure | EffectOutcome::Unknown => {
             proven_absent
                 || duplication_explicitly_authorized
                 || (same_effect_key_and_payload && atomic_target_deduplication)
@@ -267,6 +274,8 @@ mod tests {
     fn producer_late_join_cannot_revive_stopping_generation() {
         let mut producer = SharedProducer::new(4);
         producer.join(4, "human", true, true, true).unwrap();
+        assert_eq!(producer.detach(4, "unrelated"), Err(GuardError::UnknownConsumer));
+        assert_eq!(producer.state, ProducerState::Running);
         assert!(producer.detach(4, "human").unwrap());
         assert_eq!(producer.join(4, "agent", true, true, true), Err(GuardError::ProducerStopping));
         assert_eq!(producer.join(3, "agent", true, true, true), Err(GuardError::StaleGeneration));
@@ -275,6 +284,8 @@ mod tests {
     #[test]
     fn unknown_effect_is_not_automatically_retryable() {
         assert!(!can_retry_effect(EffectOutcome::Unknown, false, false, false, false));
+        assert!(!can_retry_effect(EffectOutcome::ConfirmedFailure, false, false, false, false));
+        assert!(can_retry_effect(EffectOutcome::NotDispatched, false, false, false, false));
         assert!(can_retry_effect(EffectOutcome::Unknown, true, true, false, false));
         assert!(!can_retry_effect(EffectOutcome::Unknown, false, true, false, false));
         assert!(!can_retry_effect(EffectOutcome::ConfirmedSuccess, true, true, true, true));
