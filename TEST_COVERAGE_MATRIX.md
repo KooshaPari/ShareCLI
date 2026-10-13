@@ -209,3 +209,15 @@ Once 85% is achieved, the ratchet locks:
 ---
 
 **Last Updated**: 2026-09-03 (Wave18 T-910 workspace-broad remeasure **82.38%** @ `d152eda`; Phase-1 unblock complete)
+
+---
+
+## 2026-10-12 — FR-013 proposed guard coverage (unmeasured new revision)
+
+The previous workspace percentage pin above predates this change and must not be applied to the new branch.
+
+| Requirement | New tests | Evidence class | Remaining requirement |
+|---|---|---|---|
+| FR-013 | five in-module `transaction_contract` tests | Pure unit/contract checks (CI status must be read separately) | Live supervisor, actual effect-broker grants, crash/restart, cross-host fencing and partitions |
+
+**Status:** No newly measured code coverage percentage or native end-to-end pass is claimed. [Matrix details](docs/verification/global-nested-ledger.md).

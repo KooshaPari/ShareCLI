@@ -87,3 +87,15 @@ harnesses. Suite-facing soft eval lives in `phenotype-tooling/crates/benchora`
 | FR-012 | Serve HTTP Federated AuthN (operator surface) |
 
 FR-001..FR-005 remain the supervise-surface acceptance spine.
+
+---
+
+## Proposed E5 — Actor-neutral global nested transaction participation (2026-10-12)
+
+**Human intent:** [verbatim source](docs/intent/2026-10-12-global-nested-ledger.md). This is an extension of the existing OS-adjacent optimizer, not a new product or a claim of deployed capability.
+
+When local human and software-agent work is split, coalesced, cancelled or retried, the system must preserve originating commitments in **one logical global nested transaction tree** with separate consumer subscriptions and cross-branch shared resources. Actor is common to Human and SoftwareAgent, while permissions are independently delegated and enforced. Standalone ShareCLI remains useful; PhenoFabric joins distributed placement and epochs via an explicit authority adoption procedure.
+
+**User-facing outcomes:** no duplicate charges for one shared physical execution; cancelling one subscriber does not cancel another; a child actor never gains a duplicated parent budget; an unknown remote effect cannot silently run twice; recorded history distinguishes planned, attempted, observed and accepted.
+
+**Scope and acceptance:** proposed FR-013, [architecture ADR 0009](docs/adr/0009-global-nested-ledger-local-admission.md), [verification](docs/verification/global-nested-ledger.md). The present code comprises pure Rust guard predicates with tests; integration into process dispatch, distributed authority, and native effect fencing remains pending.

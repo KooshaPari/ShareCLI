@@ -314,4 +314,14 @@ Dual-licensed under MIT or Apache 2.0, at your option.
 See [LICENSE](LICENSE) and [LICENSE-APACHE](LICENSE-APACHE).
 ""  
 ""  
-"## ci-gate-refresh $(date -u +%FT%TZ)"  
+"## ci-gate-refresh $(date -u +%FT%TZ)"
+
+---
+
+## Global nested transaction research (proposed 2026-10-12)
+
+ShareCLI participates as a standalone local governor in **one globally logical recursively nested immutable transaction history** with PhenoFabric—not separate per-agent ledgers. Human and SoftwareAgent share an Actor parent class; effective grants/permissions are explicit and scoped. Original consumer obligations and physical budgets must survive sharing, splitting, cancellation, migration and retry.
+
+[Verbatim user intent](docs/intent/2026-10-12-global-nested-ledger.md) · [Genesis](docs/genesis/global-nested-ledger.md) · [SOTA](docs/sota/global-nested-ledger.md) · [ADR 0009](docs/adr/0009-global-nested-ledger-local-admission.md) · [Proposed FR-013](docs/specs/FR.md) · [Verification](docs/verification/global-nested-ledger.md).
+
+The new Rust guard module is a pure predicate/test slice. Durable authority integration, OS effect mediation and native cross-host acceptance are **not implemented by this documentation change**.

@@ -55,6 +55,8 @@
 //! - `// TODO(hypervisor): speculative` — pre-execute high-probability commands during
 //!   idle periods and pre-populate the coalesce cache.
 
+pub mod transaction_contract;
+
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::sync::Arc;

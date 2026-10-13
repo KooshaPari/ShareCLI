@@ -121,3 +121,15 @@ processes:
 | Process start | <2s |
 | Memory overhead | <32MB (sharecli itself) |
 | Idle prune scan | <1s |
+
+---
+
+## Proposed transaction contract architecture extension (2026-10-12)
+
+**Canonical components:** [ADR 0009](docs/adr/0009-global-nested-ledger-local-admission.md) and [typed invariant tests](docs/verification/global-nested-ledger.md). `sharecli-core::transaction_contract` provides a first pure, synchronous predicate layer. It neither persists the global history nor mediates filesystem/OS effects. Do not confuse `sharecli-session`'s compactable terminal observations with immutable authoritative transaction history.
+
+**Sequence (target, not implemented):** request/Actor identity → scoped grant/epoch verification → candidate plan/equivalence certificate → atomic reservation → effect-broker dispatch → receipt/observed enforcement → output verification → target-fenced publication → per-consumer acceptance. A remote Fabric placement proposal is not a committed lease.
+
+**Boundaries:** one owning parent scope per transaction, explicit cross-branch references, independent consumers, physical reservation IDs not doubled by parent envelopes, stable logical-effect IDs across retries, sealed required-child membership for acceptance. Post-dispatch failure can be `outcome_unknown`. Expired leases do not prove physical reclaim.
+
+**Realization gate:** durable local SQL/outbox or equivalent transactional adapter; authenticated rights; target enforcement/reclamation; native concurrency and crash recovery tests. Preserve existing architecture, rather than fabricating claims of completed runtime integration.
