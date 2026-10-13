@@ -272,3 +272,13 @@ and `phenotype-tooling/crates/benchora/harbor-soft`.
 - **NFR-003** Errors: commands return `anyhow::Result<()>`; missing config → default.
 - **NFR-004** Eval boundary: Harbor soak is not a sharecli product acceptance
   criterion (ADR 0002).
+
+---
+
+## FR-013 — Bounded nested transaction admission and execution preservation (PROPOSED)
+
+**As a** human or software-agent participant, **I want** ShareCLI to retain the rights, obligations, consumers, resources and attribution of my work through safe execution-plan transformations, **so that** shared or migrated work cannot silently broaden authority or lose an obligation.
+
+**MUST (proposal):** Local ShareCLI operations contributing to the one global recursively nested transaction model MUST preserve their parent scope and actor-neutral grants, account physical resource consumption exactly once, enforce consumer-specific cancellation, and preserve logical effect identity and unknown outcomes across retry. Standalone participation MUST NOT mint new authority on joining PhenoFabric.
+
+**Proposed acceptance:** AC-013.1--013.6 in [canonical FR](docs/specs/FR.md) and [verification matrix](docs/verification/global-nested-ledger.md). **Implementation state:** pure guard module only, no native runtime wiring or production acceptance. Depends on FR-008 coalescing and FR-010 mesh semantics, without replacing their accepted IDs.
