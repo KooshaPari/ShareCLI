@@ -1108,3 +1108,22 @@ against the configured JWKS. `/healthz` and `/readyz` MUST remain public.
   by returning `Config::default()`).
 - **NFR-004 Eval boundary:** Harbor soak is not a sharecli product acceptance
   criterion (ADR 0002).
+
+---
+
+## FR-013 — Global nested transaction-safe local admission (PROPOSED, not Phase-3 accepted)
+
+**Statement:** The local ShareCLI governor MUST preserve scoped actor-neutral authority and original consumer obligations through work splitting, sharing, cancellation, retry and remote placement, contributing to a single global logical recursively nested ledger without a per-agent authority history or duplicated physical reservations.
+
+**Source:** `crates/sharecli-core/src/transaction_contract.rs` (pure testable predicates only); [ADR 0009](../adr/0009-global-nested-ledger-local-admission.md). No native execution broker or persistent local history is wired yet.
+
+**Acceptance criteria:**
+
+- **AC-013.1:** Human and SoftwareAgent have the same Actor parent contract; delegation cannot add operations or multiply budget; explicit owner/consent policy is not implicit privilege.
+- **AC-013.2:** Two concurrent callers cannot over-reserve finite capacity; a lease expires independently of verified physical reclaim; no parent/child double-count.
+- **AC-013.3:** Sharing requires validated equivalence and separate output permission; cancelling A cannot terminate a producer still needed by B; late joins race safely with shutdown.
+- **AC-013.4:** Logical-effect key and exact payload survive retry; unknown outcome cannot be treated as failure-to-execute; target-side deduplication is mandatory for permitted automatic replay.
+- **AC-013.5:** Accepted parent has current sealed membership and required-child completion; externally committed effects require explicit compensation/forward recovery.
+- **AC-013.6:** A standalone root joins Fabric through an explicit identity/authority transition; target-side fencing rejects stale publishers across hosts.
+
+**Evidence:** [guard tests](../../crates/sharecli-core/src/transaction_contract.rs) partially model AC-013.1–013.5; full native tests and AC-013.6 are **pending**. See [test specification](../verification/global-nested-ledger.md). No row is marked ACCEPTED without native checkouts/receipts. Existing FR-001..012 remain unchanged.
