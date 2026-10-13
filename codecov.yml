@@ -5,6 +5,12 @@ coverage:
         target: 70%
         threshold: 1%
         paths:
+          # All 16 Rust workspace members live in crates/ (post-crates migration).
+          # Without these, the project status cannot find any source files and
+          # reports 0% on PRs that touch crates/*/src/** (e.g. PR #876).
+          - "crates/"
+          - "crates/**/*.rs"
+          # Legacy Python paths kept for any non-crates modules.
           - "src/"
           - "sharecli/"
           - "src/**/*.rs"
@@ -12,6 +18,10 @@ coverage:
       default:
         target: 80%
         threshold: 1%
+        # Same crate scope for PR patch coverage.
+        paths:
+          - "crates/"
+          - "crates/**/*.rs"
 
 comment:
   layout: "reach, diff, flags, files, footer"
