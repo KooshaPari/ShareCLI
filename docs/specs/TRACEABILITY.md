@@ -656,3 +656,13 @@
 - **2026-07-12 — T-210:** Landed `tests/fr003_project_registry.rs` + `tests/fr003_project_discover.rs` (AC-003.1..003.5). Also T-260 claim-lock + T-270 loop budgets.
 - **2026-07-12 — T-200:** Landed `tests/fr002_config_init.rs` + `tests/fr002_config_load.rs` (AC-002.1..002.5). FR-002 Status remains ACCEPTED with files on disk. Governance: `docs/ops/governance/{WBS-PHASED,GAP-QA-MATRIX}.md`.
 - **2026-06-15 — Phase 3 initial:** 5 FRs published; 10 acceptance test files added; full FR→source→test matrix established.
+
+---
+
+## Proposed FR-013 traceability supplement — 2026-10-12
+
+| Requirement | Exact human source | Decision/spec | Code | Test/verification | State |
+|---|---|---|---|---|---|
+| FR-013 | [2026-10-12 prompt evidence](../intent/2026-10-12-global-nested-ledger.md) | [ADR 0009](../adr/0009-global-nested-ledger-local-admission.md), [FR-013](FR.md) | `crates/sharecli-core/src/transaction_contract.rs` | Five unit tests enumerated in [verification](../verification/global-nested-ledger.md); native concurrency/restart tests missing | **Proposed; pure guards committed, not end-to-end implemented** |
+
+**Acceptance gate:** before state promotion, bind authenticated Actor grants to live admission, serialize authority decisions, persist commit/outbox atomically, obtain trusted effect/reclamation receipts, and verify target-side fenced publication. Existing FR/SC-MO identifiers retain their history.
