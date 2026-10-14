@@ -37,7 +37,10 @@ allow = [
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-allow-git = ["https://github.com/KooshaPari/PhenoShared"]
+allow-git = [
+  "https://github.com/KooshaPari/PhenoShared",
+  "https://github.com/KooshaPari/PhenoInfra.git",
+]
 
 [advisories]
 ignore = [
@@ -66,4 +69,12 @@ ignore = [
   # gtk deps). Linux-only, not compiled for the Windows tray artifact; no safe
   # upgrade in the 1.x line.
   { id = "RUSTSEC-2024-0370", reason = "proc-macro-error unmaintained - transitive via tray-icon Linux gtk backend only; not compiled for Windows tray." },
+  # unsafe-libyaml was archived 2024-03-25 by its owner and is read-only.
+  # The last release is 0.2.11; no safe upgrade exists. It is transitively
+  # pulled in by serde_yaml 0.9.34+deprecated (itself deprecated). sharecli
+  # uses serde_yaml only for parsing local config/auth files - never on
+  # untrusted network input - so a frozen C-to-Rust translation does not
+  # materially raise risk for our usage. A future migration to
+  # serde_yaml_ng or toml/yaml alternatives is tracked separately.
+  { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml archived 2024-03-25; no safe upgrade. Transitive via serde_yaml 0.9.34+deprecated; sharecli only parses local config files - never untrusted network input." },
 ]
