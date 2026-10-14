@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use anyhow::{bail, Result};
 use runtime_process::CommandGroupProcess;
 use serde_json::json;
-use substrate::{ProcessHandle, ProcessPort, ProcessSpawnSpec};
+use substrate::{ProcessHandle, ProcessPort, ProcessSpawnSpec, ProcessState};
 use sysinfo::{Pid, ProcessStatus, System};
 use tokio::process::Command;
 use tokio::sync::RwLock;
@@ -320,8 +320,32 @@ impl ProcessPool {
 
     /// Refresh system process information
     pub async fn refresh(&self) {
-        let mut sys = self.system.write().await;
-        sys.refresh_all();
+        {
+            let mut sys = self.system.write().await;
+            sys.refresh_all();
+        }
+
+        // Reap naturally exited adapter-local children before reporting state.
+        let mut processes = self.processes.write().await;
+        let mut exited = Vec::new();
+        for (&pid, managed) in processes.iter() {
+            match self.port.status(&managed.handle).await {
+                Ok(ProcessState::Exited { .. }) => {
+                    let _ = self
+                        .port
+                        .wait_with_timeout(&managed.handle, Duration::from_millis(10))
+                        .await;
+                    exited.push(pid);
+                }
+                Ok(ProcessState::Running { .. }) => {}
+                Err(error) => {
+                    tracing::warn!(pid, %error, "unable to refresh managed child");
+                }
+            }
+        }
+        for pid in exited {
+            processes.remove(&pid);
+        }
     }
 
     /// Get all managed processes
@@ -888,6 +912,27 @@ mod tests {
         assert!(tracked.contains_key(&failed_pid));
         assert!(!tracked.contains_key(&child.pid));
         assert_eq!(tracked.len(), 1);
+    }
+
+    /// refresh() must reap managed processes that have exited naturally so
+    /// subsequent list() and kill() calls stop reporting them.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn refresh_reaps_naturally_exited_managed_process() {
+        let pool = ProcessPool::new();
+        let child = pool
+            .spawn("sleep", &["0.1".into()], None, None, Some("sleep".into()))
+            .await
+            .unwrap();
+        let child_pid = child.pid;
+        // Let the child exit naturally before we refresh.
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        pool.refresh().await;
+        assert!(pool.list().await.is_empty(), "exited child must be reaped");
+        assert!(
+            !pool.processes.read().await.contains_key(&child_pid),
+            "reaped pid must be removed from the pool"
+        );
     }
 
     #[tokio::test]
