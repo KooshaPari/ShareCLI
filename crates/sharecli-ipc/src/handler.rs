@@ -498,8 +498,11 @@ impl Handler {
                 let pid: u32 =
                     req.params["pid"].as_u64().ok_or_else(|| anyhow::anyhow!("missing pid"))?
                         as u32;
-                self.pool.kill(pid).await?;
-                Ok(Value::Bool(true))
+                // Report whether the pool actually terminated an owned process.
+                // Unknown pids (or pids not managed by this pool) return false
+                // instead of being silently misreported as a successful kill.
+                let terminated = self.pool.kill_verified(pid).await?;
+                Ok(Value::Bool(terminated))
             }
 
             "process.kill_all" => {
@@ -1113,5 +1116,20 @@ mod dispatch_tests {
         let resp = handler.dispatch(raw).await;
         assert!(resp.error.is_none(), "session.list should not error: {:?}", resp.error);
         assert!(resp.result.is_array(), "result must be an array");
+    }
+
+    /// dispatch process.kill for an unknown pid reports terminated=false
+    /// rather than silently misreporting the kill as successful.
+    #[tokio::test]
+    async fn dispatch_process_kill_unknown_pid_reports_false() {
+        let handler = Handler::with_session_store(SessionStore::open_memory().unwrap());
+        let raw = r#"{"id":42,"method":"process.kill","params":{"pid":4294967295}}"#;
+        let resp = handler.dispatch(raw).await;
+        assert!(resp.error.is_none(), "unknown pid must not error: {:?}", resp.error);
+        assert_eq!(
+            resp.result,
+            serde_json::Value::Bool(false),
+            "unknown pid must be reported as not terminated"
+        );
     }
 }

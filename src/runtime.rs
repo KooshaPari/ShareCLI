@@ -464,6 +464,12 @@ impl ProcessPool {
 
     /// Kill a process by PID via substrate ProcessPort
     pub async fn kill(&self, pid: u32) -> Result<()> {
+        self.kill_verified(pid).await.map(|_| ())
+    }
+
+    /// Return true only when this pool actually terminated an owned process.
+    /// Unknown PIDs must not be reported as verified terminations by IPC.
+    pub async fn kill_verified(&self, pid: u32) -> Result<bool> {
         let mut procs = self.processes.write().await;
         if let Some(managed) = procs.get(&pid) {
             let capability = spawn_capability(&managed.info.name, &managed.info.harness);
@@ -477,8 +483,9 @@ impl ProcessPool {
                 }
             }
             procs.remove(&pid);
+            return Ok(true);
         }
-        Ok(())
+        Ok(false)
     }
 
     /// Kill all managed processes
