@@ -45,8 +45,6 @@ ignore = [
   { id = "RUSTSEC-2025-0134", reason = "No safe upgrade available. rustls-pemfile deprecated, migration requires async-nats update." },
   # No safe upgrade available - gix = "0.71" pinned in Cargo.toml, requires major version bump
   { id = "RUSTSEC-2025-0140", reason = "No safe upgrade available. gix = 0.71 pinned in Cargo.toml, requires breaking API change." },
-  # No safe upgrade available - async-nats 0.46.0 still uses rustls-webpki 0.102.x
-  { id = "RUSTSEC-2026-0049", reason = "No safe upgrade available. async-nats 0.46.0 still uses vulnerable rustls-webpki." },
   # Marvin attack advisory covers every released version of rsa (introduced 0.0.0-0, no patch).
   # sharecli only decodes/verifies JWTs with RSA public keys for local sidecar auth (src/serve_auth.rs);
   # it never performs network-exposed RSA private-key operations.
