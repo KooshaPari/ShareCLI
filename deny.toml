@@ -72,9 +72,11 @@ ignore = [
   # unsafe-libyaml was archived 2024-03-25 by its owner and is read-only.
   # The last release is 0.2.11; no safe upgrade exists. It is transitively
   # pulled in by serde_yaml 0.9.34+deprecated (itself deprecated). sharecli
-  # uses serde_yaml only for parsing local config/auth files - never on
-  # untrusted network input - so a frozen C-to-Rust translation does not
-  # materially raise risk for our usage. A future migration to
-  # serde_yaml_ng or toml/yaml alternatives is tracked separately.
-  { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml archived 2024-03-25; no safe upgrade. Transitive via serde_yaml 0.9.34+deprecated; sharecli only parses local config files - never untrusted network input." },
+  # uses serde_yaml to parse local config/auth files, including paths from
+  # the --file flag and the upward directory search for
+  # process-compose.yaml, so YAML from a cloned repo can reach the parser.
+  # Residual risk is low: the crate is frozen and widely deployed with no
+  # known exploit. A future migration to serde_yaml_ng or toml/yaml
+  # alternatives is tracked separately.
+  { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml archived 2024-03-25; no safe upgrade. Transitive via serde_yaml 0.9.34+deprecated; local config parsing only, but --file and upward directory search can load YAML from cloned repos, so input is not fully trusted; risk low (frozen crate, no known exploit)." },
 ]
