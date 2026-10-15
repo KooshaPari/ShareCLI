@@ -1,3 +1,5 @@
+//! FR-002 — TOML Configuration Management (live-write safety guard)
+//! FR: FR-002
 //! Regression guard for live-config safety.
 //!
 //! Integration tests run as their own binary, so process-global environment
