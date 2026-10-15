@@ -67,6 +67,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Configure git credentials for private git deps
+        shell: bash
+        run: |
+          git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> "$GITHUB_ENV"
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
