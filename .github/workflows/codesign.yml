@@ -10,9 +10,16 @@ name: Code Signing (Hard Gate)
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
+
+# NOTE: pull_request removed (2026-10-16, ci/skip-codesign-on-pr).
+# Why: this hard gate requires Infisical Apple cert secrets, which
+# are not exposed to PR build contexts (and must not be exposed to
+# fork-PR workflows at all). Running on PRs caused every open PR to
+# fail codesign with INFISICAL_TOKEN unavailable.
+# Effect: codesign only runs on push to main (post-merge) and on
+# manual dispatch. The hard gate still protects releases while letting
+# PR CI proceed.
 
 permissions:
   contents: read

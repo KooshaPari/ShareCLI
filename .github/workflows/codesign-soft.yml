@@ -4,10 +4,14 @@ name: Codesign readiness (soft)
 # Does not produce signed artifacts; continue-on-error by design.
 
 on:
-  pull_request:
   push:
     branches: [main]
   workflow_dispatch:
+
+# NOTE: pull_request removed (2026-10-16, ci/skip-codesign-on-pr)
+# to match the hard gate. Soft variant has continue-on-error so it
+# never blocked PRs, but triggering it on every PR was wasteful CI
+# for a readiness probe that does not gate merges.
 
 permissions:
   contents: read
