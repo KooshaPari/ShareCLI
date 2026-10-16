@@ -1,0 +1,8 @@
+2026-10-16 21:07:26 [ERROR] failed to fetch crates:     Blocking waiting for file lock on package cache
+error: duplicate key
+  --> ..\..\.cargo\git\checkouts\phenoshared-e15052dca608b5ac\68beca2\crates\agile-plus\crates\agileplus-cache\Cargo.toml:15:2
+   |
+15 | [lib]
+   |  ^^^
+    Blocking waiting for file lock on package cache
+

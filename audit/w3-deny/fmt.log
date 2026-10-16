@@ -1,0 +1,1284 @@
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\crates\sharecli-core\src\transaction_contract.rs:76:
+         if units == 0 {
+             return Err(GuardError::InvalidUnits);
+         }
+-        let used = self.active.values().try_fold(0_u64, |sum, value| {
+-            sum.checked_add(*value).ok_or(GuardError::Overflow)
+-        })?;
++        let used = self
++            .active
++            .values()
++            .try_fold(0_u64, |sum, value| sum.checked_add(*value).ok_or(GuardError::Overflow))?;
+         let next = used.checked_add(units).ok_or(GuardError::Overflow)?;
+         if next > self.capacity {
+             return Err(GuardError::InsufficientCapacity);
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\crates\sharecli-ipc\src\lib.rs:615:
+         let lock_path = dir.path().join("held.lock");
+         // Touch the file so a second open can flock it.
+         fs::write(&lock_path, b"x").unwrap();
+-        let holder = fs::OpenOptions::new()
+-            .read(true)
+-            .write(true)
+-            .open(&lock_path)
+-            .unwrap();
++        let holder = fs::OpenOptions::new().read(true).write(true).open(&lock_path).unwrap();
+         holder.lock_exclusive().unwrap();
+ 
+-        let contender = fs::OpenOptions::new()
+-            .read(true)
+-            .write(true)
+-            .open(&lock_path)
+-            .unwrap();
++        let contender = fs::OpenOptions::new().read(true).write(true).open(&lock_path).unwrap();
+         let started = SystemTime::now();
+         let err = acquire_lock_with_deadline(&contender, Duration::from_millis(200))
+             .expect_err("must fail when another holder owns the lock");
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\crates\sharecli-ipc\src\lib.rs:640:
+             elapsed >= Duration::from_millis(200),
+             "deadline must be honored; elapsed={elapsed:?}"
+         );
+-        assert!(
+-            elapsed < Duration::from_secs(2),
+-            "deadline should be tight; elapsed={elapsed:?}"
+-        );
++        assert!(elapsed < Duration::from_secs(2), "deadline should be tight; elapsed={elapsed:?}");
+     }
+ 
+     // -----------------------------------------------------------------------
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\crates\sharecli-ipc\src\lib.rs:684:
+         thread::sleep(Duration::from_millis(200));
+ 
+         let started = SystemTime::now();
+-        let result: Result<CachedResult> = cache.with_lock(&key, || {
+-            Ok(CachedResult { exit_code: 0, stdout: vec![], stderr: vec![] })
+-        });
++        let result: Result<CachedResult> = cache
++            .with_lock(&key, || Ok(CachedResult { exit_code: 0, stdout: vec![], stderr: vec![] }));
+         let elapsed = started.elapsed().unwrap_or(Duration::ZERO);
+ 
+         // Don't assert hard on macOS — the test exists for Linux verification.
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\crates\sharecli-ipc\src\lib.rs:696:
+                 err.contains("could not acquire exclusive lock"),
+                 "expected lock-deadline error, got: {err}"
+             );
+-            assert!(
+-                elapsed < Duration::from_secs(45),
+-                "with_lock took too long: {elapsed:?}"
+-            );
++            assert!(elapsed < Duration::from_secs(45), "with_lock took too long: {elapsed:?}");
+         }
+ 
+         drop(holder);
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\crates\sharecli-ipc\src\queue.rs:187:
+             Err(e) => return Err(e).with_context(|| format!("read waiting dir {}", dir.display())),
+         };
+ 
+-        let now_secs = SystemTime::now()
+-            .duration_since(UNIX_EPOCH)
+-            .map(|d| d.as_secs())
+-            .unwrap_or(0);
++        let now_secs =
++            SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+ 
+         // My age-adjusted rank: a Critical ticket I have been holding
+         // expires from priority over time.
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\crates\sharecli-ipc\src\queue.rs:197:
+-        let my_effective =
+-            Self::effective_rank(my_ticket, my_priority, my_enqueued_at.elapsed());
++        let my_effective = Self::effective_rank(my_ticket, my_priority, my_enqueued_at.elapsed());
+ 
+         let mut best_effective = u8::MAX;
+         let mut tickets_at_best: Vec<String> = Vec::new();
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\crates\sharecli-ipc\src\queue.rs:215:
+             // (segment 1 of `<rank>.<secs>.<pid>.<seq>`) and age the peer
+             // by `now_secs - ticket_secs`. Cross-process peers share the
+             // wall-clock hint; same-process tickets correlate via pid.
+-            let ticket_secs = ticket
+-                .split('.')
+-                .nth(1)
+-                .and_then(|s| s.parse::<u64>().ok())
+-                .unwrap_or(now_secs);
++            let ticket_secs =
++                ticket.split('.').nth(1).and_then(|s| s.parse::<u64>().ok()).unwrap_or(now_secs);
+             let peer_waited_ms: u64 = if now_secs >= ticket_secs {
+                 let diff = (now_secs - ticket_secs) as u128;
+                 let ms = diff.saturating_mul(1_000);
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\crates\sharecli-ipc\src\queue.rs:238:
+                 3 => QueuePriority::Low,
+                 _ => QueuePriority::Background,
+             };
+-            let peer_effective = Self::effective_rank(
+-                &ticket,
+-                base_priority,
+-                Duration::from_millis(peer_waited_ms),
+-            );
++            let peer_effective =
++                Self::effective_rank(&ticket, base_priority, Duration::from_millis(peer_waited_ms));
+ 
+             if peer_effective < best_effective {
+                 best_effective = peer_effective;
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\crates\sharecli-ipc\src\queue.rs:267:
+             return Ok(true);
+         }
+ 
+-        let winner = tickets_at_best
+-            .iter()
+-            .min()
+-            .map(String::as_str)
+-            .unwrap_or(my_ticket);
++        let winner = tickets_at_best.iter().min().map(String::as_str).unwrap_or(my_ticket);
+         Ok(winner == my_ticket)
+     }
+ 
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\crates\sharecli-ipc\src\queue.rs:630:
+             thread::sleep(Duration::from_millis(5));
+         }
+ 
+-        let res = q.with_slot("timeout", QueuePriority::Normal, || {
+-            Ok::<_, anyhow::Error>(())
+-        });
++        let res = q.with_slot("timeout", QueuePriority::Normal, || Ok::<_, anyhow::Error>(()));
+         assert!(res.is_err(), "second caller must time out");
+         // The timing-out waiter must have cleaned its ticket. The holder's
+         // ticket has already been removed by its own success-path `release()`.
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\crates\sharecli-ipc\src\queue.rs:724:
+ 
+         // Pre-place an orphan Critical ticket that "appeared" > 3 seconds ago.
+         fs::create_dir_all(&waiting).unwrap();
+-        let old_secs = SystemTime::now()
+-            .duration_since(UNIX_EPOCH)
+-            .unwrap()
+-            .as_secs()
+-            .saturating_sub(4);
++        let old_secs =
++            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs().saturating_sub(4);
+         let orphan = format!("00.{old_secs}.{}.0", std::process::id());
+         fs::write(waiting.join(&orphan), "0\n").unwrap();
+ 
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\crates\sharecli-ipc\src\queue.rs:737:
+         // Normal ticket is now best (rank 2). It must proceed without
+         // waiting for the orphan — but the orphan's ticket file is still in
+         // the dir, which our function handles by checking only base ranks.
+-        let q = SlotQueue::with_options(
+-            q_root,
+-            1,
+-            Duration::from_secs(2),
+-            Duration::from_millis(20),
+-        );
++        let q =
++            SlotQueue::with_options(q_root, 1, Duration::from_secs(2), Duration::from_millis(20));
+         let started = Instant::now();
+         q.with_slot("orphan", QueuePriority::Normal, || {
+             assert!(
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\src\commands\config_edit.rs:34:
+         *root = new;
+         return Ok(());
+     }
+-    let map = root.as_object_mut().ok_or_else(|| anyhow::anyhow!("'{}' is not a table", path[0]))?;
++    let map =
++        root.as_object_mut().ok_or_else(|| anyhow::anyhow!("'{}' is not a table", path[0]))?;
+     let entry =
+         map.entry(path[0].to_string()).or_insert_with(|| Value::Object(serde_json::Map::new()));
+     assign(entry, &path[1..], new)
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\src\config.rs:454:
+             return false;
+         };
+         // target/<profile>/deps/<crate>-<hash>
+-        let in_deps = exe
+-            .parent()
+-            .and_then(|p| p.file_name())
+-            .map(|n| n == "deps")
+-            .unwrap_or(false);
++        let in_deps =
++            exe.parent().and_then(|p| p.file_name()).map(|n| n == "deps").unwrap_or(false);
+         if in_deps {
+             return true;
+         }
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\src\config_validator.rs:174:
+ /// reject the value on save.
+ fn validate_runtime(runtime: &crate::config::RuntimeConfig, errors: &mut Vec<ValidationError>) {
+     if runtime.max_memory_mb == Some(0) {
+-        errors.push(ValidationError::new(
+-            "config.runtime.max_memory_mb",
+-            "must be greater than 0",
+-        ));
++        errors.push(ValidationError::new("config.runtime.max_memory_mb", "must be greater than 0"));
+     }
+     if runtime.max_processes == Some(0) {
+-        errors.push(ValidationError::new(
+-            "config.runtime.max_processes",
+-            "must be greater than 0",
+-        ));
++        errors.push(ValidationError::new("config.runtime.max_processes", "must be greater than 0"));
+     }
+ }
+ 
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\src\util\mod.rs:23:
+ pub mod hash_util;
+ #[path = "../lazy.rs"]
+ pub mod lazy;
++#[path = "../rate_limiter.rs"]
++pub mod rate_limiter;
+ #[path = "../retry.rs"]
+ pub mod retry;
+ #[path = "../slice_ext.rs"]
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\src\util\mod.rs:29:
+ pub mod slice_ext;
+ #[path = "../uuid.rs"]
+ pub mod uuid;
+-#[path = "../rate_limiter.rs"]
+-pub mod rate_limiter;
+ 
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\src\commands\config_edit.rs:34:
+         *root = new;
+         return Ok(());
+     }
+-    let map = root.as_object_mut().ok_or_else(|| anyhow::anyhow!("'{}' is not a table", path[0]))?;
++    let map =
++        root.as_object_mut().ok_or_else(|| anyhow::anyhow!("'{}' is not a table", path[0]))?;
+     let entry =
+         map.entry(path[0].to_string()).or_insert_with(|| Value::Object(serde_json::Map::new()));
+     assign(entry, &path[1..], new)
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\src\config.rs:454:
+             return false;
+         };
+         // target/<profile>/deps/<crate>-<hash>
+-        let in_deps = exe
+-            .parent()
+-            .and_then(|p| p.file_name())
+-            .map(|n| n == "deps")
+-            .unwrap_or(false);
++        let in_deps =
++            exe.parent().and_then(|p| p.file_name()).map(|n| n == "deps").unwrap_or(false);
+         if in_deps {
+             return true;
+         }
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\src\config_validator.rs:174:
+ /// reject the value on save.
+ fn validate_runtime(runtime: &crate::config::RuntimeConfig, errors: &mut Vec<ValidationError>) {
+     if runtime.max_memory_mb == Some(0) {
+-        errors.push(ValidationError::new(
+-            "config.runtime.max_memory_mb",
+-            "must be greater than 0",
+-        ));
++        errors.push(ValidationError::new("config.runtime.max_memory_mb", "must be greater than 0"));
+     }
+     if runtime.max_processes == Some(0) {
+-        errors.push(ValidationError::new(
+-            "config.runtime.max_processes",
+-            "must be greater than 0",
+-        ));
++        errors.push(ValidationError::new("config.runtime.max_processes", "must be greater than 0"));
+     }
+ }
+ 
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\src\main.rs:36:
+ mod pprof_http;
+ mod proc_compose;
+ mod progress;
+-mod rate_limiter;
+ #[cfg(test)]
+ mod proptest_util;
++mod rate_limiter;
+ mod runtime;
+ mod serve_auth;
+ mod serve_lock;
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\src\main.rs:436:
+         #[arg(long)]
+         install: bool,
+     },
+-
+ 
+     /// Enumerate available CLI surfaces (cast modules + utility modules)
+     List {
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\c03_l30_agent_readiness_gate.rs:60:
+     let measured_start = matrix
+         .find("## Measured coverage pin")
+         .expect("TEST_COVERAGE_MATRIX must have Measured coverage pin section");
+-    let prior_start = matrix
+-        .find("### Prior pin")
+-        .expect("TEST_COVERAGE_MATRIX must have Prior pin section");
++    let prior_start =
++        matrix.find("### Prior pin").expect("TEST_COVERAGE_MATRIX must have Prior pin section");
+     let measured_section = &matrix[measured_start..prior_start];
+     assert!(
+         measured_section.contains("77.34%"),
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\config_live_write_guard.rs:21:
+     // 1. Without an override the write must be refused.
+     let refused = Config::default().save();
+     let err = match refused {
+-        Ok(()) => panic!(
+-            "Config::save() wrote to the live config from a test binary; the guard is inert"
+-        ),
++        Ok(()) => {
++            panic!("Config::save() wrote to the live config from a test binary; the guard is inert")
++        }
+         Err(e) => e,
+     };
+     let message = err.to_string();
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr006_proc_watch.rs:57:
+ 
+     let deadline = Instant::now() + max;
+     loop {
+-        let count = stdout_buf
+-            .lock()
+-            .expect("stdout lock")
+-            .matches(frame_marker)
+-            .count();
++        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
+         if count >= frames_needed || Instant::now() >= deadline {
+             break;
+         }
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_health_pool_status_ps_text_pool_status.rs:107:
+ 
+     let deadline = Instant::now() + max;
+     loop {
+-        let count = stdout_buf
+-            .lock()
+-            .expect("stdout lock")
+-            .matches(frame_marker)
+-            .count();
++        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
+         if count >= frames_needed || Instant::now() >= deadline {
+             break;
+         }
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_health_pool_status_ps_text_pool_status.rs:185:
+         .spawn()
+         .expect("spawn sharecli health --watch 1");
+ 
+-    let (stdout, stderr) = drain_watch_pipes(&mut child, HEALTH_HEADER, 2, Duration::from_millis(30_000));
++    let (stdout, stderr) =
++        drain_watch_pipes(&mut child, HEALTH_HEADER, 2, Duration::from_millis(30_000));
+ 
+     assert_stderr_silent(stderr.as_bytes(), "health --watch");
+     assert_text_watch_stdout(&stdout, HEALTH_HEADER, "health --watch");
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_health_pool_status_ps_text_pool_status.rs:213:
+         .spawn()
+         .expect("spawn sharecli pool --watch 1");
+ 
+-    let (stdout, stderr) = drain_watch_pipes(&mut child, POOL_HEADER, 2, Duration::from_millis(30_000));
++    let (stdout, stderr) =
++        drain_watch_pipes(&mut child, POOL_HEADER, 2, Duration::from_millis(30_000));
+ 
+     assert_stderr_silent(stderr.as_bytes(), "pool --watch");
+     assert_text_watch_stdout(&stdout, POOL_HEADER, "pool --watch");
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_health_pool_status_ps_text_pool_status.rs:241:
+         .spawn()
+         .expect("spawn sharecli status --watch 1");
+ 
+-    let (stdout, stderr) = drain_watch_pipes(&mut child, STATUS_HEADER, 2, Duration::from_millis(30_000));
++    let (stdout, stderr) =
++        drain_watch_pipes(&mut child, STATUS_HEADER, 2, Duration::from_millis(30_000));
+ 
+     assert_stderr_silent(stderr.as_bytes(), "status --watch");
+     assert_text_watch_stdout(&stdout, STATUS_HEADER, "status --watch");
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_health_pool_status_ps_text_pool_status.rs:269:
+         .spawn()
+         .expect("spawn sharecli ps --all --watch 1");
+ 
+-    let (stdout, stderr) = drain_watch_pipes(&mut child, PS_INVENTORY_HEADER, 2, Duration::from_millis(30_000));
++    let (stdout, stderr) =
++        drain_watch_pipes(&mut child, PS_INVENTORY_HEADER, 2, Duration::from_millis(30_000));
+ 
+     assert_stderr_silent(stderr.as_bytes(), "ps --all --watch");
+     assert_text_watch_stdout(&stdout, PS_INVENTORY_HEADER, "ps --all --watch");
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_health_watch_json_gate_host_watch.rs:5:
+ //! every refresh; stderr carries text companions (parity with report watch AC-007.42).
+ 
+ use std::io::Read;
+-use std::sync::{Arc, Mutex};
+ use std::process::{Child, Command, Stdio};
++use std::sync::{Arc, Mutex};
+ use std::thread;
+ use std::time::{Duration, Instant};
+ 
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_health_watch_json_gate_host_watch.rs:92:
+ 
+     let deadline = Instant::now() + max;
+     loop {
+-        let count = stdout_buf
+-            .lock()
+-            .expect("stdout lock")
+-            .matches(frame_marker)
+-            .count();
++        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
+         if count >= frames_needed || Instant::now() >= deadline {
+             break;
+         }
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_health_watch_json_gate_host_watch.rs:123:
+         .spawn()
+         .expect("spawn sharecli health --json --watch 1");
+ 
+-    let (_stdout, stderr) = drain_watch_pipes(&mut child, "
+-", 2, Duration::from_millis(30_000));
++    let (_stdout, stderr) = drain_watch_pipes(
++        &mut child,
++        "
++",
++        2,
++        Duration::from_millis(30_000),
++    );
+ 
+     assert!(
+         stderr.contains(GATE_MARKER),
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_health_watch_json_gate_host_watch.rs:152:
+         .spawn()
+         .expect("spawn sharecli health --json --watch 1");
+ 
+-    let (stdout, _stderr) = drain_watch_pipes(&mut child, "
+-", 2, Duration::from_millis(30_000));
++    let (stdout, _stderr) = drain_watch_pipes(
++        &mut child,
++        "
++",
++        2,
++        Duration::from_millis(30_000),
++    );
+ 
+     assert!(
+         !stdout.contains(GATE_MARKER),
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_health_watch_json_gate_host_watch.rs:189:
+         .spawn()
+         .expect("spawn sharecli health --json --watch 1");
+ 
+-    let (stdout, _stderr) = drain_watch_pipes(&mut child, "
+-", 2, Duration::from_millis(30_000));
++    let (stdout, _stderr) = drain_watch_pipes(
++        &mut child,
++        "
++",
++        2,
++        Duration::from_millis(30_000),
++    );
+ 
+     let lines: Vec<&str> = stdout.lines().filter(|l| !l.is_empty()).collect();
+     assert!(
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_operator_json_pool_status.rs:7:
+ //! fields already are the pool panel); `status --json` adds nested `pool` only.
+ 
+ use std::io::Read;
+-use std::sync::{Arc, Mutex};
+ use std::process::{Child, Command, Stdio};
++use std::sync::{Arc, Mutex};
+ use std::thread;
+ use std::time::{Duration, Instant};
+ 
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_operator_json_pool_status.rs:147:
+ 
+     let deadline = Instant::now() + max;
+     loop {
+-        let count = stdout_buf
+-            .lock()
+-            .expect("stdout lock")
+-            .matches(frame_marker)
+-            .count();
++        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
+         if count >= frames_needed || Instant::now() >= deadline {
+             break;
+         }
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_operator_json_pool_status.rs:236:
+                 .spawn()
+                 .expect(concat!("spawn ", stringify!($name)));
+ 
+-            let (stdout, _stderr) = drain_watch_pipes(&mut child, "
+-", 2, Duration::from_millis(30_000));
++            let (stdout, _stderr) = drain_watch_pipes(
++                &mut child,
++                "
++",
++                2,
++                Duration::from_millis(30_000),
++            );
+             let lines: Vec<&str> = stdout.lines().filter(|l| !l.is_empty()).collect();
+             assert!(
+                 lines.len() >= 2,
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_operator_json_pool_status.rs:289:
+         .spawn()
+         .expect("spawn proc --pid --json --watch 1");
+ 
+-    let (stdout, _stderr) = drain_watch_pipes(&mut child, "
+-", 2, Duration::from_millis(30_000));
++    let (stdout, _stderr) = drain_watch_pipes(
++        &mut child,
++        "
++",
++        2,
++        Duration::from_millis(30_000),
++    );
+     let lines: Vec<&str> = stdout.lines().filter(|l| !l.is_empty()).collect();
+     assert!(
+         lines.len() >= 2,
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_pool_watch_json_gate_host_watch.rs:5:
+ //! every refresh; stderr carries text companions (parity with health watch AC-007.64).
+ 
+ use std::io::Read;
+-use std::sync::{Arc, Mutex};
+ use std::process::{Child, Command, Stdio};
++use std::sync::{Arc, Mutex};
+ use std::thread;
+ use std::time::{Duration, Instant};
+ 
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_pool_watch_json_gate_host_watch.rs:92:
+ 
+     let deadline = Instant::now() + max;
+     loop {
+-        let count = stdout_buf
+-            .lock()
+-            .expect("stdout lock")
+-            .matches(frame_marker)
+-            .count();
++        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
+         if count >= frames_needed || Instant::now() >= deadline {
+             break;
+         }
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_pool_watch_json_gate_host_watch.rs:123:
+         .spawn()
+         .expect("spawn sharecli pool --json --watch 1");
+ 
+-    let (_stdout, stderr) = drain_watch_pipes(&mut child, "
+-", 2, Duration::from_millis(30_000));
++    let (_stdout, stderr) = drain_watch_pipes(
++        &mut child,
++        "
++",
++        2,
++        Duration::from_millis(30_000),
++    );
+ 
+     assert!(
+         stderr.contains(GATE_MARKER),
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_pool_watch_json_gate_host_watch.rs:152:
+         .spawn()
+         .expect("spawn sharecli pool --json --watch 1");
+ 
+-    let (stdout, _stderr) = drain_watch_pipes(&mut child, "
+-", 2, Duration::from_millis(30_000));
++    let (stdout, _stderr) = drain_watch_pipes(
++        &mut child,
++        "
++",
++        2,
++        Duration::from_millis(30_000),
++    );
+ 
+     assert!(
+         !stdout.contains(GATE_MARKER),
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_pool_watch_json_gate_host_watch.rs:189:
+         .spawn()
+         .expect("spawn sharecli pool --json --watch 1");
+ 
+-    let (stdout, _stderr) = drain_watch_pipes(&mut child, "
+-", 2, Duration::from_millis(30_000));
++    let (stdout, _stderr) = drain_watch_pipes(
++        &mut child,
++        "
++",
++        2,
++        Duration::from_millis(30_000),
++    );
+ 
+     let lines: Vec<&str> = stdout.lines().filter(|l| !l.is_empty()).collect();
+     assert!(
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_pool_watch_text_stderr_silent.rs:6:
+ //! on stdout only (parity with AC-007.64 health text watch stderr silence).
+ 
+ use std::io::Read;
+-use std::sync::{Arc, Mutex};
+ use std::process::{Child, Command, Stdio};
++use std::sync::{Arc, Mutex};
+ use std::thread;
+ use std::time::{Duration, Instant};
+ 
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_pool_watch_text_stderr_silent.rs:64:
+ 
+     let deadline = Instant::now() + max;
+     loop {
+-        let count = stdout_buf
+-            .lock()
+-            .expect("stdout lock")
+-            .matches(frame_marker)
+-            .count();
++        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
+         if count >= frames_needed || Instant::now() >= deadline {
+             break;
+         }
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_pool_watch_text_stderr_silent.rs:155:
+         .spawn()
+         .expect("spawn sharecli pool --watch 1");
+ 
+-    let (stdout, stderr) = drain_watch_pipes(&mut child, POOL_HEADER, 2, Duration::from_millis(30_000));
++    let (stdout, stderr) =
++        drain_watch_pipes(&mut child, POOL_HEADER, 2, Duration::from_millis(30_000));
+ 
+     assert_stderr_silent(&stderr, "pool --watch");
+     assert_stderr_no_companion_markers(&stderr, "pool --watch");
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_proc_pid_csv_watch.rs:5:
+ //! each tick on stdout; stderr silent on success.
+ 
+ use std::io::Read;
+-use std::sync::{Arc, Mutex};
+ use std::process::{Child, Command, Stdio};
++use std::sync::{Arc, Mutex};
+ use std::thread;
+ use std::time::{Duration, Instant};
+ 
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_proc_pid_csv_watch.rs:67:
+ 
+     let deadline = Instant::now() + max;
+     loop {
+-        let count = stdout_buf
+-            .lock()
+-            .expect("stdout lock")
+-            .matches(frame_marker)
+-            .count();
++        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
+         if count >= frames_needed || Instant::now() >= deadline {
+             break;
+         }
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_proc_pid_csv_watch.rs:125:
+         .spawn()
+         .expect("spawn proc --pid --csv --watch 1");
+ 
+-    let (stdout, stderr) = drain_watch_pipes(&mut child, "
+-", 2, Duration::from_millis(30_000));
++    let (stdout, stderr) = drain_watch_pipes(
++        &mut child,
++        "
++",
++        2,
++        Duration::from_millis(30_000),
++    );
+ 
+     assert!(
+         stderr.is_empty(),
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_proc_pid_watch.rs:4:
+ //! AC-007.87 `proc --pid N --watch [secs]` text/NDJSON watch parity with flat `proc --watch`
+ 
+ use std::io::Read;
+-use std::sync::{Arc, Mutex};
+ use std::process::{Child, Command, Stdio};
++use std::sync::{Arc, Mutex};
+ use std::thread;
+ use std::time::{Duration, Instant};
+ 
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_proc_pid_watch.rs:57:
+ 
+     let deadline = Instant::now() + max;
+     loop {
+-        let count = stdout_buf
+-            .lock()
+-            .expect("stdout lock")
+-            .matches(frame_marker)
+-            .count();
++        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
+         if count >= frames_needed || Instant::now() >= deadline {
+             break;
+         }
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_proc_pid_watch.rs:114:
+         .spawn()
+         .expect("spawn sharecli proc --pid --watch 1");
+ 
+-    let (stdout, stderr) = drain_watch_pipes(&mut child, DETAIL_HEADER, 2, Duration::from_millis(30_000));
++    let (stdout, stderr) =
++        drain_watch_pipes(&mut child, DETAIL_HEADER, 2, Duration::from_millis(30_000));
+ 
+     assert!(
+         stderr.is_empty(),
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_proc_pid_watch.rs:149:
+         .spawn()
+         .expect("spawn sharecli proc --pid --json --watch 1");
+ 
+-    let (_stdout, stderr) = drain_watch_pipes(&mut child, DETAIL_HEADER, 2, Duration::from_millis(30_000));
++    let (_stdout, stderr) =
++        drain_watch_pipes(&mut child, DETAIL_HEADER, 2, Duration::from_millis(30_000));
+ 
+     assert!(
+         stderr.contains(GATE_MARKER),
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_proc_pid_watch.rs:178:
+         .spawn()
+         .expect("spawn sharecli proc --pid --json --watch 1");
+ 
+-    let (stdout, _stderr) = drain_watch_pipes(&mut child, DETAIL_HEADER, 2, Duration::from_millis(30_000));
++    let (stdout, _stderr) =
++        drain_watch_pipes(&mut child, DETAIL_HEADER, 2, Duration::from_millis(30_000));
+ 
+     assert!(
+         !stdout.contains(GATE_MARKER),
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_proc_text_pool_status.rs:104:
+ 
+     let deadline = Instant::now() + max;
+     loop {
+-        let count = stdout_buf
+-            .lock()
+-            .expect("stdout lock")
+-            .matches(frame_marker)
+-            .count();
++        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
+         if count >= frames_needed || Instant::now() >= deadline {
+             break;
+         }
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_proc_text_pool_status.rs:193:
+         .spawn()
+         .expect("spawn sharecli proc --watch 1");
+ 
+-    let (stdout, stderr) = drain_watch_pipes(&mut child, INVENTORY_HEADER, 2, Duration::from_millis(30_000));
++    let (stdout, stderr) =
++        drain_watch_pipes(&mut child, INVENTORY_HEADER, 2, Duration::from_millis(30_000));
+ 
+     assert_stderr_silent(stderr.as_bytes(), "proc --watch");
+     assert_text_watch_stdout(&stdout, INVENTORY_HEADER, "proc --watch");
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_proc_text_pool_status.rs:210:
+         .spawn()
+         .expect("spawn sharecli proc --tree --watch 1");
+ 
+-    let (stdout, stderr) = drain_watch_pipes(&mut child, TREE_HEADER, 2, Duration::from_millis(30_000));
++    let (stdout, stderr) =
++        drain_watch_pipes(&mut child, TREE_HEADER, 2, Duration::from_millis(30_000));
+ 
+     assert_stderr_silent(stderr.as_bytes(), "proc --tree --watch");
+     assert_text_watch_stdout(&stdout, TREE_HEADER, "proc --tree --watch");
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_proc_tree_watch_gate_order.rs:5:
+ //! on every refresh (parity with flat watch AC-007.22 and one-shot tree text AC-007.20)
+ 
+ use std::io::Read;
+-use std::sync::{Arc, Mutex};
+ use std::process::{Child, Command, Stdio};
++use std::sync::{Arc, Mutex};
+ use std::thread;
+ use std::time::{Duration, Instant};
+ 
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_proc_tree_watch_gate_order.rs:66:
+ 
+     let deadline = Instant::now() + max;
+     loop {
+-        let count = stdout_buf
+-            .lock()
+-            .expect("stdout lock")
+-            .matches(frame_marker)
+-            .count();
++        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
+         if count >= frames_needed || Instant::now() >= deadline {
+             break;
+         }
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_proc_tree_watch_gate_order.rs:97:
+         .spawn()
+         .expect("spawn sharecli proc --tree --watch 1");
+ 
+-    let (stdout, _stderr) = drain_watch_pipes(&mut child, TREE_HEADER, 2, Duration::from_millis(30_000));
++    let (stdout, _stderr) =
++        drain_watch_pipes(&mut child, TREE_HEADER, 2, Duration::from_millis(30_000));
+ 
+     let frame_count = stdout.matches(TREE_HEADER).count();
+     assert!(
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_proc_tree_watch_gate_order.rs:127:
+         .spawn()
+         .expect("spawn sharecli proc --tree --json --watch 1");
+ 
+-    let (stdout, _stderr) = drain_watch_pipes(&mut child, TREE_HEADER, 2, Duration::from_millis(30_000));
++    let (stdout, _stderr) =
++        drain_watch_pipes(&mut child, TREE_HEADER, 2, Duration::from_millis(30_000));
+ 
+     let lines: Vec<&str> = stdout.lines().filter(|l| !l.is_empty()).collect();
+     assert!(
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_proc_watch_gate_order.rs:5:
+ //! on every refresh (parity with one-shot text AC-007.21)
+ 
+ use std::io::Read;
+-use std::sync::{Arc, Mutex};
+ use std::process::{Child, Command, Stdio};
++use std::sync::{Arc, Mutex};
+ use std::thread;
+ use std::time::{Duration, Instant};
+ 
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_proc_watch_gate_order.rs:66:
+ 
+     let deadline = Instant::now() + max;
+     loop {
+-        let count = stdout_buf
+-            .lock()
+-            .expect("stdout lock")
+-            .matches(frame_marker)
+-            .count();
++        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
+         if count >= frames_needed || Instant::now() >= deadline {
+             break;
+         }
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_proc_watch_gate_order.rs:97:
+         .spawn()
+         .expect("spawn sharecli proc --watch 1");
+ 
+-    let (stdout, _stderr) = drain_watch_pipes(&mut child, INVENTORY_HEADER, 2, Duration::from_millis(30_000));
++    let (stdout, _stderr) =
++        drain_watch_pipes(&mut child, INVENTORY_HEADER, 2, Duration::from_millis(30_000));
+ 
+     let frame_count = stdout.matches(INVENTORY_HEADER).count();
+     assert!(
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_proc_watch_gate_order.rs:127:
+         .spawn()
+         .expect("spawn sharecli proc --json --watch 1");
+ 
+-    let (stdout, _stderr) = drain_watch_pipes(&mut child, INVENTORY_HEADER, 2, Duration::from_millis(30_000));
++    let (stdout, _stderr) =
++        drain_watch_pipes(&mut child, INVENTORY_HEADER, 2, Duration::from_millis(30_000));
+ 
+     let lines: Vec<&str> = stdout.lines().filter(|l| !l.is_empty()).collect();
+     assert!(
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_proc_watch_text_stderr_silent.rs:58:
+ 
+     let deadline = Instant::now() + max;
+     loop {
+-        let count = stdout_buf
+-            .lock()
+-            .expect("stdout lock")
+-            .matches(frame_marker)
+-            .count();
++        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
+         if count >= frames_needed || Instant::now() >= deadline {
+             break;
+         }
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_proc_watch_text_stderr_silent.rs:149:
+         .spawn()
+         .expect("spawn sharecli proc --watch 1");
+ 
+-    let (stdout, stderr) = drain_watch_pipes(&mut child, INVENTORY_HEADER, 2, Duration::from_millis(30_000));
++    let (stdout, stderr) =
++        drain_watch_pipes(&mut child, INVENTORY_HEADER, 2, Duration::from_millis(30_000));
+ 
+     assert_stderr_silent(&stderr, "proc --watch");
+     assert_stderr_no_companion_markers(&stderr, "proc --watch");
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_ps_all_watch_json_gate_host_watch.rs:5:
+ //! every refresh; stderr carries text companions (parity with report watch AC-007.42).
+ 
+ use std::io::Read;
+-use std::sync::{Arc, Mutex};
+ use std::process::{Child, Command, Stdio};
++use std::sync::{Arc, Mutex};
+ use std::thread;
+ use std::time::{Duration, Instant};
+ 
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_ps_all_watch_json_gate_host_watch.rs:92:
+ 
+     let deadline = Instant::now() + max;
+     loop {
+-        let count = stdout_buf
+-            .lock()
+-            .expect("stdout lock")
+-            .matches(frame_marker)
+-            .count();
++        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
+         if count >= frames_needed || Instant::now() >= deadline {
+             break;
+         }
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_ps_all_watch_json_gate_host_watch.rs:123:
+         .spawn()
+         .expect("spawn sharecli ps --all --json --watch 1");
+ 
+-    let (_stdout, stderr) = drain_watch_pipes(&mut child, "
+-", 2, Duration::from_millis(30_000));
++    let (_stdout, stderr) = drain_watch_pipes(
++        &mut child,
++        "
++",
++        2,
++        Duration::from_millis(30_000),
++    );
+ 
+     assert!(
+         stderr.contains(GATE_MARKER),
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_ps_all_watch_json_gate_host_watch.rs:152:
+         .spawn()
+         .expect("spawn sharecli ps --all --json --watch 1");
+ 
+-    let (stdout, _stderr) = drain_watch_pipes(&mut child, "
+-", 2, Duration::from_millis(30_000));
++    let (stdout, _stderr) = drain_watch_pipes(
++        &mut child,
++        "
++",
++        2,
++        Duration::from_millis(30_000),
++    );
+ 
+     assert!(
+         !stdout.contains(GATE_MARKER),
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_ps_all_watch_json_gate_host_watch.rs:189:
+         .spawn()
+         .expect("spawn sharecli ps --all --json --watch 1");
+ 
+-    let (stdout, _stderr) = drain_watch_pipes(&mut child, "
+-", 2, Duration::from_millis(30_000));
++    let (stdout, _stderr) = drain_watch_pipes(
++        &mut child,
++        "
++",
++        2,
++        Duration::from_millis(30_000),
++    );
+ 
+     let lines: Vec<&str> = stdout.lines().filter(|l| !l.is_empty()).collect();
+     assert!(
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_ps_all_watch_text_stderr_silent.rs:6:
+ //! on stdout only (parity with AC-007.35 proc text watch stderr silence).
+ 
+ use std::io::Read;
+-use std::sync::{Arc, Mutex};
+ use std::process::{Child, Command, Stdio};
++use std::sync::{Arc, Mutex};
+ use std::thread;
+ use std::time::{Duration, Instant};
+ 
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_ps_all_watch_text_stderr_silent.rs:57:
+ 
+     let deadline = Instant::now() + max;
+     loop {
+-        let count = stdout_buf
+-            .lock()
+-            .expect("stdout lock")
+-            .matches(frame_marker)
+-            .count();
++        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
+         if count >= frames_needed || Instant::now() >= deadline {
+             break;
+         }
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_ps_all_watch_text_stderr_silent.rs:148:
+         .spawn()
+         .expect("spawn sharecli ps --all --watch 1");
+ 
+-    let (stdout, stderr) = drain_watch_pipes(&mut child, INVENTORY_HEADER, 2, Duration::from_millis(30_000));
++    let (stdout, stderr) =
++        drain_watch_pipes(&mut child, INVENTORY_HEADER, 2, Duration::from_millis(30_000));
+ 
+     assert_stderr_silent(&stderr, "ps --all --watch");
+     assert_stderr_no_companion_markers(&stderr, "ps --all --watch");
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_report_csv_watch.rs:5:
+ //! each tick on stdout; stderr silent on success.
+ 
+ use std::io::Read;
+-use std::sync::{Arc, Mutex};
+ use std::process::{Child, Command, Stdio};
++use std::sync::{Arc, Mutex};
+ use std::thread;
+ use std::time::{Duration, Instant};
+ 
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_report_csv_watch.rs:60:
+ 
+     let deadline = Instant::now() + max;
+     loop {
+-        let count = stdout_buf
+-            .lock()
+-            .expect("stdout lock")
+-            .matches(frame_marker)
+-            .count();
++        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
+         if count >= frames_needed || Instant::now() >= deadline {
+             break;
+         }
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_report_csv_watch.rs:117:
+         .spawn()
+         .expect("spawn report --format csv --watch 1");
+ 
+-    let (stdout, stderr) = drain_watch_pipes(&mut child, FRAME_MARKER, 2, Duration::from_millis(30_000));
++    let (stdout, stderr) =
++        drain_watch_pipes(&mut child, FRAME_MARKER, 2, Duration::from_millis(30_000));
+ 
+     assert!(
+         stderr.is_empty(),
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_report_json_pool_status.rs:5:
+ //! `gate` → `host_watch` (parity with `monitoring.report` AC-007.72 / dashboard WS AC-007.70).
+ 
+ use std::io::Read;
+-use std::sync::{Arc, Mutex};
+ use std::process::{Child, Command, Stdio};
++use std::sync::{Arc, Mutex};
+ use std::thread;
+ use std::time::{Duration, Instant};
+ 
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_report_json_pool_status.rs:90:
+ 
+     let deadline = Instant::now() + max;
+     loop {
+-        let count = stdout_buf
+-            .lock()
+-            .expect("stdout lock")
+-            .matches(frame_marker)
+-            .count();
++        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
+         if count >= frames_needed || Instant::now() >= deadline {
+             break;
+         }
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_report_json_pool_status.rs:233:
+         .spawn()
+         .expect("spawn sharecli report --format json --watch 1");
+ 
+-    let (stdout, _stderr) = drain_watch_pipes(&mut child, "
+-", 2, Duration::from_millis(30_000));
++    let (stdout, _stderr) = drain_watch_pipes(
++        &mut child,
++        "
++",
++        2,
++        Duration::from_millis(30_000),
++    );
+ 
+     let lines: Vec<&str> = stdout.lines().filter(|l| !l.is_empty()).collect();
+     assert!(
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_report_text_pool_status.rs:103:
+ 
+     let deadline = Instant::now() + max;
+     loop {
+-        let count = stdout_buf
+-            .lock()
+-            .expect("stdout lock")
+-            .matches(frame_marker)
+-            .count();
++        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
+         if count >= frames_needed || Instant::now() >= deadline {
+             break;
+         }
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_report_text_pool_status.rs:184:
+         .spawn()
+         .expect("spawn sharecli report --format text --watch 1");
+ 
+-    let (stdout, stderr) = drain_watch_pipes(&mut child, REPORT_HEADER, 2, Duration::from_millis(30_000));
++    let (stdout, stderr) =
++        drain_watch_pipes(&mut child, REPORT_HEADER, 2, Duration::from_millis(30_000));
+ 
+     assert_stderr_silent(stderr.as_bytes(), "report --watch");
+     assert_text_watch_stdout(&stdout, "report --watch");
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_report_text_stderr_silent.rs:104:
+ 
+     let deadline = Instant::now() + max;
+     loop {
+-        let count = stdout_buf
+-            .lock()
+-            .expect("stdout lock")
+-            .matches(frame_marker)
+-            .count();
++        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
+         if count >= frames_needed || Instant::now() >= deadline {
+             break;
+         }
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_report_text_stderr_silent.rs:187:
+         .spawn()
+         .expect("spawn sharecli report --format text --watch 1");
+ 
+-    let (stdout, stderr) = drain_watch_pipes(&mut child, REPORT_HEADER, 2, Duration::from_millis(30_000));
++    let (stdout, stderr) =
++        drain_watch_pipes(&mut child, REPORT_HEADER, 2, Duration::from_millis(30_000));
+ 
+     assert_stderr_silent(stderr.as_bytes(), "report --watch");
+     assert_stderr_no_companion_markers(stderr.as_bytes(), "report --watch");
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_report_watch_json_gate_host_watch.rs:5:
+ //! every refresh; stderr carries text companions (parity with proc watch AC-007.28).
+ 
+ use std::io::Read;
+-use std::sync::{Arc, Mutex};
+ use std::process::{Child, Command, Stdio};
++use std::sync::{Arc, Mutex};
+ use std::thread;
+ use std::time::{Duration, Instant};
+ 
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_report_watch_json_gate_host_watch.rs:96:
+ 
+     let deadline = Instant::now() + max;
+     loop {
+-        let count = stdout_buf
+-            .lock()
+-            .expect("stdout lock")
+-            .matches(frame_marker)
+-            .count();
++        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
+         if count >= frames_needed || Instant::now() >= deadline {
+             break;
+         }
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_report_watch_json_gate_host_watch.rs:127:
+         .spawn()
+         .expect("spawn sharecli report --format json --watch 1");
+ 
+-    let (_stdout, stderr) = drain_watch_pipes(&mut child, "
+-", 2, Duration::from_millis(30_000));
++    let (_stdout, stderr) = drain_watch_pipes(
++        &mut child,
++        "
++",
++        2,
++        Duration::from_millis(30_000),
++    );
+ 
+     assert!(
+         stderr.contains(GATE_MARKER),
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_report_watch_json_gate_host_watch.rs:156:
+         .spawn()
+         .expect("spawn sharecli report --format json --watch 1");
+ 
+-    let (stdout, _stderr) = drain_watch_pipes(&mut child, "
+-", 2, Duration::from_millis(30_000));
++    let (stdout, _stderr) = drain_watch_pipes(
++        &mut child,
++        "
++",
++        2,
++        Duration::from_millis(30_000),
++    );
+ 
+     assert!(
+         !stdout.contains(GATE_MARKER),
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_report_watch_json_gate_host_watch.rs:193:
+         .spawn()
+         .expect("spawn sharecli report --format json --watch 1");
+ 
+-    let (stdout, _stderr) = drain_watch_pipes(&mut child, "
+-", 2, Duration::from_millis(30_000));
++    let (stdout, _stderr) = drain_watch_pipes(
++        &mut child,
++        "
++",
++        2,
++        Duration::from_millis(30_000),
++    );
+ 
+     let lines: Vec<&str> = stdout.lines().filter(|l| !l.is_empty()).collect();
+     assert!(
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_status_watch_json_gate_host_watch.rs:5:
+ //! every refresh; stderr carries text companions (parity with pool watch AC-007.65).
+ 
+ use std::io::Read;
+-use std::sync::{Arc, Mutex};
+ use std::process::{Child, Command, Stdio};
++use std::sync::{Arc, Mutex};
+ use std::thread;
+ use std::time::{Duration, Instant};
+ 
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_status_watch_json_gate_host_watch.rs:92:
+ 
+     let deadline = Instant::now() + max;
+     loop {
+-        let count = stdout_buf
+-            .lock()
+-            .expect("stdout lock")
+-            .matches(frame_marker)
+-            .count();
++        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
+         if count >= frames_needed || Instant::now() >= deadline {
+             break;
+         }
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_status_watch_json_gate_host_watch.rs:123:
+         .spawn()
+         .expect("spawn sharecli status --json --watch 1");
+ 
+-    let (_stdout, stderr) = drain_watch_pipes(&mut child, "
+-", 2, Duration::from_millis(30_000));
++    let (_stdout, stderr) = drain_watch_pipes(
++        &mut child,
++        "
++",
++        2,
++        Duration::from_millis(30_000),
++    );
+ 
+     assert!(
+         stderr.contains(GATE_MARKER),
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_status_watch_json_gate_host_watch.rs:152:
+         .spawn()
+         .expect("spawn sharecli status --json --watch 1");
+ 
+-    let (stdout, _stderr) = drain_watch_pipes(&mut child, "
+-", 2, Duration::from_millis(30_000));
++    let (stdout, _stderr) = drain_watch_pipes(
++        &mut child,
++        "
++",
++        2,
++        Duration::from_millis(30_000),
++    );
+ 
+     assert!(
+         !stdout.contains(GATE_MARKER),
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_status_watch_json_gate_host_watch.rs:189:
+         .spawn()
+         .expect("spawn sharecli status --json --watch 1");
+ 
+-    let (stdout, _stderr) = drain_watch_pipes(&mut child, "
+-", 2, Duration::from_millis(30_000));
++    let (stdout, _stderr) = drain_watch_pipes(
++        &mut child,
++        "
++",
++        2,
++        Duration::from_millis(30_000),
++    );
+ 
+     let lines: Vec<&str> = stdout.lines().filter(|l| !l.is_empty()).collect();
+     assert!(
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_status_watch_text_stderr_silent.rs:6:
+ //! on stdout only (parity with AC-007.65 pool text watch stderr silence).
+ 
+ use std::io::Read;
+-use std::sync::{Arc, Mutex};
+ use std::process::{Child, Command, Stdio};
++use std::sync::{Arc, Mutex};
+ use std::thread;
+ use std::time::{Duration, Instant};
+ 
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_status_watch_text_stderr_silent.rs:57:
+ 
+     let deadline = Instant::now() + max;
+     loop {
+-        let count = stdout_buf
+-            .lock()
+-            .expect("stdout lock")
+-            .matches(frame_marker)
+-            .count();
++        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
+         if count >= frames_needed || Instant::now() >= deadline {
+             break;
+         }
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\fr007_status_watch_text_stderr_silent.rs:148:
+         .spawn()
+         .expect("spawn sharecli status --watch 1");
+ 
+-    let (stdout, stderr) = drain_watch_pipes(&mut child, STATUS_HEADER, 2, Duration::from_millis(30_000));
++    let (stdout, stderr) =
++        drain_watch_pipes(&mut child, STATUS_HEADER, 2, Duration::from_millis(30_000));
+ 
+     assert_stderr_silent(&stderr, "status --watch");
+     assert_stderr_no_companion_markers(&stderr, "status --watch");
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\quick_start_journey.rs:54:
+     );
+ 
+     // Step 2 — FR-002: config surface exposes init/validate; validate reports projects.
+-    let cfg_help = bin_with_config(&config_path)
+-        .args(["config", "--help"])
+-        .output()
+-        .expect("config --help");
++    let cfg_help =
++        bin_with_config(&config_path).args(["config", "--help"]).output().expect("config --help");
+     assert!(cfg_help.status.success(), "stderr: {}", stderr(&cfg_help));
+     let cfg_help_out = stdout(&cfg_help).to_lowercase();
+     assert!(
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\quick_start_journey.rs:85:
+     );
+ 
+     // Step 3 — FR-003: project surface exposes add/list; list is readable.
+-    let proj_help = bin_with_config(&config_path)
+-        .args(["project", "--help"])
+-        .output()
+-        .expect("project --help");
++    let proj_help =
++        bin_with_config(&config_path).args(["project", "--help"]).output().expect("project --help");
+     assert!(proj_help.status.success(), "stderr: {}", stderr(&proj_help));
+     let proj_help_out = stdout(&proj_help).to_lowercase();
+     assert!(
+Diff in \\?\C:\Users\koosh\sharecli-wtrees\w3-deny\tests\quick_start_journey.rs:96:
+         "FR-003 journey MUST advertise add+list; got: {proj_help_out}"
+     );
+ 
+-    let list = bin_with_config(&config_path)
+-        .args(["project", "list"])
+-        .output()
+-        .expect("project list");
++    let list =
++        bin_with_config(&config_path).args(["project", "list"]).output().expect("project list");
+     assert!(list.status.success(), "project list MUST exit 0; stderr: {}", stderr(&list));
+     let list_out = stdout(&list);
+     assert!(
