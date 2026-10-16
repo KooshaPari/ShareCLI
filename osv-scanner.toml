@@ -48,3 +48,8 @@ reason = "gtk-rs 0.18 family (gtk3-macros), Linux-only gtk backend of tray-icon;
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0370"
 reason = "gtk-rs 0.18 family (proc-macro-error via gtk3-macros), Linux-only gtk backend of tray-icon; a build-time transitive that is not compiled or shipped by sharecli (Linux tray uses ksni). Dead platform-gated code."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0449"
+ignoreUntil = 2026-11-15
+reason = "INFO unmaintained advisory for unsafe-libyaml, the C-based YAML backend pulled in only via serde_yaml. No patched release exists (dtolnay/unsafe-libyaml archived 2024-03-25, last release 0.2.11), so there is no version to bump to. Replacing the serde_yaml dependency chain is tracked as a follow-up issue; this exception expires in 30 days to force re-triage."
