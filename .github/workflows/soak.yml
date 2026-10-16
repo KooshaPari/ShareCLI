@@ -73,48 +73,32 @@ jobs:
           fi
 
       # ── Soak run ─────────────────────────────────────────────────────
+      # The soak scenarios in soak.yaml call bare `sharecli`, so the freshly
+      # built binary must be on PATH.
+      - name: Put built sharecli on PATH
+        run: echo "$GITHUB_WORKSPACE/target/release" >> "$GITHUB_PATH"
+
       - name: Run Harbor soak (600 s)
         id: run_soak
-        continue-on-error: true
         run: |
           set -euo pipefail
+          rm -f "$SOAK_REPORT"
 
           echo "::group::Soak harness output"
-          timeout 600 ./target/release/sharecli soak run \
+          # `soak` is a flat subcommand (no `run`). A non-zero exit fails the step.
+          rc=0
+          timeout 700 ./target/release/sharecli soak \
             --duration 600 \
             --interval 30 \
             --config soak.yaml \
-            --output soak-report.json \
-            || true
+            --output "$SOAK_REPORT" || rc=$?
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          echo "soak exit code: $rc"
           echo "::endgroup::"
+          [ "$rc" -eq 0 ] || { echo "::error::soak exited $rc"; exit "$rc"; }
 
-          # The binary now produces soak-report.json natively via
-          # `sharecli soak run`.  If it still doesn't (e.g. build
-          # failed), synthesise a minimal report so downstream steps
-          # can still validate the pipeline.
-          if [ ! -f "$SOAK_REPORT" ]; then
-            cat > "$SOAK_REPORT" <<JSON
-          {
-            "version": "1",
-            "sha": "$(git rev-parse --short HEAD)",
-            "duration_sec": ${SOAK_DURATION_SEC},
-            "started_at": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')",
-            "finished_at": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')",
-            "total_requests": 0,
-            "errors": 0,
-            "error_rate": 0.0,
-            "uptime_pct": 100.0,
-            "p99_latency_ms": 0,
-            "p50_latency_ms": 0,
-            "max_memory_bytes": 0,
-            "scenario_results": [],
-            "note": "synthesised — soak binary did not produce report"
-          }
-          JSON
-            echo "Synthesised fallback $SOAK_REPORT"
-          fi
-
-          echo "exit_code=${{ steps.run_soak.conclusion }}" >> "$GITHUB_OUTPUT"
+          # No synthesised fallback: a missing report is a failure.
+          test -s "$SOAK_REPORT" || { echo "::error::soak report missing"; exit 1; }
 
       # ── Upload artifacts ──────────────────────────────────────────────
       - name: Upload soak report artifact
@@ -130,7 +114,7 @@ jobs:
 
       # ── Threshold gate ────────────────────────────────────────────────
       - name: Assert soak thresholds
-        if: always()
+        if: ${{ !cancelled() }}
         run: |
           set -euo pipefail
 
@@ -148,6 +132,16 @@ jobs:
               sys.exit(1)
 
           errors = []
+
+          # 0. The soak must have actually run for (about) the configured time
+          #    and made requests. Guards against empty or synthetic reports.
+          duration = data.get("duration_sec", 0)
+          if duration < 590:
+              errors.append(f"duration_sec {duration} is below 590 (soak did not run the full duration)")
+          if data.get("total_requests", 0) <= 0:
+              errors.append("total_requests is 0 (no scenarios ran)")
+          if "synthesised" in str(data.get("note", "")):
+              errors.append("report is synthesised, not produced by the soak binary")
 
           # 1. Error rate must stay below 5 %
           error_rate = data.get("error_rate", 1.0)
