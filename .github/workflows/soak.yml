@@ -24,6 +24,9 @@ env:
   CARGO_TERM_COLOR: always
   SOAK_REPORT: soak-report.json
   SOAK_DURATION_SEC: "600"
+  # zig needs a writable cache dir; HOME is not usable on the self-hosted runner
+  ZIG_GLOBAL_CACHE_DIR: /tmp/zig-global-cache
+  ZIG_LOCAL_CACHE_DIR: /tmp/zig-local-cache
 
 jobs:
   soak:
