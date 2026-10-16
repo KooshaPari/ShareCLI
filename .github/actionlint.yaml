@@ -1,7 +1,9 @@
 # actionlint configuration
 # https://github.com/rhysd/actionlint/blob/v1.7.12/docs/config.md
-# Note: the repository self-hosts no runners; all workflows run on GitHub-hosted
-# images, so no self-hosted-runner labels are declared here.
+# The nightly soak job uses the dedicated desk runner.
+self-hosted-runner:
+  labels:
+    - desk-sharecli
 
 paths:
   # Forward reference: the `detect` job's `outputs:` block references
