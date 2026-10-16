@@ -28,11 +28,12 @@ fn success_args() -> Vec<String> {
 }
 
 fn exec(strategy: &str, opts: RuleOpts) -> Result<i32, String> {
+    let home = tempfile::tempdir().expect("isolated harness home");
     let cmd = success_cmd();
     let args = success_args();
     execute(ExecRequest {
         strategy,
-        harness_home: Path::new("."),
+        harness_home: home.path(),
         real_cmd: &cmd,
         cmd_name: cmd.file_name().and_then(|s| s.to_str()).unwrap_or("cmd"),
         subcmd: "",
@@ -78,12 +79,13 @@ fn rule_options_have_safe_defaults() {
 }
 
 #[test]
-fn batch_strategy_reports_contract_error() {
+fn batch_strategy_propagates_spawn_error() {
+    let home = tempfile::tempdir().expect("isolated harness home");
     let opts = RuleOpts::default();
     let args = Vec::<String>::new();
     let result = execute(ExecRequest {
         strategy: "batch",
-        harness_home: Path::new("."),
+        harness_home: home.path(),
         real_cmd: Path::new("missing-command"),
         cmd_name: "missing-command",
         subcmd: "",
@@ -94,7 +96,16 @@ fn batch_strategy_reports_contract_error() {
     });
 
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("batch strategy"));
+    let err = result.unwrap_err();
+    assert!(err.contains("hypervisor: failed to spawn"), "unexpected batch error: {err}");
+    assert!(err.contains("missing-command"), "missing command context: {err}");
+}
+
+/// FR: FR-008 / AC-008.19 — batch delegates executable work to the process lane.
+#[test]
+fn batch_strategy_runs_success_cmd() {
+    let code = exec("batch", RuleOpts::default()).expect("batch");
+    assert_eq!(code, 0, "batch must execute the command successfully");
 }
 
 #[test]
@@ -170,11 +181,12 @@ fn unknown_strategy_falls_back_to_coalesce() {
 
 #[test]
 fn missing_command_surfaces_not_found_error() {
+    let home = tempfile::tempdir().expect("isolated harness home");
     let opts = RuleOpts::default();
     let args = Vec::<String>::new();
     let err = execute(ExecRequest {
         strategy: "queue",
-        harness_home: Path::new("."),
+        harness_home: home.path(),
         real_cmd: Path::new("definitely-missing-command-xyz"),
         cmd_name: "missing",
         subcmd: "",

@@ -254,6 +254,7 @@ quality-gate.yml dependencies/report permissions,
 pr-lint.yml label events, cross-platform.yml native build prerequisites,
 the actionlint desk-sharecli runner label (reuse #907), and removal of a
 redundant maximum clamp in IPC priority calculation, proc test module naming
-(clippy gate), and Taplo 0.9.3 formatting of the tray manifest.
+(clippy gate), Taplo 0.9.3 formatting of the tray manifest, and the stale
+harness-native batch contract expectation (FR-008 / AC-008.19).
 No release, spawn-core, fuzz, or benchmark source ownership claimed.
 Status: IN_PROGRESS; hold until merge or explicit handoff.
