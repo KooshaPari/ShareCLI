@@ -9,6 +9,10 @@ reason = "rsa Marvin-attack advisory covers every released version (introduced 0
 id = "RUSTSEC-2024-0436"
 reason = "Informational 'unmaintained' advisory for the paste crate. paste 1.0.15 is a stale Cargo.lock entry: no package in the workspace dependency graph references it (cargo tree -i paste is empty), so there is nothing to replace."
 
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0449"
+reason = "unsafe-libyaml 0.2.11 is linked into the shipped binary via serde_yaml and is reachable from `sharecli proc-compose` and `sharecli soak` (serde_yaml::from_str at src/proc_compose.rs:134 and src/commands/soak.rs:162, both dispatched from src/main.rs). It parses only operator-supplied local YAML with no network surface. Upstream is archived (2024-03-25) with no safe upgrade; the maintained drop-in serde_yaml_ng still depends on unsafe-libyaml, so no replacement exists short of migrating to a pure-Rust parser. Tracked for removal when that migration lands."
+
 # gtk-rs 0.18 family (gtk/atk/gdk/glib/proc-macro-error) — Linux-only
 # transitive deps of the `tray-icon` crate's Linux backend, recorded in the
 # workspace Cargo.lock because Cargo resolves all target-specific deps. sharecli
