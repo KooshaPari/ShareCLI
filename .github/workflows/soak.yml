@@ -39,11 +39,6 @@ jobs:
       - name: Use desk Rust toolchain
         run: echo "/root/.cargo/bin" >> "$GITHUB_PATH"
 
-      - name: Setup Zig
-        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
-        with:
-          version: 0.14.1
-
       - name: Cache cargo
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
