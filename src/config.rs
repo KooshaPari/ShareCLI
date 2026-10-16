@@ -454,11 +454,8 @@ impl Config {
             return false;
         };
         // target/<profile>/deps/<crate>-<hash>
-        let in_deps = exe
-            .parent()
-            .and_then(|p| p.file_name())
-            .map(|n| n == "deps")
-            .unwrap_or(false);
+        let in_deps =
+            exe.parent().and_then(|p| p.file_name()).map(|n| n == "deps").unwrap_or(false);
         if in_deps {
             return true;
         }
