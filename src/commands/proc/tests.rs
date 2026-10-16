@@ -1,4 +1,4 @@
-mod tests {
+mod proc_tests {
     use sharecli_fleet::collect_forest_pids;
     use sharecli_fleet::proc_scan::{DetectedAgent, FakeProcSource, ProcSnapshot};
 

@@ -25,6 +25,8 @@ tray-icon = { version = "0.25", default-features = false }
 # the Tokio runtime enabled by sharecli-tray-linux's existing ksni dependency.
 # Keep Windows free of Linux backend dependencies.
 [target.'cfg(any(target_os = "linux", target_os = "dragonfly", target_os = "freebsd", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
-tray-icon = { version = "0.25", default-features = false, features = ["libappindicator"] }
+tray-icon = { version = "0.25", default-features = false, features = [
+  "libappindicator",
+] }
 
 [dev-dependencies]

@@ -252,6 +252,8 @@ Scope: baseline rustfmt deltas, tray platform/API regression test (reuse #906),
 ci-gate.yml format command and build/test prerequisites,
 quality-gate.yml dependencies/report permissions,
 pr-lint.yml label events, cross-platform.yml native build prerequisites,
-and the actionlint desk-sharecli runner label (reuse #907).
+the actionlint desk-sharecli runner label (reuse #907), and removal of a
+redundant maximum clamp in IPC priority calculation, proc test module naming
+(clippy gate), and Taplo 0.9.3 formatting of the tray manifest.
 No release, spawn-core, fuzz, or benchmark source ownership claimed.
 Status: IN_PROGRESS; hold until merge or explicit handoff.

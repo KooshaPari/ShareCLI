@@ -161,7 +161,7 @@ impl SlotQueue {
 
     fn effective_rank(_ticket: &str, base_priority: QueuePriority, waited: Duration) -> u8 {
         let decay_steps = (waited.as_millis() / Self::AGING_STEP_MS) as u8;
-        base_priority.as_u8().saturating_add(decay_steps).min(u8::MAX)
+        base_priority.as_u8().saturating_add(decay_steps)
     }
 
     /// True when this ticket is next among equal-or-highest-priority waiters (FIFO by ticket name).
