@@ -25,12 +25,12 @@ coordinates that shared substrate.
 
 Core crates:
 
-| Crate | Role |
-| ----- | ---- |
-| `sharecli-core` | Hypervisor loop, thermal gate, coalesce orchestration |
-| `sharecli-fuse` | FUSE IO intercept for shared cwd / build-cache reads |
-| `sharecli-ipc` | CoalesceCache and IPC debounce/queue |
-| `sharecli-fleet` | Fleet registry + thermal governor |
+| Crate            | Role                                                  |
+| ---------------- | ----------------------------------------------------- |
+| `sharecli-core`  | Hypervisor loop, thermal gate, coalesce orchestration |
+| `sharecli-fuse`  | FUSE IO intercept for shared cwd / build-cache reads  |
+| `sharecli-ipc`   | CoalesceCache and IPC debounce/queue                  |
+| `sharecli-fleet` | Fleet registry + thermal governor                     |
 
 Harbor / agent-eval soft harness lives **outside** this repo: suite-facing
 stubs in [`phenotype-tooling/crates/benchora`](https://github.com/KooshaPari/phenotype-tooling)
@@ -142,11 +142,11 @@ rm -f "$(command -v sharecli)"
 
 Optional data cleanup (config, pane map, runtime lock):
 
-| Path | Contents |
-| ---- | -------- |
-| `~/.config/sharecli/` (Linux/macOS XDG) | `config.toml`, `pane-map.toml` |
-| `%APPDATA%\sharecli\` (Windows) | same |
-| `$XDG_RUNTIME_DIR/sharecli*` or temp dir | serve lock files |
+| Path                                     | Contents                       |
+| ---------------------------------------- | ------------------------------ |
+| `~/.config/sharecli/` (Linux/macOS XDG)  | `config.toml`, `pane-map.toml` |
+| `%APPDATA%\sharecli\` (Windows)          | same                           |
+| `$XDG_RUNTIME_DIR/sharecli*` or temp dir | serve lock files               |
 
 ```bash
 rm -rf ~/.config/sharecli
@@ -298,12 +298,12 @@ start time and never written to disk.
 address (default `127.0.0.1:9090`). All endpoints respond with JSON unless
 noted; non-`200` responses include a `{"error": "..."}` body.
 
-| Method | Path                   | Description                                                    |
-| ------ | ---------------------- | -------------------------------------------------------------- |
-| GET    | `/health`              | Liveness probe for the supervisor itself. Always `200` if up.  |
-| GET    | `/health/processes`    | Per-process status (state, PID, uptime, last health check).   |
-| GET    | `/config`              | Effective config (secrets redacted) currently in effect.       |
-| GET    | `/metrics/prometheus`  | Prometheus exposition format (text/plain; `version=0.0.4`).   |
+| Method | Path                  | Description                                                   |
+| ------ | --------------------- | ------------------------------------------------------------- |
+| GET    | `/health`             | Liveness probe for the supervisor itself. Always `200` if up. |
+| GET    | `/health/processes`   | Per-process status (state, PID, uptime, last health check).   |
+| GET    | `/config`             | Effective config (secrets redacted) currently in effect.      |
+| GET    | `/metrics/prometheus` | Prometheus exposition format (text/plain; `version=0.0.4`).   |
 
 A request that targets an unknown process can append
 `?name=<process-name>` to `/health/processes`.
@@ -325,3 +325,21 @@ ShareCLI participates as a standalone local governor in **one globally logical r
 [Verbatim user intent](docs/intent/2026-10-12-global-nested-ledger.md) · [Genesis](docs/genesis/global-nested-ledger.md) · [SOTA](docs/sota/global-nested-ledger.md) · [ADR 0009](docs/adr/0009-global-nested-ledger-local-admission.md) · [Proposed FR-013](docs/specs/FR.md) · [Verification](docs/verification/global-nested-ledger.md).
 
 The new Rust guard module is a pure predicate/test slice. Durable authority integration, OS effect mediation and native cross-host acceptance are **not implemented by this documentation change**.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+
+**Roles**
+
+- Authors (may change source without extra review): Koosha Paridehpour (KooshaPari)
+- Reviewers (review every change from non-authors): Koosha Paridehpour (KooshaPari)
+- Approvers (approve each signing request): Koosha Paridehpour (KooshaPari)
+
+All team members use multi-factor authentication for GitHub and SignPath.
+
+**Scope.** Only binaries built by this repository's CI from this repository's source are signed. Upstream third-party libraries are not signed with this certificate.
+
+**Privacy policy.** This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.
+
+**Uninstall.** See docs/deploy.md.
