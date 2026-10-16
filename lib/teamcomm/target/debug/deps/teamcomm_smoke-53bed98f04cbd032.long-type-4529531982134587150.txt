@@ -1,2 +1,0 @@
-&{async block@crates/teamcomm-smoke/src/main.rs:24:1: 24:15}
-&dyn Future<Output = Result<(), anyhow::Error>>

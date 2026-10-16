@@ -58,6 +58,11 @@ bench/
 mutants.out/
 mutants-hard*.json
 
+# lib/teamcomm is a vendored Rust workspace (absorbed from phenotype-teamcomm,
+# commit 27aa1dc2). Its build output must not be tracked. The vendored source
+# tree itself is intentional; only target/ is excluded.
+lib/teamcomm/target/
+
 # Swift / Xcode build artifacts
 .build/
 **/.build/
