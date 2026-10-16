@@ -37,7 +37,9 @@ jobs:
 
       # ── Rust toolchain ────────────────────────────────────────────────
       - name: Use desk Rust toolchain
-        run: echo "/root/.cargo/bin" >> "$GITHUB_PATH"
+        run: |
+          echo "/root/.cargo/bin" >> "$GITHUB_PATH"
+          echo "/usr/local/bin" >> "$GITHUB_PATH"
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
