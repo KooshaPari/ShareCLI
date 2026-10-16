@@ -117,13 +117,9 @@ fn fr007_proc_pid_csv_watch_stderr_silent_and_envelope() {
         .spawn()
         .expect("spawn proc --pid --csv --watch 1");
 
-    let (stdout, stderr) = drain_watch_pipes(
-        &mut child,
-        "
-",
-        2,
-        Duration::from_millis(30_000),
-    );
+    // Each CSV refresh has many lines; its footer marks a complete envelope.
+    let (stdout, stderr) =
+        drain_watch_pipes(&mut child, "# [watch]", 2, Duration::from_millis(30_000));
 
     assert!(
         stderr.is_empty(),
