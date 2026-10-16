@@ -5,7 +5,7 @@
 
 ## Overview
 
-Build a shared CLI process manager for multi-project agent orchestration.
+Build an OS/kernel-adjacent agent runtime / hypervisor for multi-agent hosts.
 
 ## Current focus (C03 Agent Readiness)
 
