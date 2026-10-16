@@ -256,5 +256,11 @@ the actionlint desk-sharecli runner label (reuse #907), and removal of a
 redundant maximum clamp in IPC priority calculation, proc test module naming
 (clippy gate), Taplo 0.9.3 formatting of the tray manifest, and the stale
 harness-native batch contract expectation (FR-008 / AC-008.19).
+Safety scope: core FuseGuard teardown after failed unmount; regression tests
+use owned temporary directories and never mount the repository.
+Coverage scope: register existing admission and session API contracts in the
+library test harness, matching the unchanged 85% unit coverage gate.
+Add error source-chain, runbook-code, HTTP redaction and correlation contracts
+(FR-003 / FR-004) without changing production error behavior.
 No release, spawn-core, fuzz, or benchmark source ownership claimed.
 Status: IN_PROGRESS; hold until merge or explicit handoff.
