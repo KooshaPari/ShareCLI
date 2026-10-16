@@ -278,12 +278,14 @@ pub fn run(
             }
         }
 
-        let elapsed = start.elapsed();
-        if elapsed + interval < total_duration {
-            std::thread::sleep(interval);
-        } else {
+        // Sleep up to the next interval but never past the end, so the soak
+        // always runs the full configured duration (the loop head exits once
+        // elapsed >= total_duration).
+        let remaining = total_duration.saturating_sub(start.elapsed());
+        if remaining.is_zero() {
             break;
         }
+        std::thread::sleep(interval.min(remaining));
     }
 
     let finished_at = chrono_timestamp();
