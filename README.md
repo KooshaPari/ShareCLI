@@ -325,3 +325,20 @@ ShareCLI participates as a standalone local governor in **one globally logical r
 [Verbatim user intent](docs/intent/2026-10-12-global-nested-ledger.md) · [Genesis](docs/genesis/global-nested-ledger.md) · [SOTA](docs/sota/global-nested-ledger.md) · [ADR 0009](docs/adr/0009-global-nested-ledger-local-admission.md) · [Proposed FR-013](docs/specs/FR.md) · [Verification](docs/verification/global-nested-ledger.md).
 
 The new Rust guard module is a pure predicate/test slice. Durable authority integration, OS effect mediation and native cross-host acceptance are **not implemented by this documentation change**.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+
+**Roles**
+- Authors (may change source without extra review): Koosha Paridehpour (KooshaPari)
+- Reviewers (review every change from non-authors): Koosha Paridehpour (KooshaPari)
+- Approvers (approve each signing request): Koosha Paridehpour (KooshaPari)
+
+All team members use multi-factor authentication for GitHub and SignPath.
+
+**Scope.** Only binaries built by this repository's CI from this repository's source are signed. Upstream third-party libraries are not signed with this certificate.
+
+**Privacy policy.** This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.
+
+**Uninstall.** See docs/deploy.md.
