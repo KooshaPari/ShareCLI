@@ -320,6 +320,9 @@ struct FuseGuard {
     readiness_marker: Option<PathBuf>,
 }
 
+#[cfg(test)]
+mod fuse_guard_tests;
+
 impl FuseGuard {
     /// Attempt to mount a sharecli-fuse IO-intercept layer mirroring `backing`.
     ///
@@ -390,23 +393,11 @@ impl FuseGuard {
                     let loud = format!("{msg} — proceeding without FUSE intercept");
                     eprintln!("{loud}");
                     error!("{loud}");
-                    // Best-effort unmount of a half-started mount before drop.
-                    #[cfg(target_os = "linux")]
-                    {
-                        let _ = std::process::Command::new("fusermount")
-                            .arg("-uz")
-                            .arg(&mountpoint)
-                            .stdout(std::process::Stdio::null())
-                            .stderr(std::process::Stdio::null())
-                            .status();
-                    }
-                    #[cfg(target_os = "macos")]
-                    {
-                        let _ = std::process::Command::new("umount")
-                            .arg(&mountpoint)
-                            .stdout(std::process::Stdio::null())
-                            .stderr(std::process::Stdio::null())
-                            .status();
+                    // TempDir cleanup must never traverse a possibly live mount.
+                    if let Err(err) = sharecli_fuse::force_unmount(&mountpoint) {
+                        let preserved = tmpdir.keep();
+                        error!(path = %preserved.display(), error = %err,
+                            "preserving mount directory after failed unmount");
                     }
                     let _ = std::fs::remove_file(&marker_backing);
                     Self { mountpoint: None, _tmpdir: None, readiness_marker: None }
@@ -424,15 +415,13 @@ impl FuseGuard {
 impl Drop for FuseGuard {
     fn drop(&mut self) {
         if let Some(ref mp) = self.mountpoint {
-            // Force-unmount (the `_tmpdir` field is dropped after this,
-            // which removes the now-empty mountpoint directory).
-            #[cfg(target_os = "linux")]
-            {
-                let _ = std::process::Command::new("fusermount").arg("-uz").arg(mp).status();
-            }
-            #[cfg(target_os = "macos")]
-            {
-                let _ = std::process::Command::new("umount").arg(mp).status();
+            // Only allow recursive TempDir cleanup after confirmed unmount.
+            if let Err(err) = sharecli_fuse::force_unmount(mp) {
+                if let Some(tmpdir) = self._tmpdir.take() {
+                    let preserved = tmpdir.keep();
+                    error!(path = %preserved.display(), error = %err,
+                        "preserving mount directory after failed unmount");
+                }
             }
         }
         if let Some(ref marker) = self.readiness_marker {
