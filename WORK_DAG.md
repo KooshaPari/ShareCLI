@@ -248,8 +248,10 @@ TXN identifiers are provisional, not replacements for historical T, FR or SC-MO 
 ## Hosted CI repair claim (2026-10-16)
 
 Owner: desk / fix/hosted-ci-lint-20261016. FR-007.
-Scope: baseline rustfmt deltas, tray backend/API regression test (reuse #906),
-ci-gate.yml format command, quality-gate.yml dependencies/report permissions,
-pr-lint.yml label events, cross-platform.yml native build prerequisites.
+Scope: baseline rustfmt deltas, tray platform/API regression test (reuse #906),
+ci-gate.yml format command and build/test prerequisites,
+quality-gate.yml dependencies/report permissions,
+pr-lint.yml label events, cross-platform.yml native build prerequisites,
+and the actionlint desk-sharecli runner label (reuse #907).
 No release, spawn-core, fuzz, or benchmark source ownership claimed.
 Status: IN_PROGRESS; hold until merge or explicit handoff.
