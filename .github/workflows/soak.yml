@@ -135,26 +135,26 @@ jobs:
 
           # 0. The soak must have actually run for (about) the configured time
           #    and made requests. Guards against empty or synthetic reports.
-          duration = data.get("duration_sec", 0)
+          duration = float(data.get("duration_sec", 0) or 0)
           if duration < 590:
               errors.append(f"duration_sec {duration} is below 590 (soak did not run the full duration)")
-          if data.get("total_requests", 0) <= 0:
+          if float(data.get("total_requests", 0) or 0) <= 0:
               errors.append("total_requests is 0 (no scenarios ran)")
           if "synthesised" in str(data.get("note", "")):
               errors.append("report is synthesised, not produced by the soak binary")
 
           # 1. Error rate must stay below 5 %
-          error_rate = data.get("error_rate", 1.0)
+          error_rate = float(data.get("error_rate", 1.0))
           if error_rate > 0.05:
               errors.append(f"error_rate {error_rate:.4f} exceeds 0.05 threshold")
 
           # 2. Uptime must be >= 95 %
-          uptime = data.get("uptime_pct", 0.0)
+          uptime = float(data.get("uptime_pct", 0.0))
           if uptime < 95.0:
               errors.append(f"uptime_pct {uptime:.2f} below 95.0 threshold")
 
           # 3. p99 latency must be <= 2 000 ms
-          p99 = data.get("p99_latency_ms", 99999)
+          p99 = float(data.get("p99_latency_ms", 99999))
           if p99 > 2000:
               errors.append(f"p99_latency_ms {p99} exceeds 2000 ms threshold")
 
