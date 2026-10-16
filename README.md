@@ -25,12 +25,12 @@ coordinates that shared substrate.
 
 Core crates:
 
-| Crate | Role |
-| ----- | ---- |
-| `sharecli-core` | Hypervisor loop, thermal gate, coalesce orchestration |
-| `sharecli-fuse` | FUSE IO intercept for shared cwd / build-cache reads |
-| `sharecli-ipc` | CoalesceCache and IPC debounce/queue |
-| `sharecli-fleet` | Fleet registry + thermal governor |
+| Crate            | Role                                                  |
+| ---------------- | ----------------------------------------------------- |
+| `sharecli-core`  | Hypervisor loop, thermal gate, coalesce orchestration |
+| `sharecli-fuse`  | FUSE IO intercept for shared cwd / build-cache reads  |
+| `sharecli-ipc`   | CoalesceCache and IPC debounce/queue                  |
+| `sharecli-fleet` | Fleet registry + thermal governor                     |
 
 Harbor / agent-eval soft harness lives **outside** this repo: suite-facing
 stubs in [`phenotype-tooling/crates/benchora`](https://github.com/KooshaPari/phenotype-tooling)
@@ -142,11 +142,11 @@ rm -f "$(command -v sharecli)"
 
 Optional data cleanup (config, pane map, runtime lock):
 
-| Path | Contents |
-| ---- | -------- |
-| `~/.config/sharecli/` (Linux/macOS XDG) | `config.toml`, `pane-map.toml` |
-| `%APPDATA%\sharecli\` (Windows) | same |
-| `$XDG_RUNTIME_DIR/sharecli*` or temp dir | serve lock files |
+| Path                                     | Contents                       |
+| ---------------------------------------- | ------------------------------ |
+| `~/.config/sharecli/` (Linux/macOS XDG)  | `config.toml`, `pane-map.toml` |
+| `%APPDATA%\sharecli\` (Windows)          | same                           |
+| `$XDG_RUNTIME_DIR/sharecli*` or temp dir | serve lock files               |
 
 ```bash
 rm -rf ~/.config/sharecli
@@ -298,12 +298,12 @@ start time and never written to disk.
 address (default `127.0.0.1:9090`). All endpoints respond with JSON unless
 noted; non-`200` responses include a `{"error": "..."}` body.
 
-| Method | Path                   | Description                                                    |
-| ------ | ---------------------- | -------------------------------------------------------------- |
-| GET    | `/health`              | Liveness probe for the supervisor itself. Always `200` if up.  |
-| GET    | `/health/processes`    | Per-process status (state, PID, uptime, last health check).   |
-| GET    | `/config`              | Effective config (secrets redacted) currently in effect.       |
-| GET    | `/metrics/prometheus`  | Prometheus exposition format (text/plain; `version=0.0.4`).   |
+| Method | Path                  | Description                                                   |
+| ------ | --------------------- | ------------------------------------------------------------- |
+| GET    | `/health`             | Liveness probe for the supervisor itself. Always `200` if up. |
+| GET    | `/health/processes`   | Per-process status (state, PID, uptime, last health check).   |
+| GET    | `/config`             | Effective config (secrets redacted) currently in effect.      |
+| GET    | `/metrics/prometheus` | Prometheus exposition format (text/plain; `version=0.0.4`).   |
 
 A request that targets an unknown process can append
 `?name=<process-name>` to `/health/processes`.
@@ -331,6 +331,7 @@ The new Rust guard module is a pure predicate/test slice. Durable authority inte
 Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
 
 **Roles**
+
 - Authors (may change source without extra review): Koosha Paridehpour (KooshaPari)
 - Reviewers (review every change from non-authors): Koosha Paridehpour (KooshaPari)
 - Approvers (approve each signing request): Koosha Paridehpour (KooshaPari)
