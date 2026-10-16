@@ -4,6 +4,9 @@
 //! AC-007.28 `proc --watch` NDJSON mode prints gate → host_watch companion sections on
 //! stderr; stdout stays pipe-clean (no footer or companion leak).
 
+#[path = "common/stream_capture.rs"]
+mod stream_capture;
+
 use std::io::Read;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -46,11 +49,9 @@ fn fr007_proc_watch_ndjson_stderr_gate_before_host_watch() {
     // under parallel CI load (the first tick can exceed the sleep).
     let stderr_buf: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
     let buf_reader = stderr_buf.clone();
-    let mut err_handle = child.stderr.take().expect("stderr handle");
+    let err_handle = child.stderr.take().expect("stderr handle");
     let reader = thread::spawn(move || {
-        let mut s = String::new();
-        let _ = err_handle.read_to_string(&mut s);
-        *buf_reader.lock().expect("stderr lock") = s;
+        stream_capture::read_stream_into(err_handle, buf_reader);
     });
 
     let deadline = Instant::now() + Duration::from_secs(120);
@@ -103,11 +104,9 @@ fn fr007_proc_watch_ndjson_stdout_no_companion_leak() {
     // exceed a fixed sleep.
     let stderr_buf: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
     let buf_reader = stderr_buf.clone();
-    let mut err_handle = child.stderr.take().expect("stderr handle");
+    let err_handle = child.stderr.take().expect("stderr handle");
     let reader = thread::spawn(move || {
-        let mut s = String::new();
-        let _ = err_handle.read_to_string(&mut s);
-        *buf_reader.lock().expect("stderr lock") = s;
+        stream_capture::read_stream_into(err_handle, buf_reader);
     });
 
     let deadline = Instant::now() + Duration::from_secs(120);

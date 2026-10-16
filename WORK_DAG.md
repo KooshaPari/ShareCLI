@@ -262,5 +262,8 @@ Coverage scope: register existing admission and session API contracts in the
 library test harness, matching the unchanged 85% unit coverage gate.
 Add error source-chain, runbook-code, HTTP redaction and correlation contracts
 (FR-003 / FR-004) without changing production error behavior.
+Pipeline follow-up: issue #900 watch readers publish only at EOF. Claim the
+shared capture helper and existing FR-006/FR-007 reader closures; retain all
+frame, ordering, stderr and timeout assertions.
 No release, spawn-core, fuzz, or benchmark source ownership claimed.
 Status: IN_PROGRESS; hold until merge or explicit handoff.

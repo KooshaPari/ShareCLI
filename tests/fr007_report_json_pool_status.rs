@@ -4,7 +4,9 @@
 //! `report --format json` / `FleetReportJson` embed top-level `pool` + `status` after
 //! `gate` → `host_watch` (parity with `monitoring.report` AC-007.72 / dashboard WS AC-007.70).
 
-use std::io::Read;
+#[path = "common/stream_capture.rs"]
+mod stream_capture;
+
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -72,19 +74,13 @@ fn drain_watch_pipes(
     let out_reader = {
         let buf = stdout_buf.clone();
         thread::spawn(move || {
-            let mut s = String::new();
-            let mut out = stdout_handle;
-            let _ = out.read_to_string(&mut s);
-            *buf.lock().expect("stdout lock") = s;
+            stream_capture::read_stream_into(stdout_handle, buf);
         })
     };
     let err_reader = {
         let buf = stderr_buf.clone();
         thread::spawn(move || {
-            let mut s = String::new();
-            let mut err = stderr_handle;
-            let _ = err.read_to_string(&mut s);
-            *buf.lock().expect("stderr lock") = s;
+            stream_capture::read_stream_into(stderr_handle, buf);
         })
     };
 

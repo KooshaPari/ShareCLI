@@ -5,6 +5,9 @@
 //! host_watch text companions on stderr during refresh cycles; gate/host_watch and `[watch]`
 //! footer stay on stdout only (inverse contract of AC-007.28 / AC-007.29 NDJSON stderr).
 
+#[path = "common/stream_capture.rs"]
+mod stream_capture;
+
 use std::io::Read;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -40,19 +43,13 @@ fn drain_watch_pipes(
     let out_reader = {
         let buf = stdout_buf.clone();
         thread::spawn(move || {
-            let mut s = String::new();
-            let mut out = stdout_handle;
-            let _ = out.read_to_string(&mut s);
-            *buf.lock().expect("stdout lock") = s;
+            stream_capture::read_stream_into(stdout_handle, buf);
         })
     };
     let err_reader = {
         let buf = stderr_buf.clone();
         thread::spawn(move || {
-            let mut s = String::new();
-            let mut err = stderr_handle;
-            let _ = err.read_to_string(&mut s);
-            *buf.lock().expect("stderr lock") = s;
+            stream_capture::read_stream_into(stderr_handle, buf);
         })
     };
 
