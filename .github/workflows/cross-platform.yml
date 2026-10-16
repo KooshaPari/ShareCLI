@@ -28,6 +28,8 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # Cargo's libgit2 checkout cannot handle PhenoShared's long Windows paths.
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
 
 jobs:
   # ------------------------------------------------------------------
@@ -54,8 +56,24 @@ jobs:
       - name: Cargo cache
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2
 
+      - name: Enable long dependency paths (Windows)
+        if: runner.os == 'Windows'
+        run: git config --global core.longpaths true
+
+      - name: Setup Zig
+        if: runner.os != 'Windows'
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libglib2.0-dev libgtk-3-dev libxdo-dev pkg-config
+
       - name: Build
-        run: cargo build --workspace --all-features --locked 2>&1 | tail -5
+        run: cargo build --workspace --all-features --locked
 
       - name: Test (lib)
         run: cargo test --workspace --lib --no-fail-fast

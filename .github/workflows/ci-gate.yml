@@ -46,18 +46,7 @@ jobs:
           toolchain: 1.96.0
           components: rustfmt, clippy
       - name: Format (rustfmt)
-        # rustfmt.toml pins the stable toolchain to 1.96.0 via dtolnay/rust-toolchain.
-        # group_imports / indent_style are configured in rustfmt.toml.
-        run: |
-          set +e
-          cargo fmt --all -- --check > /tmp/fmt.log 2>/dev/null || true
-          if grep -q '^Diff in ' /tmp/fmt.log; then
-            cargo fmt --all -- --check > /tmp/fmt.log 2>&1
-            cat /tmp/fmt.log
-            exit 1
-          else
-            echo "rustfmt OK (stable 1.96.0; no real diffs)"
-          fi
+        run: cargo fmt --all -- --check
       - name: Lint (clippy, informational)
         run: cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee clippy.log; if grep -q '^error' clippy.log; then echo "::warning::cargo clippy reported errors (informational, tracked in FR-007 debt)"; fi
       - name: Post legacy commit-status for merge gate

@@ -651,7 +651,10 @@ mod tests {
     // -----------------------------------------------------------------------
     // MockProcessRunner
     // -----------------------------------------------------------------------
+    #[cfg(unix)]
     use std::os::unix::process::ExitStatusExt;
+    #[cfg(windows)]
+    use std::os::windows::process::ExitStatusExt;
 
     #[test]
     fn mock_process_runner_new_is_empty() {
