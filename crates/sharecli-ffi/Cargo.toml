@@ -14,7 +14,7 @@ sharecli = { path = "../../" }
 tokio = { version = "1", features = ["full"] }
 serde_json = "1"
 anyhow = "1"
-dirs = "5"
+dirs = "7"
 
 # FFI choice: plain C ABI (no uniffi / cxx overhead).
 # The Swift side imports via a bridging header (sharecli_ffi.h).
