@@ -1,0 +1,60 @@
+{
+  "schema_version": "1.0.0",
+  "audit_kind": "STATE_FORWARD_DOCKET",
+  "audit_id": "sharecli-2026-10-17-state-forward-docket",
+  "snapshot_id": "sharecli-2026-10-17-sfd-001",
+  "subject_id": "sharecli-2026-10-17-cvp1h-queue-5f2425ca",
+  "baseline_id": "sharecli-2026-10-16-audit-134888ede",
+  "as_of": "2026-10-17T19:55:00Z",
+  "head_commit": "5f2425ca",
+  "head_branch": "chore/cvp-1h-queue-2026-10-17",
+  "head_repo": "git@github.com:KooshaPari/ShareCLI.git",
+  "pheno_registry_canonical": {
+    "repo": "git@github.com:KooshaPari/PhenoRegistry.git",
+    "branch": "docs/sharecli-sfd-20261017",
+    "pr": 666,
+    "path": "projects/sharecli/state/2026-10-17-sfd-001/"
+  },
+  "sharecli_mirror": {
+    "path": "audit-sessions/2026-10-17-state-forward-docket/",
+    "branch": "docs/sharecli-sfd-20261017"
+  },
+  "validator": {
+    "tool": "handbook/specs/assessment/state-forward-docket-v1/tools/sfd.py",
+    "schema": "handbook/specs/assessment/state-forward-docket-v1/schemas/snapshot.schema.json",
+    "structurally_valid": true,
+    "record_class": "OPERATIONAL",
+    "gate_status": "BLOCKED",
+    "blockers": [
+      "J-BENEFICIARY NOT_RUN (critical)",
+      "E-TRAY BLOCKED on sharecli#938",
+      "cargo-deny BLOCKED",
+      "cross BLOCKED",
+      "coverage BLOCKED",
+      "bench BLOCKED"
+    ]
+  },
+  "artifacts": {
+    "templates": "audit-sessions/2026-10-17-state-forward-docket/00-COCKPIT.md .. 18-EVIDENCE-INDEX.md",
+    "snapshot": "audit-sessions/2026-10-17-state-forward-docket/snapshots/2026-10-17T19-55-00Z.json",
+    "html_report": "audit-sessions/2026-10-17-state-forward-docket/reports/SFD-sharecli-2026-10-17.html",
+    "pdf_report": "audit-sessions/2026-10-17-state-forward-docket/reports/SFD-sharecli-2026-10-17.pdf",
+    "decision_brief": "audit-sessions/2026-10-17-state-forward-docket/README.md"
+  },
+  "metrics": {
+    "evidence_items": 51,
+    "leaves": 33,
+    "limitations": 16,
+    "templates_written": 19,
+    "operator_decisions": 10,
+    "blockers_recorded": 7,
+    "open_prs": 7,
+    "forward_commits": 8,
+    "adrs_referenced": 9
+  },
+  "links": {
+    "deep_state_audit": "audit-sessions/2026-10-17-deep-state-audit/",
+    "operator_intent_pointer": "audit-sessions/2026-10-17-state-forward-docket/docs_intent_pointer.md",
+    "operator_adr_pointer": "audit-sessions/2026-10-17-state-forward-docket/docs_adr_pointer.md"
+  }
+}

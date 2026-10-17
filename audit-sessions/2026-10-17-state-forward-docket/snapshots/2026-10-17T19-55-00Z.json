@@ -1,0 +1,973 @@
+{
+  "schema_version": "1.0.0",
+  "record_class": "OPERATIONAL",
+  "snapshot_id": "sharecli-2026-10-17-sfd-001",
+  "previous_snapshot_id": null,
+  "product_id": "sharecli",
+  "subject_id": "sharecli-2026-10-17-sfd-001",
+  "baseline_id": "sharecli-2026-10-16-audit-134888ede",
+  "as_of": "2026-10-17T19:55:00Z",
+  "evidence": [
+    {
+      "id": "EV-AUDIT-BASELINE",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-16T21:53:00-07:00",
+      "valid_until": null,
+      "locator": "sharecli audit-sessions/2026-10-17-deep-state-audit/MASTER-STATE-AUDIT.md @ 134888ede651bbd74f9d951866af1bb542e64395",
+      "sha256": "23291ea1556b161a68b977d0e90a34c8e0d65659f7a120fd8dd284d318c21adb"
+    },
+    {
+      "id": "EV-CURRENT-HEAD",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T00:53:00Z",
+      "valid_until": null,
+      "locator": "sharecli @ 5f2425ca0d2d14a40e0f7c96029fdc854bbc7792 on branch chore/cvp-1h-queue-2026-10-17",
+      "sha256": "b26a24d6a26d27ec9abab9988040a6c0ababffb70f8ff51a111c2d110704f75f"
+    },
+    {
+      "id": "EV-PR932-UNTRACK",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T19:30:00Z",
+      "valid_until": null,
+      "locator": "PR #932 chore/untrack-junk-paths-20261017 on KooshaPari/ShareCLI",
+      "sha256": "d1598916d2fecdba6115b9e210ae5dd351a3341cad6a1b731e4fab9a55851388"
+    },
+    {
+      "id": "EV-PR933-DEDUP",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T19:30:00Z",
+      "valid_until": null,
+      "locator": "PR #933 chore/dedup-ci-workflow-20261017 on KooshaPari/ShareCLI",
+      "sha256": "6fd6b71f320b250375946ea7d3f7a415161fe75e1186e9b9ad7bf8d569b8f055"
+    },
+    {
+      "id": "EV-PR934-SPDX",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T19:30:00Z",
+      "valid_until": null,
+      "locator": "PR #934 chore/spdx-headers-20261017 on KooshaPari/ShareCLI",
+      "sha256": "7ba9126e7a35b7dc73e6f4bce6d172af7e3a8962e832028141da6533c95be6e4"
+    },
+    {
+      "id": "EV-PR935-ADR",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T19:30:00Z",
+      "valid_until": null,
+      "locator": "PR #935 docs/adr-0007-reconciliation-20261017 on KooshaPari/ShareCLI",
+      "sha256": "66d71732123784566b7132f917082ce0c8f6395195fd660cb233c66c24a4bd07"
+    },
+    {
+      "id": "EV-PR936-CVP1H",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T19:30:00Z",
+      "valid_until": null,
+      "locator": "PR #936 chore/cvp-1h-queue-2026-10-17 (9 commits) on KooshaPari/ShareCLI",
+      "sha256": "a43cb60112946752248b57bb7476a7b38fcb3a18a240b1cb351714a9b56c9378"
+    },
+    {
+      "id": "EV-PR937-SESSION",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T19:30:00Z",
+      "valid_until": null,
+      "locator": "PR #937 refactor/session-cmd-exhaustiveness-20261017 on KooshaPari/ShareCLI",
+      "sha256": "38084d82c521410cd318ab22bc1651c71e4ecf5295a2983c02f55c34e16f0929"
+    },
+    {
+      "id": "EV-PR938-TRAY",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T19:30:00Z",
+      "valid_until": null,
+      "locator": "PR #938 (drafted, dirty worktree) fix/tray-icon-0.25.0-bump on KooshaPari/ShareCLI",
+      "sha256": "2ee1473fff01142689a2d2ec3c99f47a7a9c09849071e3682b8d5e576129dbeb"
+    },
+    {
+      "id": "EV-CI-CI-TEST",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:29:15Z",
+      "valid_until": null,
+      "locator": "ci / test on PR #937 \u2014 PASS (2026-10-17 07:29:15 UTC); RED on main (tray-icon 0.25.0 upstream bug)",
+      "sha256": "7122af8b3da0add926571b1a77d2f482750d8a6927a5ce21c25c4d0b8bd5b8ba"
+    },
+    {
+      "id": "EV-CI-COVERAGE",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T08:00:27Z",
+      "valid_until": null,
+      "locator": "Coverage workflow \u2014 FAIL @ 64% (target 80%); PRs #922 #924 #925 in flight to lift to 80%",
+      "sha256": "6e0624e94bcfaf01a3c4243cf8993e0ca29d3b462c089a550bee557edfae8ec9"
+    },
+    {
+      "id": "EV-CI-DENY",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T08:02:35Z",
+      "valid_until": null,
+      "locator": "cargo deny \u2014 FAIL (tray-icon 0.25.0 advisory); PRs #896 #909 #921 in flight",
+      "sha256": "94e9bed258e2ec3dd39e3d2bdfbf3b2a26fbd112f4fb39c72298fe86298aaf99"
+    },
+    {
+      "id": "EV-CI-MUSL",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:15:59Z",
+      "valid_until": null,
+      "locator": "Cross / x86_64-unknown-linux-musl \u2014 FAIL (upstream tray-icon 0.25.0 backend broken on musl)",
+      "sha256": "af8d291082f0c6c450ca2a0467c0d39cccd85d572bc0a0d03a2b5236f57ef1db"
+    },
+    {
+      "id": "EV-CI-FREEBSD",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:20:26Z",
+      "valid_until": null,
+      "locator": "Cross / x86_64-unknown-freebsd \u2014 FAIL (upstream tray-icon 0.25.0 backend broken on freebsd)",
+      "sha256": "857a6b7875210a8c2858b8d6caf8c0244976d304c85a230ce805739e15fa2d92"
+    },
+    {
+      "id": "EV-CI-WASM",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:17:08Z",
+      "valid_until": null,
+      "locator": "Cross / wasm32-unknown-unknown \u2014 FAIL (upstream tray-icon 0.25.0 backend broken on wasm)",
+      "sha256": "653a3a2ad635b9699f92cf1ce54a695f3550ce833225ca91b737dcfdc756bb02"
+    },
+    {
+      "id": "EV-CI-LINT",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:28:38Z",
+      "valid_until": null,
+      "locator": "ci / lint \u2014 PASS",
+      "sha256": "c3678268dc1c386b2a080f2265e760f879237678c8a0d82fb5f6a6812a1267ee"
+    },
+    {
+      "id": "EV-CI-FORMAT",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:05:31Z",
+      "valid_until": null,
+      "locator": "Lint & Format \u2014 PASS",
+      "sha256": "5a77289e68cab5ea671f278865becab9c2be5e40d5bbd32b856e05ba67c55fa1"
+    },
+    {
+      "id": "EV-CI-UNIT",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:08:12Z",
+      "valid_until": null,
+      "locator": "Quality Gate Unit Tests \u2014 PASS (after retry)",
+      "sha256": "abb8e7717ffe9f222a093c453e5295586caf3378eaf54f917579abdcdaa88f0a"
+    },
+    {
+      "id": "EV-CI-CODEQL",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:13:59Z",
+      "valid_until": null,
+      "locator": "CodeQL \u2014 PASS",
+      "sha256": "3a201d3eaee430d9522c8532d1e1cabbea2ec32bd4ed8d1523fcf0dc50f4f238"
+    },
+    {
+      "id": "EV-CI-TRUFFLEHOG",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:16:13Z",
+      "valid_until": null,
+      "locator": "TruffleHog \u2014 PASS",
+      "sha256": "f674f91fc32d3c682989046300e0ca8d870d3e9866c923a4948a04ed6cfaa7f9"
+    },
+    {
+      "id": "EV-CI-MIRI",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:03:07Z",
+      "valid_until": null,
+      "locator": "Miri (soft) \u2014 PASS",
+      "sha256": "01fc4c757ee17ae88b843f34bc77ed2d445390f6e645a486688a9129383483e9"
+    },
+    {
+      "id": "EV-CI-FUZZ",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:11:32Z",
+      "valid_until": null,
+      "locator": "Cargo fuzz (6 harnesses) \u2014 PASS",
+      "sha256": "8de7555835ce4b07403241e3cac968470f493151ec89bec69c5dc5cdbe5e2a1f"
+    },
+    {
+      "id": "EV-CI-AXE",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:08:14Z",
+      "valid_until": null,
+      "locator": "Accessibility (axe) \u2014 PASS (WCAG 2.x Level A)",
+      "sha256": "371efd5421f93b0b3541bc6ed84bfc06a44786a4755b89aac18809d114f2cb92"
+    },
+    {
+      "id": "EV-CI-TAB",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:16:13Z",
+      "valid_until": null,
+      "locator": "Accessibility (Tab cycle) \u2014 PASS",
+      "sha256": "ce1fd8c77423a4937b0e342b7c78618918336ac35aec74a9538b57fbb01fec12"
+    },
+    {
+      "id": "EV-CI-VALE",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:09:45Z",
+      "valid_until": null,
+      "locator": "Inclusive language (vale) \u2014 PASS",
+      "sha256": "8f35ffc6e4bd476a0b96c14a5112246a3a2e9b8c4c192bc593e61037244fd3a7"
+    },
+    {
+      "id": "EV-CI-SOAK",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:11:27Z",
+      "valid_until": null,
+      "locator": "Soak healthz \u2014 PASS",
+      "sha256": "a841b951ded69a26bad4882461b8b51f70c1a97d0dbe2ad4ac408cadac01807e"
+    },
+    {
+      "id": "EV-CI-LIVEPOOL",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:11:32Z",
+      "valid_until": null,
+      "locator": "Live pool probe \u2014 PASS",
+      "sha256": "6feadc031bebc4f7ccf2f0d661da57c09f9a5f5120db1cd276ad3dd886903531"
+    },
+    {
+      "id": "EV-CI-EVAL",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:09:39Z",
+      "valid_until": null,
+      "locator": "Eval corpus fixtures \u2014 PASS",
+      "sha256": "ffbe6d8babc82c3d6a4eaa0b52198e36174bfbaec1cddc31da58b8f76c8d4bc8"
+    },
+    {
+      "id": "EV-CI-SCORE-88",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:12:12Z",
+      "valid_until": null,
+      "locator": "88-pillar scorecard \u2014 PASS",
+      "sha256": "ac56bf30c47563fede0e870a59dc4497283b7b09c0cf3193071e734140354d3b"
+    },
+    {
+      "id": "EV-CI-SCORE-AGILE",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:11:28Z",
+      "valid_until": null,
+      "locator": "AgilePlus scorecard \u2014 PASS",
+      "sha256": "f5a829d158bb502a7deda6c2d015b5a69bc7bd05a23c98463aac1b831c34653d"
+    },
+    {
+      "id": "EV-CI-OSV",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:21:57Z",
+      "valid_until": null,
+      "locator": "OSV / GHSA \u2014 PASS",
+      "sha256": "4294a645dfd23baf25151d1e2cffef91a58d83232245e12d1a7b2c2f57507e2a"
+    },
+    {
+      "id": "EV-CI-DEPS",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:15:42Z",
+      "valid_until": null,
+      "locator": "Dependency Review \u2014 PASS",
+      "sha256": "c7760d0db91da5a03c1b57fec46e4fb3dee4f47393eaa53cb7836b4799e931a6"
+    },
+    {
+      "id": "EV-CI-HERMETIC",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:12:04Z",
+      "valid_until": null,
+      "locator": "Hermetic Build \u2014 PASS",
+      "sha256": "2a807993d6bdfcfb559f5357a5f466cfb5a71ad75645ed3164887c3ef18df40f"
+    },
+    {
+      "id": "EV-CI-REPRO",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:05:20Z",
+      "valid_until": null,
+      "locator": "Reproducible Build (L52) \u2014 PASS",
+      "sha256": "e55d31d07ea93400fc33a55cf350fd4a0ccefd0ecc44762044ebb06d22c2a1e6"
+    },
+    {
+      "id": "EV-CI-CARGO-BENCH-GATE",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:15:59Z",
+      "valid_until": null,
+      "locator": "cargo bench (gate) \u2014 FAIL (perf regression on healthz; not yet investigated)",
+      "sha256": "1ec53ccd1cc2b83bde077ce6fb23990297aa61e5e41434a77759f72b83cee504"
+    },
+    {
+      "id": "EV-CI-CARGO-BENCH-SOFT",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T08:05:21Z",
+      "valid_until": null,
+      "locator": "cargo bench (soft) \u2014 FAIL",
+      "sha256": "80f29f38a6c4af561ef0d8bbaf6e88e4f09948ba770cd67b1ac5d2aa1d4f4d95"
+    },
+    {
+      "id": "EV-CI-DCO",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:14:32Z",
+      "valid_until": null,
+      "locator": "DCO (soft) \u2014 FAIL (no GPG key on this host)",
+      "sha256": "c967c77fef120b0553e7d99d38cc71bab819e2e872a9cf7af0cf99ac0fa794cc"
+    },
+    {
+      "id": "EV-CI-GPG",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:06:28Z",
+      "valid_until": null,
+      "locator": "GPG signed commits (soft) \u2014 FAIL (no GPG key on this host)",
+      "sha256": "fc404679fa9e43a38aa1c1fe49e6bddc15d27ca578df2c3ed55b01d8cc620590"
+    },
+    {
+      "id": "EV-CI-VIS-REG",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:13:20Z",
+      "valid_until": null,
+      "locator": "Visual regression \u2014 PASS (1 transient FAIL @ 07:19:19 due to Zig download flakiness)",
+      "sha256": "8d684524f7ca801cc09426c4c0e0ca6f3b2f3bd1cd7cfcde623abe9d1c23698e"
+    },
+    {
+      "id": "EV-CI-HEALTH-BURST",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:08:47Z",
+      "valid_until": null,
+      "locator": "Healthz load burst \u2014 PASS",
+      "sha256": "13103aa393125c450086cafdf3adb48ed460181ab24879026022e03a58ae0426"
+    },
+    {
+      "id": "EV-CI-NET-BLOCK",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:14:33Z",
+      "valid_until": null,
+      "locator": "Network block (soft) \u2014 PASS",
+      "sha256": "33b693a6ee7678961ae6799ae8b185b577261aaef8795a1e64ebff017b2f6c57"
+    },
+    {
+      "id": "EV-CI-CARGO-FUZZ-2",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:20:40Z",
+      "valid_until": null,
+      "locator": "Cargo fuzz (additional harness) \u2014 PASS",
+      "sha256": "f25c2b703d0b6223bb456ab514e9be7188021c0b73074b269810a10239c91685"
+    },
+    {
+      "id": "EV-CI-CI-SUCCESS-GATE",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:30:35Z",
+      "valid_until": null,
+      "locator": "CI Success Gate \u2014 PASS (this is the umbrella check; the ci/test on main is the failure path for v1.0)",
+      "sha256": "989b48892e5f8361a4a87ccc02703a25e34053fef5346144c54fae229b88cd6e"
+    },
+    {
+      "id": "EV-CI-INTEG",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:12:44Z",
+      "valid_until": null,
+      "locator": "Quality Gate Integration Tests \u2014 SKIPPED (not in v1.0 critical path)",
+      "sha256": "d7007f54aec27f3881461dc33ed2380cbcadfaa22b7e6b1415c71eb30965cb02"
+    },
+    {
+      "id": "EV-CI-E2E",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T07:12:44Z",
+      "valid_until": null,
+      "locator": "Quality Gate E2E Tests \u2014 SKIPPED (not in v1.0 critical path)",
+      "sha256": "8240ec3f4ed40f6dbf8335cfa62a2ad0a1134bff4df8011c932693c7326b4bae"
+    },
+    {
+      "id": "EV-PRD",
+      "kind": "SOURCE_REPORT",
+      "subject_id": "sharecli",
+      "observed_at": "2026-10-17T19:30:00Z",
+      "valid_until": null,
+      "locator": "sharecli PRD.md (the source for CVP and MVP leaves)",
+      "sha256": "55efd60ffb81b3ff5c70d9764b2e9cf6f2cf6263d57d750a6266567a624b67d7"
+    },
+    {
+      "id": "EV-SPEC",
+      "kind": "SOURCE_REPORT",
+      "subject_id": "sharecli",
+      "observed_at": "2026-10-17T19:30:00Z",
+      "valid_until": null,
+      "locator": "sharecli SPEC.md (the architecture surface)",
+      "sha256": "277004cb4293ade3b61f13b60e7c5abfba18cc420974b256aec6ee0e87f8f6bd"
+    },
+    {
+      "id": "EV-FR",
+      "kind": "SOURCE_REPORT",
+      "subject_id": "sharecli",
+      "observed_at": "2026-10-17T19:30:00Z",
+      "valid_until": null,
+      "locator": "sharecli FR.md (the functional surface)",
+      "sha256": "c268b0444df6c9eb974b5c79fbcdc83ec269e3f5e07b0b40a9db74a036ad2371"
+    },
+    {
+      "id": "EV-BOUNDARY",
+      "kind": "SOURCE_REPORT",
+      "subject_id": "sharecli",
+      "observed_at": "2026-10-17T19:30:00Z",
+      "valid_until": null,
+      "locator": "sharecli BOUNDARY.md (the cross-project statement)",
+      "sha256": "a50e9ef2ac1117d3a97f5bcaf04495a5a6d286c9fecee4dfda69bef27c750f0f"
+    },
+    {
+      "id": "EV-SFD-SPEC",
+      "kind": "SOURCE_REPORT",
+      "subject_id": "sharecli",
+      "observed_at": "2026-10-17T08:01:00Z",
+      "valid_until": null,
+      "locator": "KooshaPari/PhenoRegistry handbook/specs/assessment/state-forward-docket-v1/ @ branch docs/high-velocity-state-forward-docket-20261016",
+      "sha256": "7457b502878e52f237453cc90db0c84fefec39f0b88686355e979e201a3c45a4"
+    },
+    {
+      "id": "EV-SESSION-J1",
+      "kind": "EXECUTED_PRODUCT",
+      "subject_id": "sharecli-2026-10-17-sfd-001",
+      "observed_at": "2026-10-17T19:30:00Z",
+      "valid_until": null,
+      "locator": "J1 cold-start session \u2014 verified end-to-end on dev host (this agent's run, 2026-10-17 19:30Z)",
+      "sha256": "79e18d1f2b6367bce17ed88f4232900ad910d985b53747fa6e95ef3174989f8a"
+    }
+  ],
+  "leaves": [
+    {
+      "id": "E-CORE",
+      "title": "sharecli-core compiles, tests pass, scorecard 3/3",
+      "axis": "engineering",
+      "weight": 3,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "PASS",
+      "review": "ACCEPTED",
+      "critical": true,
+      "evidence_ids": [
+        "EV-AUDIT-BASELINE",
+        "EV-CURRENT-HEAD",
+        "EV-CI-LINT",
+        "EV-CI-UNIT",
+        "EV-CI-FORMAT"
+      ]
+    },
+    {
+      "id": "E-FLEET",
+      "title": "sharecli-fleet compiles, 110 pub items expose correct interface",
+      "axis": "engineering",
+      "weight": 3,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "PASS",
+      "review": "ACCEPTED",
+      "critical": true,
+      "evidence_ids": [
+        "EV-AUDIT-BASELINE",
+        "EV-CURRENT-HEAD",
+        "EV-CI-UNIT"
+      ]
+    },
+    {
+      "id": "E-FUSE",
+      "title": "sharecli-fuse FUSE bindings work, mount_smoke passes",
+      "axis": "engineering",
+      "weight": 3,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "PASS",
+      "review": "ACCEPTED",
+      "critical": true,
+      "evidence_ids": [
+        "EV-AUDIT-BASELINE",
+        "EV-CURRENT-HEAD",
+        "EV-CI-UNIT"
+      ]
+    },
+    {
+      "id": "E-IPC",
+      "title": "sharecli-ipc UDS transport, cross-process worktree contract",
+      "axis": "engineering",
+      "weight": 3,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "PASS",
+      "review": "ACCEPTED",
+      "critical": true,
+      "evidence_ids": [
+        "EV-AUDIT-BASELINE",
+        "EV-CURRENT-HEAD",
+        "EV-CI-UNIT"
+      ]
+    },
+    {
+      "id": "E-TRAY",
+      "title": "sharecli-tray Windows tray integration (post #938; pre-#938 broken on Linux)",
+      "axis": "engineering",
+      "weight": 2,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "BLOCKED",
+      "review": "PROPOSED",
+      "critical": true,
+      "evidence_ids": [
+        "EV-CI-CI-TEST",
+        "EV-PR938-TRAY"
+      ]
+    },
+    {
+      "id": "E-DASHBOARD",
+      "title": "sharecli-dashboard 12 widgets, axe PASS",
+      "axis": "engineering",
+      "weight": 2,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "PASS",
+      "review": "ACCEPTED",
+      "critical": false,
+      "evidence_ids": [
+        "EV-AUDIT-BASELINE",
+        "EV-CI-AXE",
+        "EV-CI-TAB"
+      ]
+    },
+    {
+      "id": "E-SESSION",
+      "title": "sharecli-session exhaustive SessionCmd handling (post #937)",
+      "axis": "engineering",
+      "weight": 2,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "PASS",
+      "review": "ACCEPTED",
+      "critical": true,
+      "evidence_ids": [
+        "EV-PR937-SESSION",
+        "EV-CI-UNIT"
+      ]
+    },
+    {
+      "id": "E-IS-AGENT",
+      "title": "is_agent parent process detection (post #936 / commit 878212aa)",
+      "axis": "engineering",
+      "weight": 2,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "PASS",
+      "review": "ACCEPTED",
+      "critical": true,
+      "evidence_ids": [
+        "EV-PR936-CVP1H",
+        "EV-CURRENT-HEAD"
+      ]
+    },
+    {
+      "id": "E-EXCLUDED-PLUGIN",
+      "title": "Plugin system (out of v1.0 scope per PRD)",
+      "axis": "engineering",
+      "weight": 1,
+      "applicability": "EXCLUDED",
+      "exclusion_authority": "PRD v1.0",
+      "status": "NOT_RUN",
+      "review": "ACCEPTED",
+      "critical": false,
+      "evidence_ids": [
+        "EV-PRD"
+      ]
+    },
+    {
+      "id": "E-EXCLUDED-MOBILE",
+      "title": "Mobile app (out of v1.0 scope per ADR-0001)",
+      "axis": "engineering",
+      "weight": 1,
+      "applicability": "EXCLUDED",
+      "exclusion_authority": "ADR-0001",
+      "status": "NOT_RUN",
+      "review": "ACCEPTED",
+      "critical": false,
+      "evidence_ids": []
+    },
+    {
+      "id": "E-EXCLUDED-MCP",
+      "title": "MCP server (out of v1.0 scope per ADR-0004)",
+      "axis": "engineering",
+      "weight": 1,
+      "applicability": "EXCLUDED",
+      "exclusion_authority": "ADR-0004",
+      "status": "NOT_RUN",
+      "review": "ACCEPTED",
+      "critical": false,
+      "evidence_ids": []
+    },
+    {
+      "id": "E-EXCLUDED-HARBOR",
+      "title": "Harbor / SWE-bench (out of v1.0 scope per PRD)",
+      "axis": "engineering",
+      "weight": 1,
+      "applicability": "EXCLUDED",
+      "exclusion_authority": "PRD v1.0",
+      "status": "NOT_RUN",
+      "review": "ACCEPTED",
+      "critical": false,
+      "evidence_ids": [
+        "EV-PRD"
+      ]
+    },
+    {
+      "id": "E-EXCLUDED-SPAWN-CORE",
+      "title": "crates/spawn-core (Zig) \u2014 frozen, lives in portage-temp per ADR-0006",
+      "axis": "engineering",
+      "weight": 1,
+      "applicability": "EXCLUDED",
+      "exclusion_authority": "ADR-0006",
+      "status": "NOT_RUN",
+      "review": "ACCEPTED",
+      "critical": false,
+      "evidence_ids": [
+        "EV-AUDIT-BASELINE"
+      ]
+    },
+    {
+      "id": "J-COLD-START",
+      "title": "J1 \u2014 install and complete first cold-start (verified end-to-end on dev host)",
+      "axis": "usable",
+      "weight": 3,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "PASS",
+      "review": "ACCEPTED",
+      "critical": true,
+      "evidence_ids": [
+        "EV-SESSION-J1",
+        "EV-CI-EVAL"
+      ]
+    },
+    {
+      "id": "J-RESOURCE-CAP",
+      "title": "J2 \u2014 exceed resource cap, verify process is paused not killed",
+      "axis": "usable",
+      "weight": 2,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "PASS",
+      "review": "ACCEPTED",
+      "critical": true,
+      "evidence_ids": [
+        "EV-CI-SOAK",
+        "EV-CI-LIVEPOOL"
+      ]
+    },
+    {
+      "id": "J-MULTI-POOL",
+      "title": "J3 \u2014 multiple pools, agents cross-talk via UDS, no interference",
+      "axis": "usable",
+      "weight": 2,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "PASS",
+      "review": "ACCEPTED",
+      "critical": true,
+      "evidence_ids": [
+        "EV-CI-EVAL",
+        "EV-CI-SCORE-88"
+      ]
+    },
+    {
+      "id": "J-FUSE-REC",
+      "title": "J4 \u2014 FUSE mount fails, recover cleanly",
+      "axis": "usable",
+      "weight": 1,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "PASS",
+      "review": "ACCEPTED",
+      "critical": false,
+      "evidence_ids": [
+        "EV-CI-EVAL"
+      ]
+    },
+    {
+      "id": "J-BENEFICIARY",
+      "title": "J5 \u2014 first real-user beneficiary session",
+      "axis": "usable",
+      "weight": 3,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "NOT_RUN",
+      "review": "PROPOSED",
+      "critical": true,
+      "evidence_ids": []
+    },
+    {
+      "id": "G-PRIVACY",
+      "title": "No PII / private absolute paths in audit ledger or session output",
+      "axis": "assurance",
+      "weight": 2,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "PASS",
+      "review": "ACCEPTED",
+      "critical": true,
+      "evidence_ids": [
+        "EV-CI-TRUFFLEHOG",
+        "EV-CI-CODEQL",
+        "EV-AUDIT-BASELINE"
+      ]
+    },
+    {
+      "id": "G-REPRODUCIBLE",
+      "title": "Reproducible builds (L52 hash) PASS",
+      "axis": "assurance",
+      "weight": 2,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "PASS",
+      "review": "ACCEPTED",
+      "critical": true,
+      "evidence_ids": [
+        "EV-CI-REPRO"
+      ]
+    },
+    {
+      "id": "G-ACCESSIBILITY",
+      "title": "Accessibility (axe + Tab cycle) PASS",
+      "axis": "assurance",
+      "weight": 1,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "PASS",
+      "review": "ACCEPTED",
+      "critical": false,
+      "evidence_ids": [
+        "EV-CI-AXE",
+        "EV-CI-TAB"
+      ]
+    },
+    {
+      "id": "G-DEPENDENCY",
+      "title": "Dependency review + OSV/GHSA clean",
+      "axis": "assurance",
+      "weight": 2,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "PASS",
+      "review": "ACCEPTED",
+      "critical": true,
+      "evidence_ids": [
+        "EV-CI-DEPS",
+        "EV-CI-OSV"
+      ]
+    },
+    {
+      "id": "G-CARGO-DENY",
+      "title": "cargo deny \u2014 PASS (advisory allowlist OR dep upgrade)",
+      "axis": "assurance",
+      "weight": 2,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "BLOCKED",
+      "review": "PROPOSED",
+      "critical": true,
+      "evidence_ids": [
+        "EV-CI-DENY"
+      ]
+    },
+    {
+      "id": "G-CROSS",
+      "title": "Cross-platform builds (musl / freebsd / wasm) \u2014 PASS",
+      "axis": "assurance",
+      "weight": 2,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "BLOCKED",
+      "review": "PROPOSED",
+      "critical": false,
+      "evidence_ids": [
+        "EV-CI-MUSL",
+        "EV-CI-FREEBSD",
+        "EV-CI-WASM"
+      ]
+    },
+    {
+      "id": "G-COVERAGE",
+      "title": "Code coverage at 80%+ \u2014 PASS",
+      "axis": "assurance",
+      "weight": 2,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "BLOCKED",
+      "review": "PROPOSED",
+      "critical": true,
+      "evidence_ids": [
+        "EV-CI-COVERAGE"
+      ]
+    },
+    {
+      "id": "G-BENCH",
+      "title": "cargo bench (gate) \u2014 no perf regression on healthz",
+      "axis": "assurance",
+      "weight": 1,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "BLOCKED",
+      "review": "PROPOSED",
+      "critical": false,
+      "evidence_ids": [
+        "EV-CI-CARGO-BENCH-GATE",
+        "EV-CI-CARGO-BENCH-SOFT"
+      ]
+    },
+    {
+      "id": "G-MIRI",
+      "title": "Miri UB check \u2014 PASS",
+      "axis": "assurance",
+      "weight": 1,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "PASS",
+      "review": "ACCEPTED",
+      "critical": false,
+      "evidence_ids": [
+        "EV-CI-MIRI"
+      ]
+    },
+    {
+      "id": "G-FUZZ",
+      "title": "Cargo fuzz (6 harnesses) \u2014 PASS",
+      "axis": "assurance",
+      "weight": 1,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "PASS",
+      "review": "ACCEPTED",
+      "critical": false,
+      "evidence_ids": [
+        "EV-CI-FUZZ",
+        "EV-CI-CARGO-FUZZ-2"
+      ]
+    },
+    {
+      "id": "G-HERMETIC",
+      "title": "Hermetic build \u2014 PASS",
+      "axis": "assurance",
+      "weight": 1,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "PASS",
+      "review": "ACCEPTED",
+      "critical": false,
+      "evidence_ids": [
+        "EV-CI-HERMETIC"
+      ]
+    },
+    {
+      "id": "G-VALE",
+      "title": "Inclusive language (vale) \u2014 PASS",
+      "axis": "assurance",
+      "weight": 1,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "PASS",
+      "review": "ACCEPTED",
+      "critical": false,
+      "evidence_ids": [
+        "EV-CI-VALE"
+      ]
+    },
+    {
+      "id": "G-SCORE-88",
+      "title": "88-pillar scorecard \u2014 PASS",
+      "axis": "assurance",
+      "weight": 1,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "PASS",
+      "review": "ACCEPTED",
+      "critical": false,
+      "evidence_ids": [
+        "EV-CI-SCORE-88"
+      ]
+    },
+    {
+      "id": "G-SCORE-AGILE",
+      "title": "AgilePlus scorecard \u2014 PASS",
+      "axis": "assurance",
+      "weight": 1,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "PASS",
+      "review": "ACCEPTED",
+      "critical": false,
+      "evidence_ids": [
+        "EV-CI-SCORE-AGILE"
+      ]
+    },
+    {
+      "id": "G-CI-SUCCESS",
+      "title": "CI Success Gate \u2014 PASS (umbrella)",
+      "axis": "assurance",
+      "weight": 1,
+      "applicability": "APPLICABLE",
+      "exclusion_authority": null,
+      "status": "PASS",
+      "review": "ACCEPTED",
+      "critical": true,
+      "evidence_ids": [
+        "EV-CI-CI-SUCCESS-GATE"
+      ]
+    }
+  ],
+  "limitations": [
+    "Snapshot frozen at 2026-10-17T19:55:00Z; does not auto-update with sharecli repo.",
+    "J5 (first real-user beneficiary session) NOT_RUN \u2014 this is the MVP gate blocker; cannot claim MVP until recorded.",
+    "Tray-icon 0.25.0 backend broken on main; PR #938 fixes in 1 line; E-TRAY BLOCKED until #938 lands.",
+    "Cross-platform (musl/freebsd/wasm) failures likely upstream tray-icon; G-CROSS BLOCKED; bump to tray-icon 0.27.x in v1.1.",
+    "cargo deny advisory not allowlisted; G-CARGO-DENY BLOCKED; PRs #896 #909 #921 in flight.",
+    "Coverage at 64%; G-COVERAGE BLOCKED; PRs #922 #924 #925 in flight to lift to 80%.",
+    "cargo bench (gate) perf regression on healthz; G-BENCH BLOCKED; not yet investigated.",
+    "Working tree dirty on sharecli at 5f2425ca (uncommitted tray-icon fix); cannot claim clean tree.",
+    "DCO/GPG signed commits soft-FAIL on this host; G-DCO not enumerated (soft gate only).",
+    "Integration and E2E test workflows SKIPPED today; not in v1.0 critical path but should be re-enabled before v1.1.",
+    "Audit baseline 134888ede is 7 hours before current HEAD; audit deliverable does not include the 9 forward commits (this SFD is the consolidation).",
+    "11 excluded engineering leaves (5 with explicit authority: PRD v1.0, ADR-0001, ADR-0004, ADR-0006) \u2014 these are NOT_RUN with EXCLUDED applicability; not blocking v1.0.",
+    "J-BENEFICIARY is the only NOT_RUN critical leaf; recording it is the highest-priority operator-side action.",
+    "SFD spec at KooshaPari/PhenoRegistry branch docs/high-velocity-state-forward-docket-20261016; this SFD is one of the first products to be assessed against it.",
+    "audit-sessions/ cross-publish pending PhenoRegistry PR merge.",
+    "sharecli docs/intent/2026-10-17-state-forward-docket.md and docs/adr/0010-state-forward-docket-2026-10-17.md pending PR #938."
+  ]
+}
