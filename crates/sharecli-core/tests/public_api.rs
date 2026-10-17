@@ -1,3 +1,5 @@
+//! FR: FR-001
+//!
 //! Integration tests for the value-level public API of `sharecli_core`.
 //!
 //! These tests focus on pure value construction, conversion, and helper

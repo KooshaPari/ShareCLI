@@ -1,3 +1,5 @@
+//! FR: FR-001
+//!
 //! Integration tests for the public API of `sharecli_core::transaction_contract`.
 //!
 //! The module is intentionally not an OS effect broker or a durable ledger — it
