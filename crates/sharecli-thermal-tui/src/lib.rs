@@ -24,6 +24,7 @@ mod panels;
 mod render;
 mod run;
 
+pub use agents::{agent_forest_lines, agent_lines, append_agent_tree_lines};
 pub use app::{thermal_blurb, App, DEFAULT_SLOT_CAP, POLL_INTERVAL};
 pub use keymap::{apply_key_action, handle_key, is_quit_key, KeyAction, PanelFocus, HELP_OVERLAY_HINT};
 pub use panels::level::{

@@ -5,10 +5,38 @@
 //! fuse, mesh, cast, proc-compose) live in sibling modules and are referenced
 //! here by `super::{name}` to keep the per-file line count manageable.
 
-use clap::Subcommand;
+use clap::{Parser, Subcommand};
 
 use super::{cast, fleet, fuse, mesh, proc_compose, session, surface};
 use crate::config;
+
+#[derive(Parser, Debug)]
+#[command(
+    name = "sharecli",
+    bin_name = "sharecli",
+    about = "Shared CLI process manager for multi-project agent orchestration",
+    version = env!("CARGO_PKG_VERSION"),
+    after_long_help = "Accessibility (C09): docs/a11y/README.md -- NO_COLOR/TERM=dumb degrade ANSI color; \
+FR-004 status via `sharecli status` and GET /health. Degraded-mode notes: docs/a11y/status-and-recovery.md\n\
+Help & FAQ (C09 L81.13): docs/faq.md -- top troubleshooting answers; `man sharecli` after `just man`."
+)]
+pub struct Cli {
+    #[command(subcommand)]
+    pub command: Commands,
+
+    /// Enable verbose output
+    #[arg(short, long)]
+    pub verbose: bool,
+
+    /// Quiet mode
+    #[arg(short, long)]
+    pub quiet: bool,
+
+    /// Color theme: `backbone-2` / `bb2` / `dark` (default) or `backbone-2-light` / `light`.
+    /// Maps to Backbone-2 dark/light families in tokens.css.
+    #[arg(long, value_name = "NAME", default_value = "backbone-2")]
+    pub theme: String,
+}
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
