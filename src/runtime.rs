@@ -623,20 +623,25 @@ impl SharedRuntime {
         Ok(())
     }
 
+    /// Pooled execution is unavailable until a command/worker protocol is wired.
+    ///
+    /// Do not acquire a worker here: the pool currently probes `--version`,
+    /// which cannot execute a script or provide its output and exit status.
     pub async fn run_with_pool(
         &self,
-        harness_type: &str,
-        project: &str,
+        _harness_type: &str,
+        _project: &str,
         _script: &str,
     ) -> Result<(u32, String)> {
-        let pooled = self.acquire(harness_type).await?;
+        Err(Self::execution_unavailable().into())
+    }
 
-        let output =
-            format!("Using pooled {} process {} for project {}", harness_type, pooled.pid, project);
-
-        self.release(harness_type, pooled.pid).await?;
-
-        Ok((pooled.pid, output))
+    /// Shared rejection for callers that must not even construct a runtime.
+    pub(crate) fn execution_unavailable() -> std::io::Error {
+        std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "pooled run unavailable: no command execution backend is wired; no work was executed",
+        )
     }
 
     pub async fn health_check(&self) -> RuntimeHealth {
@@ -846,6 +851,22 @@ impl ProcessPool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // FR: FR-001 - unavailable execution must not acknowledge success or acquire a worker.
+    #[tokio::test]
+    async fn pooled_execution_is_unsupported_without_side_effects() {
+        let runtime = SharedRuntime::new(1);
+        for harness in ["node", "bun", "missing-backend"] {
+            for script in ["", "console.log('must not execute'); process.exit(7)"] {
+                let error = runtime.run_with_pool(harness, "fixture", script).await.unwrap_err();
+                let io_error = error.downcast_ref::<std::io::Error>().expect("typed failure");
+                assert_eq!(io_error.kind(), std::io::ErrorKind::Unsupported);
+                assert!(error.to_string().contains("no command execution backend"));
+                assert!(runtime.node_pool.read().await.is_empty());
+                assert!(runtime.bun_pool.read().await.is_empty());
+            }
+        }
+    }
 
     async fn insert_unowned_handle(pool: &ProcessPool) -> u32 {
         let pid = std::process::id();

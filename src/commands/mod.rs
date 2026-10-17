@@ -1165,13 +1165,9 @@ async fn project_group_status(name: &str, json: bool) -> Result<()> {
     Ok(())
 }
 
-/// Run using pooled runtime
-pub async fn run_pool(harness_type: &str, project: &str) -> Result<()> {
-    let runtime = get_shared_runtime();
-    let result = runtime.run_with_pool(harness_type, project, "").await?;
-    println!("Pooled {} process {} for project {}", harness_type, result.0, project);
-    println!("Output: {}", result.1);
-    Ok(())
+/// Reject pooled execution until a real command/worker protocol is available.
+pub async fn run_pool(_harness_type: &str, _project: &str) -> Result<()> {
+    Err(SharedRuntime::execution_unavailable().into())
 }
 
 pub(crate) async fn build_pool_json() -> Result<PoolJson> {

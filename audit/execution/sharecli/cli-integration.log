@@ -1,0 +1,16 @@
+error: duplicate key
+  --> ../../../../../.cargo/git/checkouts/phenoshared-e15052dca608b5ac/68beca2/crates/agile-plus/crates/agileplus-cache/Cargo.toml:15:2
+   |
+15 | [lib]
+   |  ^^^
+   Compiling sharecli v0.8.0 (/Users/kooshapari/CodeProjects/Phenotype/repos/sharecli-worktrees/fix-run-fail-closed-20261017)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.33s
+     Running tests/run_execution.rs (target/debug/deps/run_execution-909d8d0522c035ad)
+
+running 3 tests
+test native_queue_preserves_output_exit_and_spawn_failure ... ok
+test run_does_not_even_probe_available_harnesses ... ok
+test run_rejects_unavailable_execution_without_success_output ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.86s
+

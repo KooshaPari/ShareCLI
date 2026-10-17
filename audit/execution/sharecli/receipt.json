@@ -1,0 +1,39 @@
+{
+  "source_commit": "6f589bf64142a41b5fae4aab768d58d8c09876c7",
+  "source_baseline": "ec7bcbd9c630a1e393f5cd5ee044f0a9d92b7548",
+  "binary_sha256": "017a0f32d4fdd688f2fb66dc7dcb854f9a6e35cb4403bd29406dbacd67730b2c",
+  "commands": [
+    "cargo check --locked",
+    "cargo clippy --locked --bin sharecli -- -D warnings",
+    "cargo test --locked --bin sharecli pooled_execution_is_unsupported_without_side_effects",
+    "cargo test --locked --test run_execution",
+    "rustfmt --edition 2021 --check --config skip_children=true src/runtime.rs src/commands/mod.rs src/main.rs tests/run_execution.rs"
+  ],
+  "runtime_environment": {
+    "CARGO_BUILD_JOBS": "1",
+    "SDKROOT": "/Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk",
+    "MACOSX_DEPLOYMENT_TARGET": "15.0"
+  },
+  "results": {
+    "check": "PASS",
+    "bin_clippy": "PASS",
+    "runtime_unit": "1 passed",
+    "integration": "3 passed",
+    "owned_format": "PASS",
+    "workspace_format": "BLOCKED pre-existing duplicate lib in locked external manifest",
+    "pooled_execution": "UNAVAILABLE",
+    "cancel_timeout_permit_lifetime": "NOT VERIFIED",
+    "user_validation": "UNKNOWN"
+  },
+  "artifact_hashes": {
+    "audit/execution/sharecli/EXECUTION-REPAIR.md": "5d3e07aa5d26d2168b7181819d5d00d1edff1bcda420d0ba203497f7a8d4b2e3",
+    "audit/execution/sharecli/cargo-check.log": "51766cfd9e24707d65934d3d6522b7439a07557ad9c6a3cddc9add58c7f44d4e",
+    "audit/execution/sharecli/cargo-clippy.log": "0d6207ca5bd66ead53df468ab782e44b8091c84c3d9a3cfae8bbf49cfdb3f1bd",
+    "audit/execution/sharecli/cli-integration.log": "6c4ec31df7c3ec9f9cedd584f6cbe211c6427e3ec8e3a8e42719e155dd14a0aa",
+    "audit/execution/sharecli/cli-witness-final.json": "0dce63433c5ba59d43febac520dd3033a264516eb2fecee9d6819a02531cdc37",
+    "audit/execution/sharecli/cli-witness.json": "758f4ff03a88393bfa3610eeb8a257b5b450eeab1f7f4301d830630416fbc039",
+    "audit/execution/sharecli/owned-fmt.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "audit/execution/sharecli/runtime-unit.log": "fc1ca82b2b4724bd2b4cd3696443bfa89fdee5836e7194ea073adb4ec109fdb8",
+    "audit/execution/sharecli/workspace-fmt.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}
