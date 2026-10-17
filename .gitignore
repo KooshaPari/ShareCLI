@@ -5,9 +5,11 @@
 .DS_Store
 .gemini/
 .idea/
+*.iml
 .vale/styles/Microsoft/
 .vscode/
 *.db-journal
+*.log
 *.swo
 *.swp
 **/.zig-cache/

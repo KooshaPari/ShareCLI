@@ -5203,6 +5203,7 @@ dependencies = [
  "anyhow",
  "base64 0.23.1",
  "chrono",
+ "libsqlite3-sys",
  "rusqlite",
  "serde",
  "serde_json",
