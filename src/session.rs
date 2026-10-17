@@ -474,10 +474,11 @@ mod tests {
             resync_required: None,
         };
         let serialized = serde_json::to_string(&original).expect("serialize");
-        // Optional fields with #[serde(default)] must be omitted from the wire form
-        // when None — confirms serde(default) behaviour for downstream readers.
-        assert!(!serialized.contains("event_bytes_base64"));
-        assert!(!serialized.contains("dropped"));
+        // Optional fields with `#[serde(default)]` (no skip_serializing_if) are
+        // emitted as `null` on the wire — confirms downstream readers see
+        // explicit `null` rather than missing keys.
+        assert!(serialized.contains("\"event_bytes_base64\":null"));
+        assert!(serialized.contains("\"dropped\":null"));
         let parsed: SurfaceEventEnvelope =
             serde_json::from_str(&serialized).expect("deserialize");
         assert_eq!(parsed.subscription_id, 7);
@@ -485,6 +486,7 @@ mod tests {
         assert_eq!(parsed.seq, 42);
         assert_eq!(parsed.kind, SurfaceEventKind::Output);
         assert_eq!(parsed.timestamp.as_deref(), Some("2026-10-17T22:00:00Z"));
+        assert!(parsed.event_bytes_base64.is_none());
         // JSON-shape round trip: serialize again and confirm byte-equivalence.
         let reserialized = serde_json::to_string(&parsed).expect("reserialize");
         assert_eq!(serialized, reserialized);
