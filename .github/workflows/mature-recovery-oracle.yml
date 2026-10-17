@@ -1,0 +1,241 @@
+name: Mature Recovery Oracle
+# recovery-pass: 2026-09-30-inflight-rerun
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "crates/sharecli-core/**"
+      - "crates/sharecli-ipc/**"
+      - "crates/sharecli-session/**"
+      - "scripts/recovery/**"
+      - "docs/specs/mature-recovery/**"
+      - "crates/spawn-core-sys/**"
+      - ".github/workflows/mature-recovery-oracle.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mature-recovery-oracle-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  fr008-semantic-identity:
+    name: FR-008 semantic identity oracle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Zig required by spawn-core-sys build
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
+      - uses: Swatinem/rust-cache@v2
+      - name: Test counterexample collector rejection controls
+        run: python scripts/recovery/test_negative_oracle.py -v
+      - name: Collect named native counterexamples without masking build failures
+        shell: bash
+        env:
+          RECOVERY_CANDIDATE: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          status=0
+          for target in recovery_fr008_semantic_identity recovery_fr008_equivalence_matrix; do
+            python scripts/recovery/run_negative_oracle.py \
+              --target "$target" --candidate "$RECOVERY_CANDIDATE" \
+              --output "evidence/fr008/$target" || status=1
+          done
+          exit "$status"
+      - name: Preserve raw counterexample receipts even on collector failure
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sharecli-fr008-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/fr008/
+          if-no-files-found: error
+
+  queue-aging-ordering:
+    name: Queue aging and FIFO adversarial oracle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Zig required by spawn-core-sys build
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
+      - uses: Swatinem/rust-cache@v2
+      - name: Run positive queue crash-recovery control
+        run: cargo test -p sharecli-ipc --test recovery_queue_crash -- --nocapture
+      - name: Run native queue aging/FIFO adversarial controls
+        run: "cargo test -p sharecli-ipc queue::tests:: -- --nocapture"
+      - name: Run PID-reuse ownership adversary
+        run: cargo test -p sharecli-ipc --test recovery_queue_pid_reuse -- --nocapture
+
+# execution-freeze-trigger: 2026-09-30T13
+
+  tier-a-contract-integrity:
+    name: Tier-A contract integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Zig required by spawn-core-sys build
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
+      - name: Validate work-package DAG
+        run: python scripts/recovery/validate_work_packages.py docs/specs/mature-recovery/2026-09-29/work-packages.json
+      - name: Validate evidence semantics
+        run: python scripts/recovery/validate_evidence.py docs/specs/mature-recovery/2026-09-29/evidence/example-not-run.json
+      - name: Validate semantic trace
+        run: python scripts/recovery/validate_trace.py docs/specs/mature-recovery/2026-09-29/trace-slice.json
+      - name: SC-WP-A01 identities
+        run: "cargo test -p sharecli-ipc identity::tests:: -- --nocapture"
+      - name: SC-WP-A02 recovery model
+        run: "cargo test -p sharecli-session mature_recovery::tests:: -- --nocapture"
+      - name: SC-WP-A03 capability truth
+        run: "cargo test -p sharecli-ipc capability::tests:: -- --nocapture"
+      - name: SC-WP-A04 equivalence adapter
+        run: "cargo test -p sharecli-ipc equivalence::tests:: -- --nocapture"
+
+  scheduling-domain:
+    name: SC-WP-A06 scheduling domain
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Zig required by spawn-core-sys build
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
+      - name: Resource and schedule identity controls
+        run: "cargo test -p sharecli-ipc scheduling::tests:: -- --nocapture"
+
+  scheduling-reference-model:
+    name: B05 scheduling reference model
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Zig required by spawn-core-sys build
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
+      - name: Envelope-safe baseline model
+        run: "cargo test -p sharecli-ipc scheduling_reference::tests:: -- --nocapture"
+
+  scheduling-benchmark-simulator:
+    name: B05 scheduling benchmark simulator
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Zig required by spawn-core-sys build
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
+      - name: Naive versus bounded FIFO benchmark controls
+        run: "cargo test -p sharecli-ipc scheduling_benchmark::tests:: -- --nocapture"
+
+  native-scheduling-pressure:
+    name: Native pressure fixture
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Compare naive and bounded native memory pressure
+        run: python scripts/recovery/scheduling_pressure_fixture.py --mib 12 --seconds 0.20
+
+  native-jobserver-discovery:
+    name: GNU jobserver discovery prototype
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Zig required by spawn-core-sys build
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
+      - name: Parse native jobserver transports
+        run: "cargo test -p sharecli-ipc jobserver::tests:: -- --nocapture"
+
+  pressure-domain:
+    name: SC-WP-A06 pressure parser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Zig required by spawn-core-sys build
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
+      - name: Linux PSI pressure semantics
+        run: "cargo test -p sharecli-ipc pressure::tests:: -- --nocapture"
+
+  resource-control-domain:
+    name: SC-WP-A06 resource control capabilities
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Zig required by spawn-core-sys build
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
+      - name: Observation versus enforcement controls
+        run: "cargo test -p sharecli-ipc resource_control::tests:: -- --nocapture"
+
+  scheduling-packing-reference:
+    name: B05 deterministic packing reference
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Zig required by spawn-core-sys build
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
+      - name: Naive overcommit vs bounded packing controls
+        run: "cargo test -p sharecli-ipc scheduling::fixture_scheduler::tests:: -- --nocapture"
+
+  b06-pressure-policy:
+    name: B06 pressure response policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Zig required by spawn-core-sys build
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
+      - uses: Swatinem/rust-cache@v2
+      - name: Capability-bounded pressure response controls
+        run: "cargo test -p sharecli-ipc pressure_policy::tests:: -- --nocapture"
+
+  b06-speculation-policy:
+    name: B06 bounded speculation policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Zig required by spawn-core-sys build
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
+      - uses: Swatinem/rust-cache@v2
+      - name: Explicit eligibility budget and accounting controls
+        run: "cargo test -p sharecli-core speculation::tests:: -- --nocapture"

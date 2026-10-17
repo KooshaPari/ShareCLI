@@ -22,6 +22,9 @@ anyhow = "1"
 # Process liveness probe (kill(pid, 0)) for serve-lock staleness detection
 libc = "0.2"
 
+# Native GNU make jobserver client; already present transitively in Cargo.lock.
+jobserver = "0.1.35"
+
 # WS client
 tokio-tungstenite = { version = "0.30", features = ["connect"] }
 futures-util = "0.3"

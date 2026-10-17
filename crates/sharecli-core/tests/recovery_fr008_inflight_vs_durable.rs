@@ -1,0 +1,148 @@
+// FR: FR-008 mature-recovery in-flight vs durable reuse oracle
+//! Architecture experiment: distinguish useful in-flight duplicate suppression
+//! from unsafe durable replay under the current coupled Lock-Wait-Cache path.
+//!
+//! Default Hypervisor remediation: in-flight sharing is separated from durable replay authority.
+//! Recovery rerun marker: 2026-09-30 after ontology/admission slices.
+
+#![cfg(unix)]
+
+use std::fs;
+use std::sync::Arc;
+use std::time::Duration;
+
+use sharecli_core::{
+    FakeThermalGate, Hypervisor, HypervisorConfig, QueuePriority, SpawnRequest, ThermalDecision,
+};
+use sharecli_ipc::CacheKeyMode;
+use tempfile::TempDir;
+
+fn req(cwd: &std::path::Path, counter: &std::path::Path, input: &std::path::Path) -> SpawnRequest {
+    let script = format!(
+        "n=$(cat {counter} 2>/dev/null || echo 0); n=$((n+1)); printf '%s' \"$n\" > {counter}; sleep 0.25; cat {input}",
+        counter = counter.display(),
+        input = input.display(),
+    );
+    SpawnRequest {
+        argv: vec!["sh".into(), "-c".into(), script],
+        cwd: cwd.to_path_buf(),
+        env: vec![],
+        queue_priority: QueuePriority::Normal,
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn concurrent_share_is_useful_but_must_not_imply_later_replay() {
+    let dir = TempDir::new().expect("fixture");
+    let work = dir.path().join("work");
+    fs::create_dir(&work).expect("work");
+    let input = dir.path().join("input.txt");
+    let counter = dir.path().join("exec-count.txt");
+    fs::write(&input, b"v1\n").expect("input v1");
+
+    let hv = Arc::new(Hypervisor::with_options(
+        HypervisorConfig {
+            cache_root: dir.path().join("cache"),
+            queue_root: dir.path().join("queue"),
+            queue_max_concurrent: 2,
+            coalesce_ttl: Duration::from_secs(300),
+            coalesce_debounce: Duration::ZERO,
+            cache_key_mode: CacheKeyMode::Time,
+            semantic: false,
+        },
+        Arc::new(FakeThermalGate::new(ThermalDecision::Allow)),
+        vec![],
+    ));
+
+    let a = {
+        let hv = Arc::clone(&hv);
+        let r = req(&work, &counter, &input);
+        tokio::spawn(async move { hv.run(r).await.expect("concurrent A") })
+    };
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    let b = {
+        let hv = Arc::clone(&hv);
+        let r = req(&work, &counter, &input);
+        tokio::spawn(async move { hv.run(r).await.expect("concurrent B") })
+    };
+
+    let (a, b) = tokio::join!(a, b);
+    let a = a.expect("join A");
+    let b = b.expect("join B");
+
+    assert_eq!(a.stdout, b"v1\n");
+    assert_eq!(b.stdout, b"v1\n");
+    assert_eq!(
+        fs::read_to_string(&counter).expect("counter"),
+        "1",
+        "two concurrent equivalent requests should execute the underlying command once"
+    );
+
+    // Now the in-flight execution is over. Change an execution-relevant input
+    // without changing the Time-mode key dimensions.
+    fs::write(&input, b"v2\n").expect("input v2");
+    let later = hv.run(req(&work, &counter, &input)).await.expect("later replay");
+
+    assert_eq!(
+        later.stdout, b"v2\n",
+        "current in-flight equivalence must not be treated as authority for later durable replay"
+    );
+    assert_eq!(
+        fs::read_to_string(&counter).expect("counter after later"),
+        "2",
+        "later invocation after changed input must execute again"
+    );
+    assert!(!later.from_cache);
+}
+
+
+#[tokio::test]
+async fn stale_durable_entry_cannot_poison_default_hypervisor() {
+    let dir = TempDir::new().expect("fixture");
+    let work = dir.path().join("work");
+    fs::create_dir(&work).expect("work");
+    let input = dir.path().join("input.txt");
+    let counter = dir.path().join("exec-count.txt");
+    fs::write(&input, b"fresh\n").expect("input");
+
+    let config = HypervisorConfig {
+        cache_root: dir.path().join("cache"),
+        queue_root: dir.path().join("queue"),
+        queue_max_concurrent: 1,
+        coalesce_ttl: Duration::from_secs(300),
+        coalesce_debounce: Duration::ZERO,
+        cache_key_mode: CacheKeyMode::Time,
+        semantic: false,
+    };
+    let key = sharecli_core::command_key_with_mode(
+        CacheKeyMode::Time,
+        &req(&work, &counter, &input).argv,
+        &work,
+        &[],
+    );
+    let poison = sharecli_core::CoalesceCache::with_options(
+        config.cache_root.clone(),
+        config.coalesce_ttl,
+        config.coalesce_debounce,
+    );
+    poison
+        .store(
+            &key,
+            &sharecli_core::CachedResult {
+                exit_code: 0,
+                stdout: b"poison\n".to_vec(),
+                stderr: vec![],
+            },
+        )
+        .expect("poison durable cache");
+
+    let hv = Hypervisor::with_options(
+        config,
+        Arc::new(FakeThermalGate::new(ThermalDecision::Allow)),
+        vec![],
+    );
+    let result = hv.run(req(&work, &counter, &input)).await.expect("run");
+    assert_eq!(result.stdout, b"fresh\n");
+    assert_eq!(fs::read_to_string(&counter).expect("counter"), "1");
+    assert!(!result.from_cache, "default Hypervisor replayed durable cache without adapter authority");
+}

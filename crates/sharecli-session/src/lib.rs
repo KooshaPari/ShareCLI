@@ -1,3 +1,5 @@
+pub mod mature_recovery;
+pub use mature_recovery::{RecoveryMode, RecoveryOperation, RecoveryOperationState, RecoveryProcessGeneration, RecoverySubject};
 #[cfg(test)]
 mod tests {
     use super::*;

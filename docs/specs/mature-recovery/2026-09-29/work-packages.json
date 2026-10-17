@@ -1,0 +1,261 @@
+{
+  "schema": "mature-recovery-work-packages/v1",
+  "product": "KooshaPari/ShareCLI",
+  "source_snapshot": "4f01d0199e82b62bcf20399afcc102f58a10ad07",
+  "packages": [
+    {
+      "id": "SC-WP-A01",
+      "tier": "A",
+      "title": "Semantic identity types",
+      "depends_on": [],
+      "merge_gate": "READY",
+      "critical": [
+        "ProcessGeneration is not PID",
+        "legacy unknown stays unknown"
+      ],
+      "evidence_required": [
+        "serialization",
+        "same-pid-different-generation",
+        "legacy-load"
+      ]
+    },
+    {
+      "id": "SC-WP-A02",
+      "tier": "A",
+      "title": "Recovery subject and operation model",
+      "depends_on": [
+        "SC-WP-A01"
+      ],
+      "merge_gate": "READY",
+      "critical": [
+        "preserve observation/process identity",
+        "no spawn in model work"
+      ],
+      "evidence_required": [
+        "reopen continuity",
+        "legacy unknown generation"
+      ]
+    },
+    {
+      "id": "SC-WP-A03",
+      "tier": "A",
+      "title": "Capability truth projection",
+      "depends_on": [
+        "SC-WP-A01"
+      ],
+      "merge_gate": "READY",
+      "critical": [
+        "observed does not imply owned/mediated/optimized"
+      ],
+      "evidence_required": [
+        "observed-only",
+        "mediated-passthrough",
+        "FUSE-degraded"
+      ]
+    },
+    {
+      "id": "SC-WP-A04",
+      "tier": "A",
+      "title": "Equivalence adapter interface",
+      "depends_on": [
+        "SC-WP-A01"
+      ],
+      "merge_gate": "READY",
+      "critical": [
+        "unknown=Bypass",
+        "generic historical modes cannot manufacture Durable"
+      ],
+      "evidence_required": [
+        "fixture-adapter",
+        "changed-input",
+        "unknown-command"
+      ]
+    },
+    {
+      "id": "SC-WP-A05",
+      "tier": "A",
+      "title": "Trace and evidence qualification validator",
+      "depends_on": [
+        "SC-WP-A02",
+        "SC-WP-A03",
+        "SC-WP-A04"
+      ],
+      "merge_gate": "READY",
+      "critical": [
+        "no relation-less trace",
+        "no stale/skipped/wrong-candidate green"
+      ],
+      "evidence_required": [
+        "invalid-catalog fixtures",
+        "exact-receipt fixtures"
+      ]
+    },
+    {
+      "id": "SC-WP-B01",
+      "tier": "B",
+      "title": "Session recovery integration",
+      "depends_on": [
+        "SC-WP-A01",
+        "SC-WP-A02",
+        "SC-WP-A05"
+      ],
+      "merge_gate": "BLOCKED",
+      "blocked_by": [
+        "Exited recovery semantics",
+        "SC-VS-S01..S12 public oracle harness"
+      ],
+      "evidence_required": [
+        "SC-VS-S01..S12"
+      ],
+      "critical": [
+        "Exited-state recovery authority must be explicit",
+        "Recovery must preserve exact subject/generation identity"
+      ]
+    },
+    {
+      "id": "SC-WP-B02",
+      "tier": "B",
+      "title": "In-flight and durable split",
+      "depends_on": [
+        "SC-WP-A04",
+        "SC-WP-A05"
+      ],
+      "merge_gate": "BLOCKED",
+      "blocked_by": [
+        "exact in-flight-vs-durable receipt",
+        "owner-failure semantics"
+      ],
+      "evidence_required": [
+        "recovery_fr008_inflight_vs_durable"
+      ],
+      "critical": [
+        "In-flight sharing is not durable reuse",
+        "Durable reuse requires adapter-qualified equivalence"
+      ]
+    },
+    {
+      "id": "SC-WP-B03",
+      "tier": "B",
+      "title": "Admission provider",
+      "depends_on": [
+        "SC-WP-A01",
+        "SC-WP-A03",
+        "SC-WP-A05"
+      ],
+      "merge_gate": "BLOCKED",
+      "blocked_by": [
+        "exact CI receipt for inherited GNU make jobserver discovery/reuse",
+        "queue PID-reuse/fairness exact receipts"
+      ],
+      "evidence_required": [
+        "PID reuse",
+        "aging",
+        "FIFO",
+        "jobserver composition"
+      ],
+      "qualification": "Owned-provider lease + Hypervisor child propagation implemented; true GNU make inherited-provider discovery/nested propagation oracle now implemented and pending exact CI",
+      "critical": [
+        "Admission must not rely on PID identity",
+        "Native provider composition must not double-throttle"
+      ]
+    },
+    {
+      "id": "SC-WP-B04",
+      "tier": "B",
+      "title": "Required FUSE mode",
+      "depends_on": [
+        "SC-WP-A03",
+        "SC-WP-A05"
+      ],
+      "merge_gate": "BLOCKED",
+      "blocked_by": [
+        "dependent journey",
+        "fail-closed oracle"
+      ],
+      "evidence_required": [
+        "required-unavailable",
+        "optional-degraded"
+      ],
+      "critical": [
+        "Required interception must fail closed when unavailable",
+        "Optional degradation must remain explicit"
+      ]
+    },
+    {
+      "id": "SC-WP-A06",
+      "tier": "A",
+      "title": "Workload resource scheduling domain",
+      "depends_on": [
+        "SC-WP-A01",
+        "SC-WP-A03"
+      ],
+      "merge_gate": "READY",
+      "critical": [
+        "WorkItem identity survives replanning",
+        "Unknown resource demand is not zero",
+        "SchedulePlan is not execution evidence"
+      ],
+      "evidence_required": [
+        "resource-vector fixtures",
+        "plan-vs-placement fixture",
+        "unknown-demand fixture"
+      ]
+    },
+    {
+      "id": "SC-WP-B05",
+      "tier": "B",
+      "title": "Deterministic scheduling and packing vertical slice",
+      "depends_on": [
+        "SC-WP-A06",
+        "SC-WP-A05"
+      ],
+      "merge_gate": "BLOCKED",
+      "blocked_by": [
+        "exact CI receipt for repaired queue aging/FIFO/dead-waiter controls",
+        "exact CI receipt for negative-oracle collector after Zig preflight correction",
+        "default Hypervisor run path remains unchanged pending qualification"
+      ],
+      "critical": [
+        "No hard envelope violation",
+        "Scheduling correctness separate from optimization quality",
+        "Baseline and candidate use same workload/environment"
+      ],
+      "evidence_required": [
+        "naive baseline",
+        "packed schedule",
+        "peak resource receipt",
+        "completion/throughput receipt",
+        "fairness/queue receipt"
+      ],
+      "qualification": "Current candidate fixes native defects observed on c1835aea: queue aging saturates rather than wrapping at 256 steps, equal-priority FIFO uses numeric sequence order, dead-PID waiters are removed, transient missing VmRSS remains UNKNOWN, and negative-oracle cargo compilation—not a separate Zig probe—is authoritative. Exact candidate b75f6eb155bd6f40b82bbcc5e980e74b4867eea0 pending."
+    },
+    {
+      "id": "SC-WP-B06",
+      "tier": "B",
+      "title": "Speculation and pressure-response strategy",
+      "depends_on": [
+        "SC-WP-A06",
+        "SC-WP-B05"
+      ],
+      "merge_gate": "BLOCKED",
+      "blocked_by": [
+        "SC-WP-B05 exact qualification",
+        "exact CI receipt for revocable/expiring speculation authority",
+        "exact CI receipt for capability-bounded pressure response",
+        "runtime wiring from pressure decision to admission/control provider remains separate",
+        "loser cancellation and wasted-work accounting remain incomplete"
+      ],
+      "critical": [
+        "Speculation budget explicit",
+        "Losing attempts accounted/cancelled safely",
+        "Pressure observation does not imply enforcement"
+      ],
+      "evidence_required": [
+        "speculation fixture",
+        "pressure fixture",
+        "wasted-work accounting"
+      ],
+      "qualification": "Candidate B06 policy now requires current explicit read-only speculation authority, revokes it on later ineligible classification, expires stale evidence/authority, bounds speculative executions per cycle, and accounts attempted/completed/failed/budget-skipped work. Existing pressure policy is now exact-oracle selected and fails closed on invalid thresholds; observation-only providers can only defer admissions, while pause/cpu-weight/terminate actions require explicit provider capability and cancellation authority. No default runtime routing promoted."
+    }
+  ]
+}

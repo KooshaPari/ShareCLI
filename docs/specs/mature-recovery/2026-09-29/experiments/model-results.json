@@ -1,0 +1,67 @@
+{
+  "run_id": "76a63a6a-84c8-40b8-95d5-5a253fe213ea",
+  "observed_at": "2026-09-29T18:27:14.766340+00:00",
+  "verifier": "source-derived-model-counterexamples",
+  "verifier_sha256": "d64019b880057a30c659cd00ee5a77e25cb092ef6b13c581d49dd507e2a090b8",
+  "product": "KooshaPari/ShareCLI",
+  "source_snapshot": "4f01d0199e82b62bcf20399afcc102f58a10ad07",
+  "candidate_binaries_executed": false,
+  "classification": "MODEL_COUNTEREXAMPLES_NOT_PRODUCT_ACCEPTANCE",
+  "environment": {
+    "python": "3.13.5",
+    "os": "Linux-6.18.44-x86_64-with-glibc2.41",
+    "git": "git version 2.47.3"
+  },
+  "experiments": {
+    "SC-EXP-001": {
+      "subject": "crates/sharecli-ipc/src/cache_key.rs Git mode",
+      "source_blob": "4ade430be6d82243b5d4059bdfb22fb52c1d5b1d",
+      "result": "COUNTEREXAMPLE_REPRODUCED",
+      "observations": [
+        {
+          "key": "bc697f1b6c5f651e0ad246d6a0fc7e8d04e167e412e64a7d8079f3bb61512dcb",
+          "status": " M input.txt\n",
+          "head": "647f05b421ac61d360c45b88cff73b7c860b0536",
+          "actual_output": "first edit\n",
+          "actual_output_sha256": "08c091723a0ec2e0b141547933ed6247d8ae36fdc693cfb6e43a3c9f82720252"
+        },
+        {
+          "key": "bc697f1b6c5f651e0ad246d6a0fc7e8d04e167e412e64a7d8079f3bb61512dcb",
+          "status": " M input.txt\n",
+          "head": "647f05b421ac61d360c45b88cff73b7c860b0536",
+          "actual_output": "other edit\n",
+          "actual_output_sha256": "c50add215a34876ca41570d9848e417d4d28b507a163008c2e65b2368276020d"
+        }
+      ],
+      "positive_controls": {
+        "unchanged_input_same_key": true,
+        "new_commit_changes_key": true
+      },
+      "limitation": "Real git and cat, Python translation of key function; not a Rust cache-hit end-to-end run."
+    },
+    "SC-EXP-002": {
+      "subject": "queue.rs effective_rank cast",
+      "result": "COUNTEREXAMPLE_REPRODUCED",
+      "critical_rank_by_wait_seconds": {
+        "0": 0,
+        "2": 2,
+        "255": 255,
+        "256": 0,
+        "257": 1
+      },
+      "limitation": "Exact arithmetic model; no live queue fairness or crash recovery established."
+    },
+    "SC-EXP-003": {
+      "subject": "queue.rs ticket-name tie ordering",
+      "result": "COUNTEREXAMPLE_REPRODUCED",
+      "arrival_order": [
+        "02.1790700000.1234.2",
+        "02.1790700000.1234.10"
+      ],
+      "lexical_winner": "02.1790700000.1234.10",
+      "limitation": "Same PID, second, priority and effective-rank tie; not a concurrent scheduler run."
+    }
+  },
+  "product_gate": "BLOCKED",
+  "native_regressions": "NOT_RUN"
+}

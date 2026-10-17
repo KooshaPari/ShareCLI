@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use sharecli_core::Hypervisor;
+use sharecli_core::{ChildCommandConfigurator, Hypervisor};
 
 use super::hypervisor_lane::{build_hypervisor, spawn_request};
 use super::RuleOpts;
@@ -11,14 +11,27 @@ fn run_with_hypervisor(
     args: &[&str],
     opts: &RuleOpts,
 ) -> Result<i32, String> {
+    run_with_hypervisor_configurator(hv, real_cmd, args, opts, None)
+}
+
+fn run_with_hypervisor_configurator(
+    hv: &Hypervisor,
+    real_cmd: &Path,
+    args: &[&str],
+    opts: &RuleOpts,
+    configurator: Option<&dyn ChildCommandConfigurator>,
+) -> Result<i32, String> {
     let req = spawn_request(real_cmd, args, opts)?;
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .map_err(|e| format!("harness process: tokio runtime: {e}"))?;
 
-    let outcome =
-        rt.block_on(hv.run(req)).map_err(|e| format!("harness process: hypervisor: {e}"))?;
+    let outcome = match configurator {
+        Some(configurator) => rt.block_on(hv.run_with_command_configurator(req, configurator)),
+        None => rt.block_on(hv.run(req)),
+    }
+    .map_err(|e| format!("harness process: hypervisor: {e}"))?;
 
     Ok(outcome.exit_code)
 }
@@ -34,6 +47,19 @@ pub fn run_status(
 ) -> Result<i32, String> {
     let hv = build_hypervisor(harness_home, opts);
     run_with_hypervisor(&hv, real_cmd, args, opts)
+}
+
+/// Execute through the same Hypervisor lane while allowing a native admission
+/// provider to configure the exact child command.
+pub fn run_status_with_command_configurator(
+    harness_home: &Path,
+    real_cmd: &Path,
+    args: &[&str],
+    opts: &RuleOpts,
+    configurator: &dyn ChildCommandConfigurator,
+) -> Result<i32, String> {
+    let hv = build_hypervisor(harness_home, opts);
+    run_with_hypervisor_configurator(&hv, real_cmd, args, opts, Some(configurator))
 }
 
 #[cfg(test)]

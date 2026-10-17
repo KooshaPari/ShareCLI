@@ -1,0 +1,22 @@
+{
+  "schema":"mature-recovery-evidence/v1",
+  "evidence_id":"EXAMPLE-NOT-RUN",
+  "product":"example/product",
+  "subject":"example subject",
+  "criterion":"EXAMPLE-001",
+  "contract_revision":"draft-v1",
+  "candidate_revision":"0000000000000000000000000000000000000000",
+  "configuration":{"mode":"example"},
+  "environment":{"runner":"example"},
+  "verifier":"example-verifier",
+  "verifier_revision":"0000000000000000000000000000000000000000",
+  "evaluation_run":"example",
+  "timestamp":"2026-09-30T00:00:00Z",
+  "result":"NOT_RUN",
+  "green":false,
+  "satisfies_criterion":false,
+  "oracle_executed":false,
+  "candidate_matches_subject":true,
+  "raw_artifacts":[],
+  "provenance":{"note":"schema fixture only; not product evidence"}
+}

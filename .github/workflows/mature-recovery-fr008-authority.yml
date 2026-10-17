@@ -1,0 +1,43 @@
+name: Mature Recovery FR-008 Authority
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'crates/sharecli-core/**'
+      - 'crates/sharecli-ipc/**'
+      - 'scripts/recovery/run_fr008_authority_oracle.py'
+      - '.github/workflows/mature-recovery-fr008-authority.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: recovery-fr008-authority-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  exact-authority:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
+      - uses: Swatinem/rust-cache@v2
+      - name: Verify in-flight sharing without default durable replay
+        env:
+          RECOVERY_CANDIDATE: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python scripts/recovery/run_fr008_authority_oracle.py --candidate "$RECOVERY_CANDIDATE" --output evidence/fr008-authority
+      - name: Preserve exact-head evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fr008-authority-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/fr008-authority/
+          if-no-files-found: error
