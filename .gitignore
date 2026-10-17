@@ -67,3 +67,13 @@ lib/teamcomm/target/
 .build/
 **/.build/
 dhat-heap.json
+
+# Phase 2b (2026-10-17): untracked from HEAD; kept on disk for development
+# (probe output, lockfile snapshot, terminal recordings, fetched PR body
+# drafts, and a vendored Windows FFI DLL). These remain useful locally but
+# are not source-of-truth and must not show up as working-tree dirt.
+coverage.json
+package-lock.json
+output/playwright/*.cast
+/pr-*-body.md
+windows/ShareCLITray/*.dll
