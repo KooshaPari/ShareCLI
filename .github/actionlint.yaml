@@ -1,7 +1,14 @@
 # actionlint configuration
 # https://github.com/rhysd/actionlint/blob/v1.7.12/docs/config.md
-# Note: the repository self-hosts no runners; all workflows run on GitHub-hosted
-# images, so no self-hosted-runner labels are declared here.
+# Note: most workflows run on GitHub-hosted images, but the nightly Harbor
+# soak job in `.github/workflows/soak.yml` uses a project-owned self-hosted
+# runner labeled `desk-sharecli`. Declare that label here so actionlint does
+# not flag `runs-on: [self-hosted, Linux, X64, desk-sharecli]` as an
+# "unknown label" error on every PR.
+
+self-hosted-runner:
+  labels:
+    - desk-sharecli
 
 paths:
   # Forward reference: the `detect` job's `outputs:` block references
