@@ -33,6 +33,7 @@ pub use panels::level::{
 };
 pub use panels::runtime::{pool_panel_lines, status_panel_lines};
 pub use panels::resource::{host_agent_lines, resource_watch_lines};
+pub use panels::gate::gate_panel_lines;
 pub use panels::io::{
     fuse_coalesce_lines, fuse_neg_dentry_lines, fuse_write_serialize_lines,
     hypervisor_coalesce_lines, hypervisor_slot_queue_lines, mesh_maildir_lines,
