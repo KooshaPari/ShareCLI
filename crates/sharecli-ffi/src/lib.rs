@@ -24,7 +24,25 @@ fn rt() -> &'static Runtime {
 }
 
 /// Start the IPC daemon in the background (idempotent).
-/// Returns 0 on success, non-zero on error.
+///
+/// Launches the `sharecli-ipc` sidecar process if the configured IPC socket
+/// is not yet present and waits briefly for it to bind. If the socket already
+/// exists the call is a no-op and returns success.
+///
+/// # Arguments
+///
+/// None.
+///
+/// # Returns
+///
+/// `0` on success (the daemon is reachable), non-zero on error (no sidecar
+/// binary could be located or the sidecar failed to spawn).
+///
+/// # Safety
+///
+/// C-ABI entry point. Safe to call from any thread; internally serializes
+/// through `OnceLock` for the runtime. The function does not retain any
+/// pointers past return.
 #[no_mangle]
 pub extern "C" fn sharecli_ipc_start() -> c_int {
     // The IPC server is expected to be launched as a separate process
@@ -57,14 +75,51 @@ fn spawn_ipc_sidecar(path: &str) -> std::io::Result<std::process::Child> {
 }
 
 /// Returns the IPC socket path as a null-terminated C string.
-/// Caller must free with `sharecli_free_string`.
+///
+/// Reads the `SHARECLI_IPC_SOCK` environment variable if set, otherwise
+/// falls back to `${data_local_dir}/sharecli/ipc.sock`.
+///
+/// # Arguments
+///
+/// None.
+///
+/// # Returns
+///
+/// A heap-allocated, null-terminated C string that the caller owns. The
+/// caller MUST free the returned pointer with [`sharecli_free_string`].
+/// Returns a null pointer only if the path contains an interior NUL byte.
+///
+/// # Safety
+///
+/// C-ABI entry point. Safe to call from any thread. The returned pointer
+/// remains valid until the caller releases it via [`sharecli_free_string`].
 #[no_mangle]
 pub extern "C" fn sharecli_ipc_socket_path() -> *mut c_char {
     let s = socket_path_str();
     CString::new(s).map(|c| c.into_raw()).unwrap_or(std::ptr::null_mut())
 }
 
-/// Free a string allocated by this library.
+/// Free a string previously allocated by this library.
+///
+/// Releases the heap allocation backing a `*mut c_char` returned by any
+/// other `sharecli_*` function in this crate. Passing a null pointer is a
+/// no-op (matches the C `free(NULL)` convention).
+///
+/// # Arguments
+///
+/// * `ptr` - pointer returned by a prior `sharecli_*` allocation function,
+///   or null. Must NOT be a pointer obtained from any other allocator.
+///   The pointer must NOT be used after this call.
+///
+/// # Returns
+///
+/// None.
+///
+/// # Safety
+///
+/// C-ABI entry point. The caller must guarantee that `ptr` was either
+/// null or returned by a `sharecli_*` allocation function in this crate,
+/// and that the pointer is not aliased and is not used after the call.
 #[no_mangle]
 pub extern "C" fn sharecli_free_string(ptr: *mut c_char) {
     if !ptr.is_null() {
@@ -73,7 +128,23 @@ pub extern "C" fn sharecli_free_string(ptr: *mut c_char) {
 }
 
 /// Quick synchronous health snapshot over the IPC socket/TCP.
-/// Returns a JSON string (must free with `sharecli_free_string`) or null on error.
+///
+/// Connects to the IPC daemon, sends a synchronous `health.status`
+/// JSON-RPC request, and returns the first line of the response.
+///
+/// # Arguments
+///
+/// None.
+///
+/// # Returns
+///
+/// A heap-allocated, null-terminated C string containing the JSON response
+/// body. The caller MUST free it with [`sharecli_free_string`]. Returns a
+/// null pointer if the IPC daemon is unreachable or returns an error.
+///
+/// # Safety
+///
+/// C-ABI entry point. Safe to call from any thread.
 #[no_mangle]
 pub extern "C" fn sharecli_health_json() -> *mut c_char {
     let result = rt().block_on(async {
@@ -112,8 +183,26 @@ pub extern "C" fn sharecli_health_json() -> *mut c_char {
     }
 }
 
-/// Send an arbitrary JSON-RPC request string, return the response JSON string.
-/// Caller frees the returned string with `sharecli_free_string`.
+/// Send an arbitrary JSON-RPC request string and return the response.
+///
+/// Forwards `request_json` to the IPC daemon verbatim.
+///
+/// # Arguments
+///
+/// * `request_json` - null-terminated C string containing a valid
+///   JSON-RPC request body. A null pointer returns a null pointer
+///   immediately.
+///
+/// # Returns
+///
+/// A heap-allocated, null-terminated C string with the JSON-RPC response
+/// body. The caller MUST free it with [`sharecli_free_string`]. Returns a
+/// null pointer on connection failure or invalid UTF-8.
+///
+/// # Safety
+///
+/// C-ABI entry point. `request_json` must be either null or a valid
+/// pointer to a null-terminated C string with valid UTF-8 contents.
 #[no_mangle]
 pub extern "C" fn sharecli_request(request_json: *const c_char) -> *mut c_char {
     if request_json.is_null() {
@@ -163,9 +252,27 @@ pub extern "C" fn sharecli_request(request_json: *const c_char) -> *mut c_char {
     }
 }
 
-/// GET an HTTP URL from the tray (e.g. `http://127.0.0.1:9000/healthz`), injecting
-/// W3C `traceparent` when the operator env or active OTel context provides one.
-/// Returns the response body (must free with `sharecli_free_string`) or null on error.
+/// GET an HTTP URL through the tray HTTP client.
+///
+/// Convenience wrapper that uses `sharecli::tray_http::get` to fetch a URL
+/// with the same auth / retry / `traceparent` injection that the desktop
+/// tray uses internally.
+///
+/// # Arguments
+///
+/// * `url` - null-terminated C string with a fully-qualified HTTP/HTTPS
+///   URL. A null pointer logs an error and returns a null pointer.
+///
+/// # Returns
+///
+/// A heap-allocated, null-terminated C string with the response body. The
+/// caller MUST free it with [`sharecli_free_string`]. Returns a null
+/// pointer on connection failure or HTTP error.
+///
+/// # Safety
+///
+/// C-ABI entry point. `url` must be either null or a valid pointer to a
+/// null-terminated C string with valid UTF-8 contents.
 #[no_mangle]
 pub extern "C" fn sharecli_serve_get(url: *const c_char) -> *mut c_char {
     if url.is_null() {

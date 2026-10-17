@@ -9,6 +9,11 @@ anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }
 base64 = "0.23"
 rusqlite = { version = "0.40", features = ["bundled"] }
+# Pin the transitive libsqlite3-sys from rusqlite so a fresh `cargo build`
+# resolves to the same bundled version regardless of registry churn.
+# RUSTSEC-2023-6198 only affects libsqlite3-sys <= 0.27.0; 0.38.2 is clean,
+# this pin is for build reproducibility only.
+libsqlite3-sys = { version = "=0.38.2", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"
