@@ -138,11 +138,14 @@ mod tests {
     fn pool_index_remove_missing_pid_returns_false() {
         let idx = PoolIndex::new();
         assert!(idx.insert(7, "alive"));
-        assert!(!idx.remove(7));
+        // 99 was never inserted, so remove must return false.
         assert!(!idx.remove(99));
+        // The original pid 7 is untouched by the failed remove.
         assert_eq!(idx.count(), 1);
         assert!(idx.remove(7));
         assert_eq!(idx.count(), 0);
+        // Double-remove of 7 once it's already gone must also return false.
+        assert!(!idx.remove(7));
     }
 
     #[test]
