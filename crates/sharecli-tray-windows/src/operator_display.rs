@@ -83,7 +83,12 @@ pub fn resolve_tray_gate_visual(
             ("#d29922", label, "dialog-warning", "exclamationmark.triangle.fill")
         }
         TrayGateSeverity::Normal => ("#3fb950", "Normal", "utilities-system-monitor", "cpu"),
-        TrayGateSeverity::Offline => unreachable!("handled above"),
+        // Phase C fix: tray-offline-unreachable-fix — graceful fallback tokens
+        // identical to the `!connected` early-return values. Future refactors
+        // that bypass the early-return never panic on this arm.
+        TrayGateSeverity::Offline => {
+            ("#d29922", "Offline", "network-offline", "wifi.slash")
+        }
     };
 
     TrayGateVisual {
@@ -244,5 +249,238 @@ mod tests {
         assert_eq!(v.severity, TrayGateSeverity::Normal);
         assert_eq!(v.decision_class, "gate-admit");
         assert_eq!(v.linux_icon_name, "utilities-system-monitor");
+    }
+
+    // ---- Phase B tray coverage (Windows parity) ----
+
+    #[test]
+    fn resolve_tray_gate_visual_matches_linux_deny_red_critical() {
+        let v = resolve_tray_gate_visual("RED", "DENY", true);
+        assert_eq!(v.severity, TrayGateSeverity::Critical);
+        assert_eq!(v.decision_class, "gate-deny");
+        assert_eq!(v.thermal_class, "critical");
+        assert_eq!(v.badge_label, "Critical");
+        assert_eq!(v.color_hex, "#f85149");
+    }
+
+    #[test]
+    fn resolve_tray_gate_visual_matches_linux_offline() {
+        let v = resolve_tray_gate_visual("GREEN", "ADMIT", false);
+        assert_eq!(v.severity, TrayGateSeverity::Offline);
+        assert_eq!(v.badge_label, "Offline");
+        assert_eq!(v.color_hex, "#d29922");
+        assert_eq!(v.linux_icon_name, "network-offline");
+        assert_eq!(v.swift_symbol_name, "wifi.slash");
+    }
+
+    #[test]
+    fn resolve_tray_gate_visual_from_gate_extracts_fields() {
+        let gate = GateStatusSnapshot {
+            thermal_pressure: "GREEN".into(),
+            detected_agents: 0,
+            agent_total_rss_bytes: 0,
+            agent_contention: "OK".into(),
+            gate_decision: "ADMIT".into(),
+        };
+        let v = resolve_tray_gate_visual_from_gate(&gate, true);
+        assert_eq!(v.severity, TrayGateSeverity::Normal);
+        assert_eq!(v.badge_label, "Normal");
+        assert_eq!(v.swift_symbol_name, "cpu");
+    }
+
+    #[test]
+    fn resolve_tray_gate_visual_throttle_yields_warning() {
+        let v = resolve_tray_gate_visual("GREEN", "THROTTLE", true);
+        assert_eq!(v.severity, TrayGateSeverity::Warning);
+        assert_eq!(v.decision_class, "gate-unavailable");
+        assert_eq!(v.badge_label, "Warning");
+    }
+
+    #[test]
+    fn resolve_tray_gate_visual_unavailable_pressure_yields_unavailable_badge() {
+        let v = resolve_tray_gate_visual("UNAVAILABLE", "ADMIT", true);
+        assert_eq!(v.severity, TrayGateSeverity::Warning);
+        assert_eq!(v.badge_label, "Unavailable");
+    }
+
+    #[test]
+    fn format_gate_tray_line_includes_key_fields() {
+        let line = format_gate_tray_line(&sample_gate());
+        assert!(line.contains("THROTTLE"));
+        assert!(line.contains("YELLOW"));
+        assert!(line.contains("agents 1"));
+        assert!(line.contains("WARN"));
+    }
+
+    #[test]
+    fn format_host_watch_tray_line_includes_loading_and_fds() {
+        let host = sample_host();
+        let line = format_host_watch_tray_line(&host);
+        assert!(line.contains("load 1.25"));
+        assert!(line.contains("FDs 10"));
+        assert!(line.contains("RSS 4.0 KB"));
+    }
+
+    #[test]
+    fn format_host_net_tray_line_includes_rx_and_tx() {
+        let line = format_host_net_tray_line(&sample_host());
+        assert!(line.contains("RX 100 B"));
+        assert!(line.contains("TX 200 B"));
+    }
+
+    #[test]
+    fn format_gate_rss_tray_line_uses_compact_bytes() {
+        let line = format_gate_rss_tray_line(&sample_gate());
+        assert_eq!(line, "Agent RSS: 512 B");
+    }
+
+    #[test]
+    fn format_operator_status_summary_joins_three_lines_with_pipe() {
+        let summary = format_operator_status_summary(&sample_gate(), &sample_host());
+        assert!(summary.starts_with("Gate [THROTTLE] · YELLOW · agents 1 · WARN | "));
+        assert!(summary.contains("Agent RSS:"));
+        assert!(summary.contains("Host load 1.25 · FDs 10 · RSS 4.0 KB"));
+        assert_eq!(summary.matches('|').count(), 2);
+    }
+
+    #[test]
+    fn format_pool_tray_line_reports_health_state() {
+        let pool = crate::ipc::PoolSnapshot {
+            node_total: 4,
+            node_idle: 2,
+            bun_total: 1,
+            bun_idle: 0,
+            max_per_type: 4,
+            healthy: true,
+            issues: vec![],
+            gate: sample_gate(),
+            host_watch: sample_host(),
+        };
+        assert_eq!(
+            format_pool_tray_line(&pool),
+            "Pool node 4/2 idle · bun 1/0 idle · max 4 · healthy"
+        );
+
+        let degraded = crate::ipc::PoolSnapshot {
+            healthy: false,
+            ..pool.clone()
+        };
+        assert!(format_pool_tray_line(&degraded).ends_with("· degraded"));
+    }
+
+    #[test]
+    fn format_status_snapshot_tray_line_includes_counts() {
+        let status = crate::ipc::StatusSnapshot {
+            total_processes: 5,
+            agents: vec![crate::ipc::AgentProcRow {
+                pid: 9,
+                family: "codex".into(),
+                comm: "codex".into(),
+                state: "S".into(),
+                mem_rss_bytes: 4096,
+                mem_rss: "4.0M".into(),
+                fd_count: Some(4),
+            }],
+            scanned: 12,
+            watched: 5,
+            gate: sample_gate(),
+            host_watch: sample_host(),
+        };
+        assert_eq!(
+            format_status_snapshot_tray_line(&status),
+            "Proc scan 12 · watched 5 · 5 managed · 1 agent row(s)"
+        );
+    }
+
+    #[test]
+    fn format_pool_status_operator_lines_order() {
+        let pool = crate::ipc::PoolSnapshot {
+            node_total: 0,
+            node_idle: 0,
+            bun_total: 0,
+            bun_idle: 0,
+            max_per_type: 4,
+            healthy: true,
+            issues: vec![],
+            gate: sample_gate(),
+            host_watch: sample_host(),
+        };
+        let status = crate::ipc::StatusSnapshot {
+            total_processes: 0,
+            agents: vec![],
+            scanned: 0,
+            watched: 0,
+            gate: sample_gate(),
+            host_watch: sample_host(),
+        };
+        let lines = format_pool_status_operator_lines(&pool, &status);
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].starts_with("Pool node"));
+        assert!(lines[1].starts_with("Proc scan"));
+    }
+
+    #[test]
+    fn resolve_gate_decision_class_mapping() {
+        assert_eq!(resolve_gate_decision_class("ADMIT"), "gate-admit");
+        assert_eq!(resolve_gate_decision_class("DENY"), "gate-deny");
+        assert_eq!(resolve_gate_decision_class("THROTTLE"), "gate-unavailable");
+        assert_eq!(resolve_gate_decision_class(""), "gate-unavailable");
+    }
+
+    #[test]
+    fn resolve_thermal_class_mapping() {
+        assert_eq!(resolve_thermal_class("GREEN"), "");
+        assert_eq!(resolve_thermal_class("YELLOW"), "warning");
+        assert_eq!(resolve_thermal_class("RED"), "critical");
+        assert_eq!(resolve_thermal_class("PURPLE"), "warning");
+        assert_eq!(resolve_thermal_class("UNAVAILABLE"), "warning");
+    }
+
+    #[test]
+    fn tray_gate_severity_partial_ordering() {
+        assert!(TrayGateSeverity::Critical > TrayGateSeverity::Warning);
+        assert!(TrayGateSeverity::Warning > TrayGateSeverity::Normal);
+        assert_ne!(TrayGateSeverity::Offline, TrayGateSeverity::Normal);
+    }
+
+    // -- Phase C offline-state coverage -------------------------------------
+    // Linux/Windows tray offline tokens MUST be identical (shared design
+    // system, AC-007.57). Each test runs the disconnected path and asserts
+    // the full token set matches the Linux offline contract exactly.
+
+    #[test]
+    fn resolve_tray_gate_visual_offline_full_token_set() {
+        let v = resolve_tray_gate_visual("GREEN", "ADMIT", false);
+        assert_eq!(v.severity, TrayGateSeverity::Offline);
+        assert_eq!(v.decision_class, "gate-unavailable");
+        assert_eq!(v.thermal_class, "warning");
+        assert_eq!(v.color_hex, "#d29922");
+        assert_eq!(v.badge_label, "Offline");
+        assert_eq!(v.linux_icon_name, "network-offline");
+        assert_eq!(v.swift_symbol_name, "wifi.slash");
+    }
+
+    #[test]
+    fn resolve_tray_gate_visual_offline_never_panics_with_any_inputs() {
+        for &gate_decision in &["ADMIT", "DENY", "THROTTLE", "UNKNOWN", ""] {
+            for &thermal_pressure in &["GREEN", "YELLOW", "RED", "UNAVAILABLE", ""] {
+                let v = resolve_tray_gate_visual(thermal_pressure, gate_decision, false);
+                assert_eq!(v.severity, TrayGateSeverity::Offline);
+                assert_eq!(v.badge_label, "Offline");
+                assert_eq!(v.color_hex, "#d29922");
+                assert_eq!(v.linux_icon_name, "network-offline");
+            }
+        }
+    }
+
+    #[test]
+    fn resolve_tray_gate_visual_offline_matches_linux_token_set() {
+        let windows = resolve_tray_gate_visual("GREEN", "ADMIT", false);
+        // The windows-side values are computed; they must equal the
+        // canonical Offline tokens shared with the Linux crate.
+        assert_eq!(windows.color_hex, "#d29922");
+        assert_eq!(windows.badge_label, "Offline");
+        assert_eq!(windows.linux_icon_name, "network-offline");
+        assert_eq!(windows.swift_symbol_name, "wifi.slash");
     }
 }
