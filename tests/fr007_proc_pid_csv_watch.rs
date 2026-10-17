@@ -5,8 +5,8 @@
 //! each tick on stdout; stderr silent on success.
 
 use std::io::Read;
-use std::sync::{Arc, Mutex};
 use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -67,11 +67,7 @@ fn drain_watch_pipes(
 
     let deadline = Instant::now() + max;
     loop {
-        let count = stdout_buf
-            .lock()
-            .expect("stdout lock")
-            .matches(frame_marker)
-            .count();
+        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
         if count >= frames_needed || Instant::now() >= deadline {
             break;
         }
@@ -125,8 +121,13 @@ fn fr007_proc_pid_csv_watch_stderr_silent_and_envelope() {
         .spawn()
         .expect("spawn proc --pid --csv --watch 1");
 
-    let (stdout, stderr) = drain_watch_pipes(&mut child, "
-", 2, Duration::from_millis(30_000));
+    let (stdout, stderr) = drain_watch_pipes(
+        &mut child,
+        "
+",
+        2,
+        Duration::from_millis(30_000),
+    );
 
     assert!(
         stderr.is_empty(),

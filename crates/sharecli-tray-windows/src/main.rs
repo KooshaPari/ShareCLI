@@ -17,7 +17,9 @@ use std::time::Duration;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
+#[cfg(target_os = "windows")]
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
+#[cfg(target_os = "windows")]
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
 /// Gate `creation_flags(0x08000000)` so the crate compiles on Linux CI.
@@ -137,6 +139,7 @@ fn spawn_ipc_sidecar() -> Result<Child, TrayError> {
 
 /// Builds the menu model (before the icon) so we can clone menu item handles.
 /// Returns the `Menu` plus the event-id strings that identify each item.
+#[cfg(target_os = "windows")]
 fn build_menu() -> Result<(Menu, Vec<String>), TrayError> {
     let open = MenuItem::new("Open Dashboard", true, None);
     let health = MenuItem::new("Health Check", true, None);
@@ -188,6 +191,7 @@ fn open_dashboard() {
     }
 }
 
+#[cfg(target_os = "windows")]
 fn main() {
     // Detached IPC sidecar (we don't want to block the tray message loop on it).
     let mut sidecar: Option<Child> = match spawn_ipc_sidecar() {
@@ -268,6 +272,16 @@ fn main() {
     loop {
         thread::sleep(Duration::from_millis(2000));
     }
+}
+
+/// Non-Windows stub: the Windows tray is a Windows-only binary; on Linux
+/// use `sharecli-tray-linux` (ksni) instead. The bin still has to *exist*
+/// on non-Windows hosts (CI's `cargo check --workspace` builds it for the
+/// host target) but exits early with a clear error.
+#[cfg(not(target_os = "windows"))]
+fn main() {
+    eprintln!("sharecli-tray-windows is a Windows-only binary; on Linux use sharecli-tray-linux");
+    std::process::exit(1);
 }
 
 /// A simple 16x16 RGBA glyph (a filled rounded square with a lighter center

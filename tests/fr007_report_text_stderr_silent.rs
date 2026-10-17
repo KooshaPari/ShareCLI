@@ -104,11 +104,7 @@ fn drain_watch_pipes(
 
     let deadline = Instant::now() + max;
     loop {
-        let count = stdout_buf
-            .lock()
-            .expect("stdout lock")
-            .matches(frame_marker)
-            .count();
+        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
         if count >= frames_needed || Instant::now() >= deadline {
             break;
         }
@@ -187,7 +183,8 @@ fn fr007_report_watch_text_stderr_silent() {
         .spawn()
         .expect("spawn sharecli report --format text --watch 1");
 
-    let (stdout, stderr) = drain_watch_pipes(&mut child, REPORT_HEADER, 2, Duration::from_millis(30_000));
+    let (stdout, stderr) =
+        drain_watch_pipes(&mut child, REPORT_HEADER, 2, Duration::from_millis(30_000));
 
     assert_stderr_silent(stderr.as_bytes(), "report --watch");
     assert_stderr_no_companion_markers(stderr.as_bytes(), "report --watch");
