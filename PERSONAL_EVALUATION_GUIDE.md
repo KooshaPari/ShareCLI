@@ -161,7 +161,7 @@ cargo test --workspace --no-fail-fast 2>&1 | tail -20
 cat COMPREHENSIVE_AUDIT_SCORECARD.md    # 150 pillars, 99.1% A+
 
 # 4. ADRs (4 new in Wave18 + 6 existing = 14 total)
-ls docs/ops/governance/adrs/
+ls docs/adr/
 
 # 5. WORK_DAG task claim-lock protocol
 cat WORK_DAG.md | grep "READY |"         # claimable tasks
