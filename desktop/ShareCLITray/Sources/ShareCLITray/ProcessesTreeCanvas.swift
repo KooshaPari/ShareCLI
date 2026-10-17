@@ -147,6 +147,13 @@ struct ProcessesTreeCanvasView: View {
         }
     }
 
+    /// Accessibility label for a DAG node. Used by the tap overlay and tests
+    /// so every node is reachable by VoiceOver.
+    static func accessibilityLabel(for p: ProcessSummary) -> String {
+        let family = p.harness ?? p.project ?? "process"
+        return "\(p.name) · pid \(p.pid) · \(family)"
+    }
+
     private func formatMB(_ mb: Double) -> String {
         if mb >= 1024 { return String(format: "%.1f GB", mb / 1024) }
         return String(format: "%.0f MB", mb)
@@ -171,6 +178,10 @@ struct ProcessesTreeCanvasTapOverlay: View {
                     .frame(width: node.size.width, height: node.size.height)
                     .position(x: node.center.x, y: node.center.y)
                     .help("\(node.process.name) — pid \(node.process.pid)")
+                    .accessibilityElement()
+                    .accessibilityLabel(
+                        ProcessesTreeCanvasView.accessibilityLabel(for: node.process)
+                    )
                 }
             }
         }
@@ -229,5 +240,24 @@ struct ProcessesTreeCanvasTapOverlay: View {
 
         for r in roots { place(r, depth: 0) }
         return positioned
+    }
+}
+
+// MARK: - Composite (canvas + labeled overlay + accessibility container)
+
+/// Combines the visual Canvas DAG with the labeled Button overlay and wraps
+/// the pair in `accessibilityElement(children: .contain)` so VoiceOver can
+/// enter the graph and navigate individual nodes.
+struct ProcessesTreeCanvasCompositeView: View {
+    let state: AppState
+    let onSelect: (ProcessSummary) -> Void
+
+    var body: some View {
+        ZStack {
+            ProcessesTreeCanvasView(state: state, onSelect: onSelect)
+                .accessibilityHidden(true)
+            ProcessesTreeCanvasTapOverlay(state: state, onSelect: onSelect)
+        }
+        .accessibilityElement(children: .contain)
     }
 }

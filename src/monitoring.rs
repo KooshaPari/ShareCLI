@@ -305,6 +305,145 @@ mod tests {
     }
 
     #[test]
+    fn host_resource_watch_json_round_trips_and_formats() {
+        let host = HostResourceWatchJson {
+            fd_count: 12,
+            net_rx_bytes: 1024,
+            net_tx_bytes: 2048,
+            mem_rss_bytes: 4096,
+            load_1m: 1.25,
+        };
+
+        // The JSON surface must preserve every watch field.
+        let encoded = serde_json::to_string(&host).expect("serialize host watch");
+        let decoded: HostResourceWatchJson =
+            serde_json::from_str(&encoded).expect("deserialize host watch");
+        assert_eq!(decoded, host);
+
+        // The CSV companion must render the exact operator columns and values.
+        let csv = host.format_csv_companion();
+        assert!(
+            csv.starts_with("\nrecord,fd_count,net_rx_bytes,net_tx_bytes,mem_rss_bytes,load_1m")
+        );
+        assert!(csv.contains("\nhost,12,1024,2048,4096,1.25"), "csv row mismatch: {csv}");
+
+        // The text section must faithfully map every field through the fleet type.
+        let text = host.format_text_section();
+        let expected = ResourceWatchSample {
+            fd_count: 12,
+            net_rx_bytes: 1024,
+            net_tx_bytes: 2048,
+            mem_rss_bytes: 4096,
+            load_1m: 1.25,
+        }
+        .format_status_section();
+        assert_eq!(text, expected, "text section must not drop or reorder fields");
+    }
+
+    #[test]
+    fn host_resource_watch_json_from_sample_preserves_fields() {
+        let sample = ResourceWatchSample {
+            fd_count: 7,
+            net_rx_bytes: 11,
+            net_tx_bytes: 13,
+            mem_rss_bytes: 17,
+            load_1m: 0.5,
+        };
+        let json = HostResourceWatchJson::from(sample);
+        assert_eq!(json.fd_count, 7);
+        assert_eq!(json.net_rx_bytes, 11);
+        assert_eq!(json.net_tx_bytes, 13);
+        assert_eq!(json.mem_rss_bytes, 17);
+        assert_eq!(json.load_1m, 0.5);
+    }
+
+    #[test]
+    fn process_stats_builder_defaults_watch_fields_to_zero() {
+        let stats = ProcessStats::new(42, "worker", 128, 0.5, 1000, 30);
+        assert_eq!(stats.pid, 42);
+        assert_eq!(stats.name, "worker");
+        assert_eq!(stats.memory_mb, 128);
+        assert_eq!(stats.cpu_percent, 0.5);
+        assert_eq!(stats.start_time, 1000);
+        assert_eq!(stats.uptime_seconds, 30);
+        assert_eq!(stats.fd_count, 0);
+        assert_eq!(stats.net_rx_bytes, 0);
+        assert_eq!(stats.net_tx_bytes, 0);
+        assert_eq!(stats.mem_rss_bytes, 0);
+        assert_eq!(stats.load_1m, 0.0);
+    }
+
+    #[test]
+    fn idle_detection_requires_both_long_uptime_and_low_cpu() {
+        let mut stats = ProcessStats::new(1, "w", 1, 0.5, 0, 120);
+        assert!(stats.is_idle(60), "long-lived, near-idle process must be idle");
+
+        stats.uptime_seconds = 30;
+        assert!(!stats.is_idle(60), "a process under the threshold is not idle");
+
+        stats.uptime_seconds = 120;
+        stats.cpu_percent = 25.0;
+        assert!(!stats.is_idle(60), "a busy process is never idle");
+    }
+
+    #[test]
+    fn health_status_transitions_track_pass_and_fail_counts() {
+        let mut status = HealthStatus::new();
+        assert!(status.healthy);
+        assert_eq!(status.checks_passed, 1);
+        assert_eq!(status.checks_failed, 0);
+
+        status.mark_healthy();
+        assert_eq!(status.checks_passed, 2);
+        assert!(status.healthy);
+
+        status.mark_unhealthy("boom");
+        assert!(!status.healthy);
+        assert_eq!(status.checks_failed, 1);
+
+        status.mark_healthy();
+        assert!(status.healthy);
+        assert_eq!(status.checks_passed, 3);
+        assert_eq!(status.checks_failed, 1, "recovery must not clear the failure count");
+
+        assert_eq!(HealthStatus::default().checks_passed, 1);
+    }
+
+    #[test]
+    fn monitoring_report_recommends_pruning_high_memory() {
+        setup();
+        let cfg = crate::config::global();
+        let stats = vec![ProcessStats::new(
+            1,
+            "hog",
+            cfg.monitoring.high_memory_threshold_mb + 1,
+            0.5,
+            0,
+            0,
+        )];
+        let report = MonitoringReport::generate(&stats);
+        assert_eq!(report.total_memory_mb, cfg.monitoring.high_memory_threshold_mb + 1);
+        assert!(
+            report.recommendations.iter().any(|r| r.contains("High memory usage")),
+            "high memory must produce a recommendation: {:?}",
+            report.recommendations
+        );
+    }
+
+    #[test]
+    fn monitoring_report_marks_idle_processes_and_counts_them() {
+        setup();
+        let stats = vec![
+            ProcessStats::new(1, "idle", 10, 0.0, 0, 100_000),
+            ProcessStats::new(2, "busy", 20, 50.0, 0, 100_000),
+        ];
+        let report = MonitoringReport::generate(&stats);
+        assert_eq!(report.idle_processes, 1, "only the long-lived quiet process is idle");
+        assert_eq!(report.by_harness.get("idle"), Some(&1));
+        assert_eq!(report.by_harness.get("busy"), Some(&1));
+    }
+
+    #[test]
     fn test_monitoring_report_empty() {
         setup();
         let report = MonitoringReport::generate(&[]);

@@ -90,6 +90,7 @@ struct UpdaterView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
+            .tint(Color.ctaPrimary)
             .controlSize(.regular)
             .disabled(controller.state.isBusy)
             footer

@@ -37,8 +37,15 @@ let package = Package(
                 "CShareCLIFFI",
                 .product(name: "Sparkle", package: "Sparkle"),
             ],
-            path: "Sources/ShareCLITray"
+            path: "Sources/ShareCLITray",
             // Link libsharecli_ffi via desktop/build.sh -Xlinker flags.
+            // Task 1.29: CTA colour tokens (AccentColor/AccentPrimary/
+            // SyncViolet/PulseGreen) ship as an asset catalog so
+            // NSColor(named:) resolves at runtime; CTATokens.swift falls
+            // back to the tokens.css literals when unbundled (headless).
+            resources: [
+                .process("Assets.xcassets"),
+            ],
         ),
 
         // Shared core (IPC client, data models)
@@ -55,6 +62,16 @@ let package = Package(
             name: "ShareCLICoreTests",
             dependencies: ["ShareCLICore"],
             path: "Tests/ShareCLICoreTests"
+        ),
+
+        // View-level tests for the tray UI (keyboard nav, focus trap,
+        // accessibility traits). Imports the executable target directly:
+        // SwiftPM builds `@main`-based executable targets as libraries for
+        // test targets. Headless, like ShareCLICoreTests.
+        .testTarget(
+            name: "ShareCLITrayTests",
+            dependencies: ["ShareCLITray"],
+            path: "Tests/ShareCLITrayTests"
         ),
     ]
 )

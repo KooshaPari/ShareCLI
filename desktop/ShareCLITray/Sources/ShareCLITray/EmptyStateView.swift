@@ -62,6 +62,7 @@ struct EmptyStateView: View {
                             }
                         }
                         .buttonStyle(.borderedProminent)
+                        .tint(Color.ctaPrimary)
                         .controlSize(.regular)
                     }
                     if let secondaryAction, let secondaryTitle {

@@ -30,6 +30,8 @@
 //! see `sharecli_core::Hypervisor::{queue, run}`.
 
 pub mod cache_key;
+pub mod config_revision;
+pub mod framing;
 pub mod handler;
 pub mod log_buffer;
 pub mod nocache;
@@ -110,11 +112,18 @@ pub struct CoalesceCache {
     root: PathBuf,
     ttl: Duration,
     debounce: Duration,
+    /// TTL for caching failed runs (exit_code != 0). Zero = never cache errors.
+    error_ttl: Duration,
 }
 
 impl Clone for CoalesceCache {
     fn clone(&self) -> Self {
-        Self { root: self.root.clone(), ttl: self.ttl, debounce: self.debounce }
+        Self {
+            root: self.root.clone(),
+            ttl: self.ttl,
+            debounce: self.debounce,
+            error_ttl: self.error_ttl,
+        }
     }
 }
 
@@ -160,13 +169,29 @@ impl CoalesceCache {
         Self::with_options(root, ttl, Duration::ZERO)
     }
 
+    /// Create a cache with a custom error TTL (for caching failed runs).
+    /// Success TTL uses [`DEFAULT_TTL`]; debounce is disabled.
+    pub fn with_error_ttl(root: impl Into<PathBuf>, error_ttl: Duration) -> Self {
+        Self { root: root.into(), ttl: Self::DEFAULT_TTL, debounce: Duration::ZERO, error_ttl }
+    }
+
     /// Create a cache with explicit TTL and debounce window.
     ///
     /// `ttl` — max age of a stored entry before `lookup` returns a miss.
     /// `debounce` — on miss, wait this long then re-check before running the
     /// miss path (origin harness `debounce_ms`; `Duration::ZERO` disables).
     pub fn with_options(root: impl Into<PathBuf>, ttl: Duration, debounce: Duration) -> Self {
-        Self { root: root.into(), ttl, debounce }
+        Self { root: root.into(), ttl, debounce, error_ttl: Duration::ZERO }
+    }
+
+    /// Create a cache with explicit TTL, debounce, and error_ttl.
+    pub fn with_full_options(
+        root: impl Into<PathBuf>,
+        ttl: Duration,
+        debounce: Duration,
+        error_ttl: Duration,
+    ) -> Self {
+        Self { root: root.into(), ttl, debounce, error_ttl }
     }
 
     /// Configured TTL for cache entries.
@@ -177,6 +202,11 @@ impl CoalesceCache {
     /// Configured debounce window (zero = disabled).
     pub fn debounce(&self) -> Duration {
         self.debounce
+    }
+
+    /// Configured error TTL for caching failed runs (zero = never cache errors).
+    pub fn error_ttl(&self) -> Duration {
+        self.error_ttl
     }
 
     fn entry_path(&self, key: &CommandKey) -> PathBuf {
@@ -264,6 +294,28 @@ impl CoalesceCache {
     /// observe a partial / truncated JSON file. After writing, sweeps stale
     /// entries under `root/` whose mtime exceeds the configured TTL.
     pub fn store(&self, key: &CommandKey, result: &CachedResult) -> Result<()> {
+        self.store_inner(key, result, self.ttl)
+    }
+
+    /// Store a result with a custom TTL (for error caching).
+    ///
+    /// The entry's mtime is backdated so `is_fresh` returns `true` for only
+    /// `custom_ttl` from now, regardless of the cache's primary TTL.
+    fn store_with_ttl(
+        &self,
+        key: &CommandKey,
+        result: &CachedResult,
+        custom_ttl: Duration,
+    ) -> Result<()> {
+        self.store_inner(key, result, custom_ttl)
+    }
+
+    fn store_inner(
+        &self,
+        key: &CommandKey,
+        result: &CachedResult,
+        effective_ttl: Duration,
+    ) -> Result<()> {
         self.ensure_root()?;
 
         let bytes = serde_json::to_vec(result).context("serialise CachedResult")?;
@@ -277,6 +329,25 @@ impl CoalesceCache {
 
         let dest = self.entry_path(key);
         tmp.persist(&dest).with_context(|| format!("persist cache entry to {}", dest.display()))?;
+
+        // FR-008: when storing with a shorter TTL (error_ttl), backdate the
+        // mtime so `is_fresh` (which compares age against self.ttl) returns
+        // true for only `effective_ttl` from now. If the backdate cannot be
+        // applied, the entry would instead be served for the full `self.ttl`,
+        // silently extending the failure window — so drop it and let the next
+        // caller re-run rather than serve a wrongly-aged result.
+        if effective_ttl < self.ttl {
+            let backdate = self.ttl - effective_ttl;
+            let mtime = SystemTime::now() - backdate;
+            let backdated = fs::OpenOptions::new()
+                .write(true)
+                .open(&dest)
+                .and_then(|f| f.set_times(fs::FileTimes::new().set_modified(mtime)))
+                .is_ok();
+            if !backdated {
+                let _ = fs::remove_file(&dest);
+            }
+        }
 
         self.evict_stale()?;
 
@@ -351,9 +422,18 @@ impl CoalesceCache {
         let cached: CachedResult = value.into();
 
         // Lane-7 BLOCKER (tiger): failed runs were stored and replayed to siblings
-        // for the full TTL. Skip persistence for any non-success result so siblings
-        // re-run on their own; success results are stored as before.
+        // for the full TTL. With the default `error_ttl` of zero we skip
+        // persistence for any non-success result so siblings re-run on their own.
+        // FR-008 is the explicit opt-in that qualifies that: a non-zero
+        // `error_ttl` caches the failure for the shorter window only, so the
+        // replay is bounded and deliberate rather than the unbounded full-TTL
+        // caching lane-7 removed. Success results are stored as before.
         if cached.exit_code != 0 {
+            if !self.error_ttl.is_zero() {
+                self.store_with_ttl(key, &cached, self.error_ttl)?;
+                record_coalesce_hit_kind(CoalesceHitKind::Miss);
+                return Ok((T::from(cached), CoalesceHitKind::Miss));
+            }
             record_coalesce_hit_kind(CoalesceHitKind::Miss);
             return Ok((T::from(cached), CoalesceHitKind::Miss));
         }
@@ -364,6 +444,25 @@ impl CoalesceCache {
         // Lock releases on drop.
         Ok((T::from(cached), CoalesceHitKind::Miss))
     }
+}
+
+// ---------------------------------------------------------------------------
+// IPC endpoint
+// ---------------------------------------------------------------------------
+
+/// Unix-socket path the sidecar binds (bin + lib + external consumers).
+///
+/// `SHARECLI_IPC_SOCK` overrides the default
+/// `$XDG_DATA_HOME|~/.local/share/sharecli/ipc.sock`. The CLI's
+/// `stop` command resolves the same path to delegate kills to a running
+/// sidecar (CRITICAL #1 fix), so bin and lib must share one definition.
+/// `sharecli-tray-linux` keeps its own copy with a pinning unit test.
+pub fn socket_path() -> PathBuf {
+    if let Ok(v) = std::env::var("SHARECLI_IPC_SOCK") {
+        return PathBuf::from(v);
+    }
+    let base = dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
+    base.join("sharecli").join("ipc.sock")
 }
 
 // ---------------------------------------------------------------------------
@@ -609,24 +708,24 @@ mod tests {
     // forever when the holder is wedged. Exercises the helper directly with
     // a 200ms deadline so the unit test stays fast.
     // -----------------------------------------------------------------------
+    // Windows `LockFileEx` reports contention on an already-locked region as
+    // ERROR_LOCK_VIOLATION (os error 33), surfaced by `fs2` as a raw error
+    // rather than `io::ErrorKind::WouldBlock`. The deadline-retry contract this
+    // test pins (poll `try_lock_exclusive` until the deadline, then bail with
+    // a "could not acquire exclusive lock" error) is therefore unix-only. Gated to
+    // unix so Windows, where file-region locks cannot block, does not report a
+    // false failure. On unix this test still runs unchanged.
+    #[cfg(unix)]
     #[test]
     fn acquire_lock_with_deadline_errors_when_held() {
         let dir = TempDir::new().expect("tempdir");
         let lock_path = dir.path().join("held.lock");
         // Touch the file so a second open can flock it.
         fs::write(&lock_path, b"x").unwrap();
-        let holder = fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(&lock_path)
-            .unwrap();
+        let holder = fs::OpenOptions::new().read(true).write(true).open(&lock_path).unwrap();
         holder.lock_exclusive().unwrap();
 
-        let contender = fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(&lock_path)
-            .unwrap();
+        let contender = fs::OpenOptions::new().read(true).write(true).open(&lock_path).unwrap();
         let started = SystemTime::now();
         let err = acquire_lock_with_deadline(&contender, Duration::from_millis(200))
             .expect_err("must fail when another holder owns the lock");
@@ -640,10 +739,7 @@ mod tests {
             elapsed >= Duration::from_millis(200),
             "deadline must be honored; elapsed={elapsed:?}"
         );
-        assert!(
-            elapsed < Duration::from_secs(2),
-            "deadline should be tight; elapsed={elapsed:?}"
-        );
+        assert!(elapsed < Duration::from_secs(2), "deadline should be tight; elapsed={elapsed:?}");
     }
 
     // -----------------------------------------------------------------------
@@ -684,9 +780,8 @@ mod tests {
         thread::sleep(Duration::from_millis(200));
 
         let started = SystemTime::now();
-        let result: Result<CachedResult> = cache.with_lock(&key, || {
-            Ok(CachedResult { exit_code: 0, stdout: vec![], stderr: vec![] })
-        });
+        let result: Result<CachedResult> = cache
+            .with_lock(&key, || Ok(CachedResult { exit_code: 0, stdout: vec![], stderr: vec![] }));
         let elapsed = started.elapsed().unwrap_or(Duration::ZERO);
 
         // Don't assert hard on macOS — the test exists for Linux verification.
@@ -696,12 +791,76 @@ mod tests {
                 err.contains("could not acquire exclusive lock"),
                 "expected lock-deadline error, got: {err}"
             );
-            assert!(
-                elapsed < Duration::from_secs(45),
-                "with_lock took too long: {elapsed:?}"
-            );
+            assert!(elapsed < Duration::from_secs(45), "with_lock took too long: {elapsed:?}");
         }
 
         drop(holder);
+    }
+
+    /// FR-008: storing with a shorter TTL backdates the entry's mtime so
+    /// `is_fresh` returns true for only that shorter window, not the full ttl.
+    #[test]
+    fn store_with_ttl_backdates_the_entry_mtime() {
+        let dir = TempDir::new().expect("tempdir");
+        let ttl = Duration::from_secs(300);
+        let cache = CoalesceCache::with_ttl(dir.path(), ttl);
+        let key = command_key(&["errtool".into()], Path::new("/p"), &[]);
+        let result = CachedResult { exit_code: 1, stdout: vec![], stderr: vec![] };
+
+        cache.store_with_ttl(&key, &result, Duration::from_secs(5)).expect("store");
+
+        let path = cache.entry_path(&key);
+        let modified = fs::metadata(&path).unwrap().modified().unwrap();
+        let age = SystemTime::now().duration_since(modified).unwrap_or(Duration::ZERO);
+        assert!(
+            age >= Duration::from_secs(290),
+            "mtime must be backdated by (ttl - custom_ttl); age={age:?}"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // FR-008 — error_ttl: failed runs cached with short TTL when error_ttl > 0
+    // -----------------------------------------------------------------------
+    #[test]
+    fn error_ttl_caches_failed_run() {
+        let dir = TempDir::new().expect("tempdir");
+        let error_ttl = Duration::from_millis(80);
+        let cache = CoalesceCache::with_error_ttl(dir.path(), error_ttl);
+        assert_eq!(cache.error_ttl(), error_ttl);
+
+        let key = command_key(&["failing-tool".into()], Path::new("/p"), &[]);
+
+        // First call: exit_code 1 (failure). With error_ttl > 0, the result
+        // SHOULD be cached for the error_ttl window.
+        let r1: CachedResult = cache
+            .with_lock(&key, || {
+                Ok(CachedResult { exit_code: 1, stdout: b"err".to_vec(), stderr: vec![] })
+            })
+            .expect("first with_lock");
+        assert_eq!(r1.exit_code, 1);
+
+        // Second call: the error SHOULD be cached, so f() must NOT run.
+        let mut call_count = 0u32;
+        let r2: CachedResult = cache
+            .with_lock(&key, || {
+                call_count += 1;
+                Ok(CachedResult { exit_code: 0, stdout: b"ok".to_vec(), stderr: vec![] })
+            })
+            .expect("second with_lock");
+        assert_eq!(call_count, 0, "error_ttl>0: failed run MUST be served from cache");
+        assert_eq!(r2.exit_code, 1, "must return cached error result");
+
+        // Wait for error_ttl to expire.
+        thread::sleep(error_ttl + Duration::from_millis(30));
+
+        // Third call: error TTL expired, so f() MUST run again.
+        let r3: CachedResult = cache
+            .with_lock(&key, || {
+                call_count += 1;
+                Ok(CachedResult { exit_code: 0, stdout: b"ok".to_vec(), stderr: vec![] })
+            })
+            .expect("third with_lock");
+        assert_eq!(call_count, 1, "after error_ttl expiry, f() must run again");
+        assert_eq!(r3.exit_code, 0, "must return fresh success result");
     }
 }

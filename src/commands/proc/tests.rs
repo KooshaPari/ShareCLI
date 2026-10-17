@@ -32,8 +32,11 @@ mod tests {
 
     #[test]
     fn host_inventory_from_fixture() {
+        // Use a PID that's reliably dead on every supported platform (Linux u32
+        // PID max ~4.29e9; macOS PID max ~1e7 in practice). PID 100 is reused
+        // aggressively on macOS runners and was making this test flaky.
         let src = FakeProcSource::new(vec![ProcSnapshot {
-            pid: 100,
+            pid: 2_000_000,
             ppid: 1,
             comm: "claude".into(),
             cmdline: vec!["claude".into()],

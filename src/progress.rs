@@ -80,6 +80,24 @@ mod tests {
     }
 
     #[test]
+    fn step_progress_is_a_noop_without_a_bar_and_reports_line_output() {
+        let progress = StepProgress::new("stopping", 10);
+        if progress.uses_line_output() {
+            // Non-TTY: the bar must be absent so every method stays inert.
+            assert!(progress.bar.is_none(), "a disabled bar must not be built");
+            progress.inc(None);
+            progress.inc(Some("pid 1"));
+            progress.finish("done");
+        }
+    }
+
+    #[test]
+    fn progress_enabled_matches_the_stderr_tty_state() {
+        // The predicate must reflect the real terminal state, not a constant.
+        assert_eq!(progress_enabled(), std::io::stderr().is_terminal());
+    }
+
+    #[test]
     fn step_progress_skips_small_batches() {
         let progress = StepProgress::new("stopping", PROGRESS_MIN_ITEMS - 1);
         assert!(progress.uses_line_output());

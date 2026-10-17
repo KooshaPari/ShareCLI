@@ -4,5 +4,4 @@
 /// `sharecli_tray_windows::poll::TRAY_POLL_INTERVAL_SECS` (Linux/Windows parity).
 public enum TrayPoll {
     public static let intervalSeconds: UInt64 = 3
-    public static let intervalNanoseconds: UInt64 = intervalSeconds * 1_000_000_000
 }

@@ -33,7 +33,7 @@ struct PreferencesSheet: View {
                 Button {
                     isVisible = false
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
+                    Image(systemName: StatusIcon.dismiss.symbolName)
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.pressable)

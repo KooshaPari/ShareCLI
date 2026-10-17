@@ -7,6 +7,7 @@ use std::io::Write;
 use anyhow::{Context, Result};
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
+use sharecli::log_sink::{plan_subscriber, LogSinkRoute};
 use sharecli::session::GhosttyControlClient;
 use sharecli_session::{
     LayoutSnapshot, RecoveryExecutor, SessionObservation, SessionService, SessionStore,
@@ -22,6 +23,7 @@ mod commands;
 mod config;
 mod config_validator;
 mod config_watcher;
+mod config_write;
 mod dashboard_assets;
 mod error;
 mod error_envelope;
@@ -36,10 +38,11 @@ mod paths;
 mod pprof_http;
 mod proc_compose;
 mod progress;
-mod rate_limiter;
 #[cfg(test)]
 mod proptest_util;
+mod rate_limiter;
 mod runtime;
+mod runtime_cache;
 mod serve_auth;
 mod serve_lock;
 mod serve_rate_limit;
@@ -436,7 +439,6 @@ enum Commands {
         #[arg(long)]
         install: bool,
     },
-
 
     /// Enumerate available CLI surfaces (cast modules + utility modules)
     List {
@@ -903,12 +905,19 @@ async fn run() -> Result<()> {
         }
     }
 
-    if !cli.quiet && (cli.verbose || std::io::stderr().is_terminal()) {
+    // Audit task 1.11 (PLAN lines 183-185): install the subscriber even when
+    // stderr is not a TTY so a daemonized `sharecli serve` emits logs. The
+    // stderr console layer is attached only on the console route; the daemon
+    // route writes to the file sink alone, which keeps the FR-007
+    // stderr-silent contract.
+    let plan = plan_subscriber(cli.quiet, cli.verbose, std::io::stderr().is_terminal());
+    if plan.install {
         use tracing_subscriber::prelude::*;
 
         crate::otel::ensure_trace_context_propagator();
 
-        let level = if cli.verbose { tracing::Level::DEBUG } else { tracing::Level::INFO };
+        let console_sink = plan.route == LogSinkRoute::Console;
+        let level = plan.level;
         let json = std::env::var("SHARECLI_LOG_FORMAT")
             .map(|v| v.eq_ignore_ascii_case("json"))
             .unwrap_or(false);
@@ -942,36 +951,52 @@ async fn run() -> Result<()> {
             )
         };
         if json {
-            let fmt_layer = tracing_subscriber::fmt::layer()
-                .json()
-                .with_ansi(false)
-                .with_writer(std::io::stderr)
-                .with_filter(filter);
+            let console_layer = console_sink.then(|| {
+                tracing_subscriber::fmt::layer()
+                    .json()
+                    .with_ansi(false)
+                    .with_writer(std::io::stderr)
+                    .with_filter(filter)
+            });
             let file_layer = tracing_subscriber::fmt::layer()
                 .json()
                 .with_ansi(false)
-                .with_writer(file_make_writer);
-            let registry = tracing_subscriber::registry().with(fmt_layer).with(file_layer);
+                .with_writer(file_make_writer)
+                .with_filter(filter);
+            let registry = tracing_subscriber::registry().with(console_layer).with(file_layer);
             if let Some(otel_layer) = crate::otel::try_otel_layer() {
                 registry.with(otel_layer).init();
             } else {
                 registry.init();
             }
         } else {
-            let fmt_layer = tracing_subscriber::fmt::layer()
-                .with_ansi(!is_no_color())
-                .with_writer(std::io::stderr)
+            let console_layer = console_sink.then(|| {
+                tracing_subscriber::fmt::layer()
+                    .with_ansi(!is_no_color())
+                    .with_writer(std::io::stderr)
+                    .with_filter(filter)
+            });
+            let file_layer = tracing_subscriber::fmt::layer()
+                .with_ansi(false)
+                .with_writer(file_make_writer)
                 .with_filter(filter);
-            let file_layer =
-                tracing_subscriber::fmt::layer().with_ansi(false).with_writer(file_make_writer);
-            let registry = tracing_subscriber::registry().with(fmt_layer).with(file_layer);
+            let registry = tracing_subscriber::registry().with(console_layer).with(file_layer);
             if let Some(otel_layer) = crate::otel::try_otel_layer() {
                 registry.with(otel_layer).init();
             } else {
                 registry.init();
             }
         }
-        tracing::debug!(path = %log_path.display(), "sharecli log file");
+        // Interactive runs keep this at DEBUG; the daemon route has no console,
+        // so promote it to INFO as the daemon's only log-sink announcement.
+        if console_sink {
+            tracing::debug!(path = %log_path.display(), "sharecli log file");
+        } else {
+            tracing::info!(
+                path = %log_path.display(),
+                "sharecli log file (stderr is not a terminal)"
+            );
+        }
     } else {
         crate::otel::ensure_trace_context_propagator();
     }
@@ -1736,12 +1761,14 @@ async fn prune(idle_seconds: u64, force: bool) -> Result<()> {
 
     for proc in candidates {
         if force {
-            pool.kill(proc.pid).await?;
-            progress.inc(Some(&format!("{} ({})", proc.pid, proc.name)));
-            if line_mode {
-                println!("Pruned process {} ({})", proc.pid, proc.name);
+            // Ok(false) is unreachable: candidates came from this pool's list().
+            if pool.kill(proc.pid).await? {
+                progress.inc(Some(&format!("{} ({})", proc.pid, proc.name)));
+                if line_mode {
+                    println!("Pruned process {} ({})", proc.pid, proc.name);
+                }
+                pruned += 1;
             }
-            pruned += 1;
         } else {
             println!("Would prune: {} ({})", proc.pid, proc.name);
             pruned += 1;

@@ -465,6 +465,9 @@ pub struct HypervisorConfig {
     pub cache_key_mode: CacheKeyMode,
     /// When true, apply lint-tool semantic argv normalization before hashing (AC-008.20).
     pub semantic: bool,
+    /// TTL for caching failed runs (exit_code != 0). Zero = never cache errors.
+    /// Origin: rules.conf `error_ttl=` (default 10s in harness dispatcher).
+    pub error_ttl: Duration,
 }
 
 /// A request to spawn a managed process.
@@ -649,6 +652,7 @@ impl Hypervisor {
                 coalesce_debounce: Duration::ZERO,
                 cache_key_mode: CacheKeyMode::Time,
                 semantic: false,
+                error_ttl: Duration::ZERO,
             },
             gate,
             DEFAULT_NOCACHE_ARGS.iter().map(|s| (*s).to_string()).collect(),
@@ -681,10 +685,11 @@ impl Hypervisor {
         gate: Arc<dyn ThermalGate>,
         nocache_args: Vec<String>,
     ) -> Self {
-        let cache = CoalesceCache::with_options(
+        let cache = CoalesceCache::with_full_options(
             config.cache_root.clone(),
             config.coalesce_ttl,
             config.coalesce_debounce,
+            config.error_ttl,
         );
         let queue = SlotQueue::new(config.queue_root.clone(), config.queue_max_concurrent);
 
@@ -737,7 +742,7 @@ impl Hypervisor {
     pub async fn run_queued(&self, req: SpawnRequest, lane: &str) -> Result<SpawnOutcome> {
         self.thermal_gate_check().await?;
 
-        let watch = ResourceWatchSample::capture()?;
+        let watch = capture_resource_watch()?;
         let detected_agent = detect_caller_agent();
         debug!(lane, argv = ?req.argv, "hypervisor::run_queued — queue lane");
         record_nocache_run();
@@ -797,7 +802,7 @@ impl Hypervisor {
         self.thermal_gate_check().await?;
 
         // ── Resource watch (FR-007 live hypervisor path) ───────────────────────
-        let watch = ResourceWatchSample::capture()?;
+        let watch = capture_resource_watch()?;
         let detected_agent = detect_caller_agent();
         if let Some(ref agent) = detected_agent {
             debug!(
@@ -977,6 +982,33 @@ impl Hypervisor {
 // ---------------------------------------------------------------------------
 // Process execution
 // ---------------------------------------------------------------------------
+
+/// Capture a live [`ResourceWatchSample`] for the hypervisor run paths.
+///
+/// FR-007 defines FD/net/RSS/load as *telemetry* signals. On Linux/macOS the
+/// samplers in `sharecli_fleet::resource_watch` provide them; on other targets
+/// (Windows) every sampler bails with "... is unsupported on this OS". A
+/// missing telemetry signal MUST NOT fail the spawn itself, so on unsupported
+/// targets the sample degrades to zeros. On Linux/macOS the error path is
+/// unchanged — a genuine sampling error is still propagated.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn capture_resource_watch() -> Result<ResourceWatchSample> {
+    ResourceWatchSample::capture()
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn capture_resource_watch() -> Result<ResourceWatchSample> {
+    match ResourceWatchSample::capture() {
+        Ok(watch) => Ok(watch),
+        Err(err) => {
+            debug!(
+                error = %err,
+                "hypervisor — resource watch unsupported on this OS; spawning with zeroed sample"
+            );
+            Ok(ResourceWatchSample::default())
+        }
+    }
+}
 
 /// Lane key for SlotQueue routing from argv (basename of argv[0]).
 fn queue_lane_from_argv(argv: &[String]) -> &str {
@@ -1361,6 +1393,7 @@ mod tests {
                 coalesce_debounce: debounce,
                 cache_key_mode: CacheKeyMode::Time,
                 semantic: false,
+                error_ttl: Duration::ZERO,
             },
             Arc::new(FakeThermalGate::new(ThermalDecision::Allow)),
             vec![],

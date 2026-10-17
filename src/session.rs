@@ -113,7 +113,18 @@ impl GhosttyCapabilities {
     }
 }
 
+/// A response's `error` member as a failure, if any: `"error": null`
+/// means success. The sidecar wire format always includes the key
+/// (`{"id": N, "result": …, "error": null}` — sharecli-ipc module docs),
+/// so a presence-only check would treat every success as a failure.
+fn rpc_error(value: &Value) -> Option<&Value> {
+    value.get("error").filter(|error| !error.is_null())
+}
+
 /// Minimal JSON-RPC client for a ShareCLI-enabled Ghostty control socket.
+///
+/// Also used against the `sharecli-ipc` sidecar socket (same NDJSON
+/// request/response shape) — e.g. `stop` delegating `process.kill`.
 ///
 /// A stock Ghostty install reports an unavailable socket; callers must then
 /// use a degraded caster or zmx rather than pretending to have pane readback.
@@ -163,7 +174,7 @@ impl SurfaceSubscription {
             }
             let value: Value = serde_json::from_str(&line)?;
             if value.get("method").and_then(Value::as_str) != Some("surface.io.event") {
-                if let Some(error) = value.get("error") {
+                if let Some(error) = rpc_error(&value) {
                     anyhow::bail!("Ghostty live event RPC failed: {error}");
                 }
                 continue;
@@ -190,7 +201,7 @@ impl SurfaceSubscription {
         let mut line = String::new();
         self.reader.read_line(&mut line)?;
         let value: Value = serde_json::from_str(&line)?;
-        if let Some(error) = value.get("error") {
+        if let Some(error) = rpc_error(&value) {
             anyhow::bail!("Ghostty unsubscribe failed: {error}");
         }
         Ok(())
@@ -224,7 +235,7 @@ impl GhosttyControlClient {
             let mut response = String::new();
             BufReader::new(stream).read_line(&mut response)?;
             let response: Value = serde_json::from_str(&response)?;
-            if let Some(error) = response.get("error") {
+            if let Some(error) = rpc_error(&response) {
                 anyhow::bail!("Ghostty RPC {method} failed: {error}");
             }
             Ok(response.get("result").cloned().unwrap_or(Value::Null))
@@ -365,3 +376,6 @@ impl GhosttyAdapter {
             .or_else(|| (!caps.control_socket).then_some("native RPC unavailable"))
     }
 }
+
+#[cfg(test)]
+mod tests;

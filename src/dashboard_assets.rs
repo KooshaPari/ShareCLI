@@ -113,6 +113,66 @@ mod tests {
         assert!(lookup("video/brand_intro.mp4").is_none());
     }
 
+    #[tokio::test]
+    async fn serve_returns_the_embedded_bytes_and_content_type() {
+        let response = serve(axum::extract::Path("favicons/phenotype_32.png".to_string())).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()),
+            Some("image/png")
+        );
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.expect("body");
+        assert_eq!(
+            body.as_ref(),
+            lookup("favicons/phenotype_32.png").expect("asset").bytes,
+            "served bytes must be the embedded asset, not a re-encoded copy"
+        );
+    }
+
+    #[tokio::test]
+    async fn serve_uses_the_javascript_content_type_for_the_dashboard_script() {
+        let response = serve(axum::extract::Path("dashboard.js".to_string())).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()),
+            Some("application/javascript")
+        );
+    }
+
+    #[tokio::test]
+    async fn serve_accepts_a_leading_slash_and_rejects_unknown_assets() {
+        let ok = serve(axum::extract::Path("/empty-states/error.svg".to_string())).await;
+        assert_eq!(ok.status(), StatusCode::OK, "a leading slash must be trimmed");
+
+        let missing = serve(axum::extract::Path("video/brand_intro.mp4".to_string())).await;
+        assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn every_embedded_asset_resolves_with_a_non_empty_body() {
+        for path in [
+            "favicons/phenotype.ico",
+            "favicons/phenotype_16.png",
+            "favicons/phenotype_32.png",
+            "favicons/phenotype_64.png",
+            "favicons/phenotype_128.png",
+            "banners/dashboard_1280x320.png",
+            "empty-states/no-data.svg",
+            "empty-states/no-data.png",
+            "empty-states/no-results.svg",
+            "empty-states/no-results.png",
+            "empty-states/error.svg",
+            "empty-states/error.png",
+            "error-states/disconnect.svg",
+            "icons/phenotype_icon.png",
+            "dashboard.js",
+        ] {
+            let asset = lookup(path).unwrap_or_else(|| panic!("{path} must be embedded"));
+            assert!(!asset.bytes.is_empty(), "{path} must carry bytes");
+            assert!(!asset.content_type.is_empty(), "{path} must declare a content type");
+        }
+    }
+
     #[test]
     fn dashboard_asset_path_prefix() {
         assert!(is_dashboard_asset_path("/assets/dashboard/ui/favicons/phenotype.ico"));

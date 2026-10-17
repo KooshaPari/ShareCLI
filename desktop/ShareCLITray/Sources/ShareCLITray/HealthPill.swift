@@ -59,7 +59,7 @@ struct HealthPill: View {
         switch healthy {
         case .some(true): return "checkmark.circle.fill"
         case .some(false): return "exclamationmark.triangle.fill"
-        case .none: return "xmark.octagon.fill"
+        case .none: return StatusIcon.unhealthy.symbolName
         }
     }
 

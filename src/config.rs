@@ -3,6 +3,23 @@
 //! All configurable parameters are consolidated here. Hardcoded defaults
 //! serve as fallbacks when no config file is present; users override via
 //! `~/.config/sharecli/config.toml`.
+//!
+//! # Table-default policy
+//!
+//! **Every table owns its defaults.** Each table type carries a struct-level
+//! `#[serde(default)]` alongside a `Default` impl holding the documented
+//! values, so an absent table and a present-but-partial table deserialize to
+//! the same thing: `Default::default()`.
+//!
+//! The struct-level attribute is load-bearing for `Option<T>` fields. Without
+//! it serde's implicit rule for `Option` fills a missing key with `None` rather
+//! than with the type's `Default`, so a partial `[runtime]` table silently
+//! dropped `max_memory_mb` (4096) and `max_processes` (100). Tables whose
+//! fields are not `Option` fared worse: a present-but-empty table failed to
+//! parse outright with `missing field`.
+//!
+//! When adding a table to [`Config`], add `#[serde(default)]` to the table type
+//! and keep its `Default` in sync with the documented values.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -10,6 +27,7 @@ use std::sync::OnceLock;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 
 // ---------------------------------------------------------------------------
 // Top-level Config
@@ -127,6 +145,7 @@ pub struct ServeJwtConfig {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct RuntimeConfig {
     /// Path to node executable
     pub node_path: Option<String>,
@@ -150,6 +169,7 @@ impl Default for RuntimeConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct PoolConfig {
     /// Enable shared process pool
     pub enabled: bool,
@@ -176,6 +196,7 @@ impl Default for PoolConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct MonitoringConfig {
     /// Interval between health checks (seconds)
     pub health_check_interval_secs: u64,
@@ -202,6 +223,7 @@ impl Default for MonitoringConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct PortConfig {
     /// Port for the ShareWei co-process
     pub sharewei_port: u16,
@@ -214,6 +236,7 @@ impl Default for PortConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct PathsConfig {
     /// Default directory to scan when `project discover` has no argument
     pub discovery_path: String,
@@ -231,6 +254,7 @@ impl Default for PathsConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct DefaultHarnessConfig {
     pub enabled: bool,
     pub max_instances: usize,
@@ -244,6 +268,7 @@ impl Default for DefaultHarnessConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ProjectLimitsConfig {
     /// Default memory limit per project (MB)
     pub memory_limit_mb: u64,
@@ -258,6 +283,7 @@ impl Default for ProjectLimitsConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SpawnConfig {
     /// Default harness type when none is specified
     pub default_harness: String,
@@ -377,16 +403,51 @@ pub fn global() -> &'static Config {
 
 impl Config {
     /// Load configuration from `~/.config/sharecli/config.toml`
+    ///
+    /// The primary file wins whenever it parses. When it is missing or
+    /// unparsable — the state a crash under a write-in-place save leaves behind —
+    /// the last good generation kept beside it is used instead of failing, or
+    /// instead of silently degrading to [`Config::default`], which would discard
+    /// every registered project without raising an error.
     pub fn load() -> Result<Self> {
         let config_path = Self::config_path()?;
 
         if config_path.exists() {
-            let contents = std::fs::read_to_string(&config_path)?;
-            let config: Config = toml::from_str(&contents)?;
-            Ok(config)
-        } else {
-            Ok(Config::default())
+            let raw = std::fs::read_to_string(&config_path)?;
+            match toml::from_str::<Config>(&raw) {
+                Ok(config) => return Ok(config),
+                Err(primary_error) => {
+                    if let Some(recovered) = Self::load_backup(&config_path) {
+                        warn!(
+                            config = %config_path.display(),
+                            error = %primary_error,
+                            "primary config unusable; recovered from backup"
+                        );
+                        return Ok(recovered);
+                    }
+                    return Err(primary_error.into());
+                }
+            }
         }
+
+        if let Some(recovered) = Self::load_backup(&config_path) {
+            warn!(
+                config = %config_path.display(),
+                "primary config missing; recovered from backup"
+            );
+            return Ok(recovered);
+        }
+
+        Ok(Config::default())
+    }
+
+    /// Best-effort parse of the `.bak` sibling. `None` when it is absent or
+    /// itself unusable, so recovery is never allowed to mask a genuinely
+    /// corrupt pair by inventing a default config.
+    fn load_backup(config_path: &std::path::Path) -> Option<Self> {
+        let backup = crate::config_write::backup_path(config_path);
+        let raw = std::fs::read_to_string(&backup).ok()?;
+        toml::from_str::<Config>(&raw).ok()
     }
 
     /// Initialize default configuration file
@@ -400,7 +461,7 @@ impl Config {
 
         let config = Config::default();
         let contents = toml::to_string_pretty(&config)?;
-        std::fs::write(&config_path, contents)?;
+        crate::config_write::write_atomic(&config_path, &contents)?;
 
         Ok(())
     }
@@ -415,7 +476,7 @@ impl Config {
         }
 
         let contents = toml::to_string_pretty(self)?;
-        std::fs::write(&config_path, contents)?;
+        crate::config_write::write_atomic(&config_path, &contents)?;
 
         Ok(())
     }
@@ -454,11 +515,8 @@ impl Config {
             return false;
         };
         // target/<profile>/deps/<crate>-<hash>
-        let in_deps = exe
-            .parent()
-            .and_then(|p| p.file_name())
-            .map(|n| n == "deps")
-            .unwrap_or(false);
+        let in_deps =
+            exe.parent().and_then(|p| p.file_name()).map(|n| n == "deps").unwrap_or(false);
         if in_deps {
             return true;
         }
@@ -466,14 +524,18 @@ impl Config {
         exe.components().any(|c| c.as_os_str() == "deps")
     }
 
-    /// Get config file path.
+    /// Get the config file path this process loads from and must save to.
+    ///
+    /// This is the single source of truth for path resolution: `load`, `init`,
+    /// `save` and `sharecli serve`'s hot-reload watcher all resolve through it,
+    /// so the server can never load one file and watch another.
     ///
     /// `SHARECLI_CONFIG_PATH` wins when set to a non-empty value. `save()`
     /// writes wherever this points, so without the override any test that
     /// exercises a config write rewrites the operator's live
     /// `~/Library/Application Support/sharecli/config.toml`. Tests set this to
     /// a temp path; it is also useful for side-by-side installs.
-    fn config_path() -> Result<PathBuf> {
+    pub fn config_path() -> Result<PathBuf> {
         if let Some(explicit) = std::env::var_os("SHARECLI_CONFIG_PATH") {
             if !explicit.is_empty() {
                 return Ok(PathBuf::from(explicit));

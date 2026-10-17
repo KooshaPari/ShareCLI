@@ -13,6 +13,9 @@ struct TrayPopoverView: View {
     @ObservedObject private var supervisor = SidecarSupervisor.shared
     let onOpenDashboard: () -> Void
 
+    /// Confirmation gate for destructive kills (closure batch, A2).
+    @State private var killGate = DestructiveKillGate()
+
     var body: some View {
         VStack(spacing: 0) {
             headerBar
@@ -30,6 +33,39 @@ struct TrayPopoverView: View {
         .frame(minHeight: 200, idealHeight: 480)
         .fixedSize(horizontal: true, vertical: false)
         .background(.ultraThinMaterial)
+        .confirmationDialog(
+            killGate.pending?.confirmTitle ?? "Confirm kill",
+            isPresented: Binding(
+                get: { killGate.isConfirming },
+                set: { if !$0 { killGate.decline() } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let scope = killGate.pending {
+                Button(scope.confirmButtonLabel, role: .destructive) {
+                    performKill(killGate.confirm())
+                }
+                Button(DestructiveKillGate.cancelLabel, role: .cancel) {
+                    killGate.decline()
+                }
+            }
+        } message: {
+            Text(killGate.pending?.confirmMessage ?? "")
+        }
+    }
+
+    /// Kills the confirmed scope. `nil` (nothing confirmed) is a no-op, so the
+    /// popover's kill buttons can never fire without the dialog.
+    private func performKill(_ scope: KillScope?) {
+        guard let scope else { return }
+        Task {
+            switch scope {
+            case .selected(let pids):
+                for pid in pids { await state.kill(pid: pid) }
+            case .all:
+                await state.killAll()
+            }
+        }
     }
 
     // MARK: - Sidecar supervision status
@@ -182,7 +218,7 @@ struct TrayPopoverView: View {
             if state.processes.isEmpty {
                 Text(state.isConnected ? "No managed processes" : "Waiting for IPC…")
                     .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Color.statusForeground)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
             } else {
@@ -220,8 +256,8 @@ struct TrayPopoverView: View {
             Text("\(proc.memory_mb)M")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-            Button {
-                Task { await state.kill(pid: proc.pid) }
+            Button(role: .destructive) {
+                killGate.request(.selected([proc.pid]))
             } label: {
                 Image(systemName: "xmark.circle")
                     .foregroundStyle(.red.opacity(0.7))
@@ -240,6 +276,7 @@ struct TrayPopoverView: View {
                 onOpenDashboard()
             }
             .buttonStyle(.borderedProminent)
+            .tint(Color.ctaPrimary)
             .controlSize(.small)
 
             Spacer()
@@ -266,8 +303,8 @@ struct TrayPopoverView: View {
             .controlSize(.small)
             .help(state.isPaused ? "Resume polling" : "Pause polling")
 
-            Button("Kill All") {
-                Task { await state.killAll() }
+            Button("Kill All", role: .destructive) {
+                killGate.request(.all)
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
@@ -276,7 +313,7 @@ struct TrayPopoverView: View {
             Button {
                 NSApp.terminate(nil)
             } label: {
-                Image(systemName: "power")
+                Image(systemName: StatusIcon.quitApp.symbolName)
                     .foregroundStyle(.red)
             }
             .buttonStyle(.bordered)

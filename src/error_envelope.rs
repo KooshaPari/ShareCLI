@@ -116,6 +116,61 @@ mod tests {
     }
 
     #[test]
+    fn constructors_emit_the_documented_type_and_code_pairs() {
+        let cases = [
+            (
+                ErrorEnvelope::validation("bad_field", "field required"),
+                "validation_error",
+                "bad_field",
+            ),
+            (ErrorEnvelope::not_found("no such process"), "not_found_error", "not_found"),
+            (ErrorEnvelope::rate_limited("slow down"), "rate_limit_error", "rate_limited"),
+            (
+                ErrorEnvelope::not_implemented("windows only"),
+                "not_implemented_error",
+                "not_implemented",
+            ),
+        ];
+        for (envelope, expected_type, expected_code) in cases {
+            assert_eq!(envelope.error.error_type, expected_type);
+            assert_eq!(envelope.error.code, expected_code);
+            assert!(envelope.error.request_id.is_none());
+        }
+    }
+
+    #[test]
+    fn into_response_sets_the_status_and_serialises_the_envelope() {
+        let response = ErrorEnvelope::not_found("missing").into_response(StatusCode::NOT_FOUND);
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            response.headers().get(axum::http::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()),
+            Some("application/json")
+        );
+    }
+
+    #[test]
+    fn auth_failure_message_covers_every_published_reason() {
+        let cases = [
+            ("missing_authorization", "missing or invalid bearer token"),
+            ("not_bearer", "authorization header must use Bearer scheme"),
+            ("invalid_bearer", "invalid bearer token"),
+            ("jwt_expired", "jwt token expired"),
+            ("jwt_invalid_iss", "jwt issuer mismatch"),
+            ("jwt_invalid_aud", "jwt audience mismatch"),
+            ("jwt_nbf", "jwt not yet valid"),
+            ("jwt_invalid_sig", "jwt signature invalid"),
+            ("jwt_no_matching_key", "jwt signing key not found"),
+            ("jwt_header:bad", "jwt header invalid"),
+            ("jwt_invalid:detail", "jwt token invalid"),
+            ("jwt_other", "jwt token invalid"),
+            ("something_else", "missing or invalid bearer token"),
+        ];
+        for (reason, expected) in cases {
+            assert_eq!(auth_failure_message(reason), expected, "reason {reason}");
+        }
+    }
+
+    #[test]
     fn auth_failure_message_maps_known_reasons() {
         assert_eq!(
             auth_failure_message("missing_authorization"),

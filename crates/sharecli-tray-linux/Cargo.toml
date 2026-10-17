@@ -19,7 +19,10 @@ path = "src/main.rs"
 # which only exists on freedesktop desktops. On other targets the binary is a
 # no-op stub so `cargo build --workspace` stays green cross-platform.
 [target.'cfg(target_os = "linux")'.dependencies]
-ksni = { version = "0.3", features = ["blocking"] }
+ksni = { version = "0.3", default-features = false, features = [
+  "blocking",
+  "async-io",
+] }
 
 [dependencies]
 anyhow = "1"

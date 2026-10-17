@@ -73,8 +73,15 @@ jobs:
     name: windows_winfsp (windows-latest)
     runs-on: windows-latest
     continue-on-error: true
+    env:
+      # PhenoShared git-dep checkout content exceeds Windows MAX_PATH (260);
+      # without this, cargo dies at dependency fetch with
+      # `path too long ... class=Filesystem (30)` before any build runs.
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     steps:
       - uses: actions/checkout@v7
+      - name: Enable git long paths
+        run: git config --global core.longpaths true
       - uses: dtolnay/rust-toolchain@stable
       - name: Install WinFsp (Developer)
         shell: pwsh

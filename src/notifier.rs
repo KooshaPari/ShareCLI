@@ -233,6 +233,63 @@ mod tests {
         assert_eq!(NotificationKind::ThresholdExceeded.to_string(), "ThresholdExceeded");
     }
 
+    /// Build an event without touching any channel.
+    fn sample_event() -> NotificationEvent {
+        NotificationEvent::new(NotificationKind::ProcessRestarted, "worker-a", "exited with 0")
+    }
+
+    #[tokio::test]
+    async fn dispatch_is_inert_for_a_config_with_no_desktop_and_no_webhooks() {
+        // `desktop: false` and no webhooks: dispatch must fan out to nothing and
+        // never panic, which is the containment contract for notification failure.
+        let notifier = Notifier::new(NotifierConfig { desktop: false, webhooks: vec![] });
+        notifier.dispatch(&sample_event()).await;
+    }
+
+    #[tokio::test]
+    async fn notify_send_is_callable_with_and_without_a_desktop_server() {
+        let notifier = Notifier::new(NotifierConfig { desktop: true, webhooks: vec![] });
+        // Must not panic on a headless host (it logs instead).
+        notifier.notify_send(&sample_event());
+
+        let silent = Notifier::new(NotifierConfig { desktop: false, webhooks: vec![] });
+        silent.notify_send(&sample_event());
+    }
+
+    #[tokio::test]
+    async fn notify_webhook_posts_a_json_body_to_a_local_listener() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            if let Ok((mut stream, _)) = listener.accept().await {
+                let mut buf = vec![0u8; 2048];
+                let n = stream.read(&mut buf).await.unwrap_or(0);
+                let request = String::from_utf8_lossy(&buf[..n]).to_string();
+                let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n").await;
+                let _ = tx.send(request);
+            }
+        });
+
+        let notifier = Notifier::new(NotifierConfig { desktop: false, webhooks: vec![] });
+        let url = format!("http://127.0.0.1:{}/hook", addr.port());
+        notifier.notify_webhook(&sample_event(), &url).await;
+
+        #[cfg(feature = "notifications-http")]
+        {
+            let request = rx.await.expect("captured request");
+            assert!(request.starts_with("POST /hook "), "must POST the webhook path: {request}");
+            assert!(request.contains("worker-a"), "payload must carry the process name");
+        }
+        #[cfg(not(feature = "notifications-http"))]
+        {
+            let _ = rx;
+        }
+    }
+
     // 5. Notifier constructed with empty webhooks dispatches without panic
     #[tokio::test]
     async fn notifier_empty_webhooks_no_panic() {

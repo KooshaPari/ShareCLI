@@ -37,12 +37,16 @@ use sharecli_mesh::capture_maildir_status;
 use crate::config::{self, Config, ConfigCmd, ProjectCmd};
 use crate::monitoring::HostResourceWatchJson;
 use crate::progress::StepProgress;
+// Via the lib crate name (not `crate::session`): `src/commands/mod.rs`
+// compiles into BOTH targets, but only the lib declares `mod session` —
+// `src/main.rs` already imports this type the same way (line 11).
 #[cfg(test)]
 use crate::runtime::ProcState;
 use crate::runtime::{
     ProcessFilter, ProcessInfo, ProcessPool, ProjectLimits, ProjectResources, SharedRuntime,
 };
 use crate::spawn_policy::SpawnPolicy;
+use sharecli::session::GhosttyControlClient;
 
 /// CSV document builders for `health --csv`, `pool --csv`, `status --csv` and
 /// `ps --all --csv` (FR-007 / AC-007.82 / AC-007.83).
@@ -620,7 +624,42 @@ fn force_kill_preview(target_label: &str, count: usize) {
     println!("Pass --yes to confirm. Prefer graceful stop without --force when possible.");
 }
 
+/// Attempt one sidecar RPC. `None` means no sidecar is reachable — the
+/// caller falls back to its local pool; `Some(Err)` is a real transport or
+/// handler failure that must propagate to the operator.
+///
+/// Blocking by design: one local-socket round trip on a CLI path that is
+/// otherwise synchronous `println!` work (same shape as the Ghostty surface
+/// commands in `main.rs`).
+fn sidecar_rpc(
+    client: &GhosttyControlClient,
+    method: &str,
+    params: serde_json::Value,
+) -> Option<Result<serde_json::Value>> {
+    match client.request(method, params) {
+        Ok(value) => Some(Ok(value)),
+        Err(error)
+            if error.chain().any(|cause| {
+                cause.downcast_ref::<std::io::Error>().is_some_and(|io| {
+                    matches!(
+                        io.kind(),
+                        std::io::ErrorKind::ConnectionRefused
+                            | std::io::ErrorKind::NotFound
+                            | std::io::ErrorKind::PermissionDenied
+                    )
+                })
+            }) =>
+        {
+            None
+        }
+        Err(error) => Some(Err(error)),
+    }
+}
+
 /// Stop processes
+///
+/// Delegates to a running sidecar over IPC when one is reachable; falls
+/// back to the local pool otherwise (see the `sidecar_rpc` helper).
 pub async fn stop(
     pid: Option<u32>,
     project: Option<&str>,
@@ -629,15 +668,31 @@ pub async fn stop(
     force: bool,
     yes: bool,
 ) -> Result<()> {
+    // CRITICAL #1 (pre-existing): the CLI's own pool is always empty in a
+    // fresh process, so consulting it could never stop anything — it only
+    // ever reported `no such pid`. A running sidecar owns the
+    // managed-process truth; delegate over IPC (the same `process.kill`
+    // path the tray uses). With no sidecar reachable the fallbacks below
+    // preserve the exit-2 `not_found` taxonomy (audit task 1.10).
+    let client = GhosttyControlClient::new(crate::paths::ipc_socket(), None);
     let pool = ProcessPool::new();
 
     if all {
         if force_kill_requires_confirmation(force, yes) {
-            let count = pool.list().await.len();
+            let count = match sidecar_rpc(&client, "process.list", serde_json::json!({})) {
+                Some(Ok(list)) => list.as_array().map(Vec::len).unwrap_or(0),
+                Some(Err(error)) => return Err(error),
+                None => pool.list().await.len(),
+            };
             force_kill_preview("all managed processes", count);
             return Ok(());
         }
         println!("Stopping all managed processes{}...", if force { " (force)" } else { "" });
+        if let Some(result) = sidecar_rpc(&client, "process.kill_all", serde_json::json!({})) {
+            result?;
+            println!("All processes stopped.");
+            return Ok(());
+        }
         pool.kill_all().await?;
         println!("All processes stopped.");
         return Ok(());
@@ -649,9 +704,24 @@ pub async fn stop(
             return Ok(());
         }
         println!("Stopping process {p}{}...", if force { " (force)" } else { "" });
-        pool.kill(p).await?;
-        println!("Process {p} stopped.");
-        return Ok(());
+        // Sidecar reachable: its answer is the truth for both outcomes —
+        // true stops the managed process; false is the honest miss.
+        if let Some(result) = sidecar_rpc(&client, "process.kill", serde_json::json!({ "pid": p }))
+        {
+            if result?.as_bool().unwrap_or(false) {
+                println!("Process {p} stopped.");
+                return Ok(());
+            }
+            return Err(crate::error::SharecliError::not_found(format!("no such pid: {p}")).into());
+        }
+        // No sidecar: this pool never managed the pid either, so the miss is
+        // a NotFound reported through `src/error.rs` (exit 2,
+        // `SHARECLI_ERROR_CODE=not_found` — audit task 1.10, PLAN.md:180).
+        if pool.kill(p).await? {
+            println!("Process {p} stopped.");
+            return Ok(());
+        }
+        return Err(crate::error::SharecliError::not_found(format!("no such pid: {p}")).into());
     }
 
     let filter = if let Some(proj) = project {
@@ -662,27 +732,97 @@ pub async fn stop(
         anyhow::bail!("Specify --pid, --project, --harness, or --all to select what to stop");
     };
 
-    let processes = pool.find(filter).await;
+    // Targets come from the sidecar when it is reachable (the pool of
+    // truth); the local pool only ever holds processes this very process
+    // spawned, which is nothing for a one-shot `stop` invocation.
+    let sidecar_targets: Option<Vec<(u32, String)>> =
+        match sidecar_rpc(&client, "process.list", serde_json::json!({})) {
+            Some(Ok(listed)) => Some(
+                listed
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter_map(|entry| {
+                        let hit = match &filter {
+                            ProcessFilter::All => true,
+                            ProcessFilter::ByProject(proj) => {
+                                entry.get("project").and_then(serde_json::Value::as_str)
+                                    == Some(proj.as_str())
+                            }
+                            ProcessFilter::ByHarness(harness_name) => {
+                                entry.get("harness").and_then(serde_json::Value::as_str)
+                                    == Some(harness_name.as_str())
+                            }
+                        };
+                        hit.then(|| {
+                            (
+                                entry["pid"].as_u64().unwrap_or(0) as u32,
+                                entry["name"].as_str().unwrap_or_default().to_string(),
+                            )
+                        })
+                    })
+                    .collect(),
+            ),
+            Some(Err(error)) => return Err(error),
+            None => None,
+        };
+
+    let local_targets: Vec<(u32, String)> = if sidecar_targets.is_some() {
+        Vec::new()
+    } else {
+        pool.find(filter).await.into_iter().map(|proc| (proc.pid, proc.name)).collect()
+    };
+    let targets: &[(u32, String)] = sidecar_targets.as_deref().unwrap_or(&local_targets);
+
     if force_kill_requires_confirmation(force, yes) {
         let label = if let Some(proj) = project {
             format!("project '{proj}'")
         } else {
             format!("harness '{}'", harness.unwrap_or(""))
         };
-        force_kill_preview(&label, processes.len());
+        force_kill_preview(&label, targets.len());
         return Ok(());
     }
 
-    let progress = StepProgress::new("Stopping processes", processes.len());
+    let progress = StepProgress::new("Stopping processes", targets.len());
     let line_mode = progress.uses_line_output();
-    for proc in &processes {
-        pool.kill(proc.pid).await?;
-        progress.inc(Some(&format!("{} ({})", proc.pid, proc.name)));
-        if line_mode {
-            println!("Stopped {} ({})", proc.pid, proc.name);
+    // A sidecar that vanishes AFTER the `process.list` snapshot (it was
+    // reachable at start, then died mid-batch) leaves the remaining targets
+    // unverifiable: the transport is gone, so a stop cannot be confirmed.
+    // Count them and warn rather than finishing silently — the old `None`
+    // arm reported success no matter how many processes were left running.
+    // NOTE: this is distinct from the sidecar-absent-at-START fallback
+    // (handled above, preserving the exit-2 `not_found` taxonomy).
+    let mut unverified: usize = 0;
+    for (target_pid, name) in targets {
+        let killed = if sidecar_targets.is_some() {
+            match sidecar_rpc(&client, "process.kill", serde_json::json!({ "pid": target_pid })) {
+                Some(Ok(value)) => value.as_bool().unwrap_or(false),
+                Some(Err(error)) => return Err(error),
+                None => {
+                    // Sidecar vanished mid-loop; the snapshot is stale and this
+                    // target could not be checked or stopped.
+                    unverified += 1;
+                    false
+                }
+            }
+        } else {
+            pool.kill(*target_pid).await?
+        };
+        if killed {
+            progress.inc(Some(&format!("{target_pid} ({name})")));
+            if line_mode {
+                println!("Stopped {target_pid} ({name})");
+            }
         }
     }
     progress.finish("Processes stopped");
+    if unverified > 0 {
+        eprintln!(
+            "warning: sidecar connection lost mid-batch; {unverified} processes not verified"
+        );
+    }
 
     Ok(())
 }
@@ -1098,12 +1238,15 @@ async fn project_group_stop(name: &str, force: bool, yes: bool) -> Result<()> {
 
     for proc in &processes {
         match pool.kill(proc.pid).await {
-            Ok(()) => {
+            Ok(true) => {
                 progress.inc(Some(&format!("{} ({})", proc.pid, proc.name)));
                 if line_mode {
                     println!("Stopped {} ({})", proc.pid, proc.name);
                 }
                 stopped += 1;
+            }
+            Ok(false) => {
+                // Pid left this pool between find() and kill(); already gone.
             }
             Err(e) => {
                 failures.push(format!("PID {} ({}): {}", proc.pid, proc.name, e));

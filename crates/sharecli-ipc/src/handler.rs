@@ -5,11 +5,15 @@
 //!   process.kill        → { pid }
 //!   process.kill_all    → {}
 //!   process.cmdline     → { pid } → { cmd: Vec<String> }
+//!   process.spawn       → { pid, success, error }  (validated; typed failures)
 //!   health.status       → HealthSnapshot
 //!   pool.status         → PoolSnapshot
+//!   pool.effectiveness  → { coalesce, slot_queue, sampled_at }
 //!   status.snapshot     → StatusSnapshot
 //!   config.get          → Config
-//!   config.set          → { key, value }  (dot-path into TOML)
+//!   config.revision     → { revision: hex sha256 of the canonical config }
+//!   config.set          → { key, value, if_revision? }  (dot-path into TOML;
+//!                          a stale if_revision is refused with CONFLICT)
 //!   monitoring.report   → MonitoringReportSnapshot
 //!   log.tail            → { lines: [LogEntry], last_id: u64 } (since_id)
 //!
@@ -23,6 +27,7 @@
 use std::fs;
 #[cfg(target_os = "linux")]
 use std::io::Read;
+use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
 #[cfg(target_os = "linux")]
@@ -37,13 +42,17 @@ use sharecli::monitoring::HostResourceWatchJson;
 use sharecli::runtime::SharedRuntime;
 use sharecli::{ProcessInfo, ProcessPool};
 use sharecli_fleet::thermal::ThermalGovernor;
-use sharecli_fleet::{count_host_agents, gate_status_snapshot, GateStatusSnapshot};
+use sharecli_fleet::{
+    count_host_agents, gate_status_snapshot, global_coalesce_meters, global_slot_queue_meters,
+    GateStatusSnapshot,
+};
 use sharecli_session::{
     LayoutSnapshot, RecoveryExecutor, SessionObservation, SessionStore,
     DEFAULT_RECOVERY_MAX_AGE_SECONDS,
 };
 use tokio::sync::RwLock;
 
+use crate::config_revision;
 use crate::log_buffer::global as global_log_buffer;
 
 // ---------------------------------------------------------------------------
@@ -498,8 +507,11 @@ impl Handler {
                 let pid: u32 =
                     req.params["pid"].as_u64().ok_or_else(|| anyhow::anyhow!("missing pid"))?
                         as u32;
-                self.pool.kill(pid).await?;
-                Ok(Value::Bool(true))
+                // `false` when the pid is not pool-managed — mirrors the CLI
+                // miss contract instead of acknowledging a kill that never
+                // happened (lane-4 BLOCKER).
+                let killed = self.pool.kill(pid).await?;
+                Ok(Value::Bool(killed))
             }
 
             "process.kill_all" => {
@@ -516,6 +528,70 @@ impl Handler {
                 // available" when the list is empty.
                 let cmd = read_pid_cmdline(pid).unwrap_or_default();
                 Ok(serde_json::to_value(CmdlineResponse { cmd })?)
+            }
+
+            "process.spawn" => {
+                // The current Swift Spawn form is the wire contract: it always
+                // sends name/command/args/project/harness (and now cwd). `name`
+                // is advisory — the pool derives the display name from `command`.
+                let command = req
+                    .params
+                    .get("command")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("process.spawn: command must be a non-empty string")
+                    })?;
+                // Empty args is valid (it is the Spawn form default); a missing
+                // args key is treated the same way.
+                let args: Vec<String> = match req.params.get("args") {
+                    None | Some(Value::Null) => Vec::new(),
+                    Some(Value::Array(items)) => {
+                        let mut parsed = Vec::with_capacity(items.len());
+                        for item in items {
+                            match item.as_str() {
+                                Some(s) => parsed.push(s.to_string()),
+                                None => {
+                                    return Err(anyhow::anyhow!(
+                                        "process.spawn: args must contain only strings"
+                                    ))
+                                }
+                            }
+                        }
+                        parsed
+                    }
+                    Some(_) => {
+                        return Err(anyhow::anyhow!(
+                            "process.spawn: args must be an array of strings"
+                        ))
+                    }
+                };
+                let project = optional_label(&req.params, "project")?;
+                let harness = optional_label(&req.params, "harness")?;
+                let cwd = req
+                    .params
+                    .get("cwd")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(PathBuf::from);
+
+                // Validation failures above surface as envelope errors; a real
+                // spawn failure (ENOENT, EPERM, …) is a typed result so the tray
+                // renders `success: false` + `error` instead of a thrown error.
+                match self.pool.spawn(command, &args, cwd, project, harness).await {
+                    Ok(info) => Ok(serde_json::json!({
+                        "pid": info.pid,
+                        "success": true,
+                        "error": Value::Null,
+                    })),
+                    Err(e) => Ok(serde_json::json!({
+                        "pid": 0,
+                        "success": false,
+                        "error": bounded_error(&e),
+                    })),
+                }
             }
 
             "health.status" => {
@@ -545,6 +621,21 @@ impl Handler {
                 Ok(serde_json::to_value(snap)?)
             }
 
+            "pool.effectiveness" => {
+                // Cheap process-global atomic snapshots (FR-008 / AC-008.11-12);
+                // no per-process scanning. Field names match the Swift
+                // PoolEffectivenessSnapshot decoder exactly.
+                let sampled_at = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or_default();
+                Ok(serde_json::json!({
+                    "coalesce": global_coalesce_meters(),
+                    "slot_queue": global_slot_queue_meters(),
+                    "sampled_at": sampled_at,
+                }))
+            }
+
             "status.snapshot" => {
                 let mut snap = self.capture_status_snapshot().await?;
                 let (gate, host_watch) = capture_gate_host_watch()?;
@@ -557,11 +648,23 @@ impl Handler {
                 Ok(serde_json::to_value(cfg)?)
             }
 
+            "config.revision" => {
+                let cfg = self.config.read().await;
+                Ok(serde_json::json!({ "revision": config_revision::revision_with_disk(&cfg)? }))
+            }
+
             "config.set" => {
                 let key =
                     req.params["key"].as_str().ok_or_else(|| anyhow::anyhow!("missing key"))?;
                 let value = &req.params["value"];
-                self.apply_config_patch(key, value).await?;
+                let if_revision = match req.params.get("if_revision") {
+                    None | Some(Value::Null) => None,
+                    Some(Value::String(revision)) => Some(revision.as_str()),
+                    Some(other) => {
+                        anyhow::bail!("if_revision must be a string, got {other}");
+                    }
+                };
+                self.apply_config_patch(key, value, if_revision).await?;
                 Ok(Value::Bool(true))
             }
 
@@ -631,8 +734,34 @@ impl Handler {
     /// `Config::save` only serialises and `validate_config` previously ran at
     /// CLI startup only. Rejecting here leaves both the in-memory config and
     /// the file untouched, and the failure surfaces to the caller as an error.
-    async fn apply_config_patch(&self, key: &str, value: &Value) -> Result<()> {
+    ///
+    /// `if_revision` is the RFC 9110 `If-Match` guard: when present it is
+    /// compared against the revision of the config currently held under the
+    /// write lock, so the check and the mutation cannot be interleaved by a
+    /// concurrent writer. The revision mixes on-disk bytes
+    /// ([`config_revision::revision_with_disk`]) so an *out-of-process* edit
+    /// of the config file also invalidates held tokens — otherwise the guard
+    /// would pass while the file underneath it changed and this write would
+    /// clobber the external edit. A mismatch is reported as `CONFLICT` naming
+    /// the revision that won, which the client needs in order to refetch and retry.
+    async fn apply_config_patch(
+        &self,
+        key: &str,
+        value: &Value,
+        if_revision: Option<&str>,
+    ) -> Result<()> {
         let mut cfg = self.config.write().await;
+
+        if let Some(expected) = if_revision {
+            let current = config_revision::revision_with_disk(&cfg)?;
+            if current != expected {
+                anyhow::bail!(
+                    "CONFLICT: config.set {key} refused; if_revision {expected} is stale, \
+                     current revision is {current}"
+                );
+            }
+        }
+
         let mut raw = serde_json::to_value(&*cfg)?;
 
         let parts: Vec<&str> = key.split('.').collect();
@@ -651,6 +780,52 @@ impl Handler {
         *cfg = candidate;
         Ok(())
     }
+}
+
+/// Longest accepted `project` / `harness` label, in bytes.
+///
+/// The value lands verbatim in `ProcessSummary` and is rendered by the tray;
+/// an unbounded label from a local peer grows every `process.list` reply (and
+/// the tray's row text) without limit, so cap it well above any real project
+/// or harness name.
+const MAX_LABEL_BYTES: usize = 256;
+
+/// Longest error detail echoed on the typed-failure path, in bytes.
+///
+/// `process.spawn` reports a real spawn failure as `{success:false, error}`
+/// rather than a thrown envelope error. The string is an OS errno rendering
+/// and is normally short, but the value crosses the wire into the tray, so
+/// bound it instead of forwarding an arbitrarily long `to_string()`.
+const MAX_ERROR_BYTES: usize = 4096;
+
+/// Read an optional string parameter, rejecting a wrong-typed or oversized
+/// value instead of silently dropping it (`and_then(Value::as_str)` mapped a
+/// non-string `project`/`harness` to `None`, which hid client bugs).
+fn optional_label(params: &Value, field: &str) -> Result<Option<String>> {
+    match params.get(field) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(s)) if s.len() <= MAX_LABEL_BYTES => Ok(Some(s.clone())),
+        Some(Value::String(_)) => {
+            Err(anyhow::anyhow!("process.spawn: {field} exceeds {MAX_LABEL_BYTES} bytes"))
+        }
+        Some(_) => Err(anyhow::anyhow!("process.spawn: {field} must be a string or null")),
+    }
+}
+
+/// Render an error for the typed-failure path, truncated on a character
+/// boundary so an oversized message cannot bloat the reply frame.
+fn bounded_error(e: &anyhow::Error) -> String {
+    let rendered = e.to_string();
+    if rendered.len() <= MAX_ERROR_BYTES {
+        return rendered;
+    }
+    // Back up to a UTF-8 boundary; MAX_ERROR_BYTES is far below any allocation
+    // concern, so the loop is bounded by at most three steps.
+    let mut end = MAX_ERROR_BYTES;
+    while end > 0 && !rendered.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}… (truncated; {} bytes total)", &rendered[..end], rendered.len())
 }
 
 fn set_nested(val: &mut Value, path: &[&str], new: Value) -> Result<(), String> {
@@ -1113,5 +1288,71 @@ mod dispatch_tests {
         let resp = handler.dispatch(raw).await;
         assert!(resp.error.is_none(), "session.list should not error: {:?}", resp.error);
         assert!(resp.result.is_array(), "result must be an array");
+    }
+
+    /// A spawn request may carry `project`/`harness` as strings or null; any
+    /// other type is a client bug and must be rejected, not silently dropped.
+    #[tokio::test]
+    async fn dispatch_spawn_rejects_non_string_project_and_harness() {
+        let handler = Handler::with_session_store(SessionStore::open_memory().unwrap());
+
+        let bad_project = handler
+            .dispatch(
+                r#"{"id":30,"method":"process.spawn","params":{"command":"true","project":123}}"#,
+            )
+            .await;
+        assert!(
+            bad_project.error.as_deref().is_some_and(|e| e.contains("project")),
+            "non-string project must be rejected: {:?}",
+            bad_project.error
+        );
+
+        let bad_harness = handler
+            .dispatch(
+                r#"{"id":31,"method":"process.spawn","params":{"command":"true","harness":["x"]}}"#,
+            )
+            .await;
+        assert!(
+            bad_harness.error.as_deref().is_some_and(|e| e.contains("harness")),
+            "non-string harness must be rejected: {:?}",
+            bad_harness.error
+        );
+    }
+
+    /// An oversized `project` label must be rejected rather than forwarded.
+    #[tokio::test]
+    async fn dispatch_spawn_rejects_oversized_project() {
+        let handler = Handler::with_session_store(SessionStore::open_memory().unwrap());
+        let long = "p".repeat(MAX_LABEL_BYTES + 1);
+        let raw = serde_json::json!({
+            "id": 32,
+            "method": "process.spawn",
+            "params": {"command": "true", "project": long},
+        })
+        .to_string();
+        let resp = handler.dispatch(&raw).await;
+        assert!(
+            resp.error.as_deref().is_some_and(|e| e.contains("project")),
+            "oversized project must be rejected: {:?}",
+            resp.error
+        );
+    }
+
+    /// The typed-failure error is truncated on a character boundary so an
+    /// oversized message cannot bloat the reply frame.
+    #[test]
+    fn bounded_error_truncates_on_char_boundary() {
+        // Two bytes per char, so MAX_ERROR_BYTES lands mid-character.
+        let err = anyhow::anyhow!("{}", "é".repeat(MAX_ERROR_BYTES));
+        let rendered = bounded_error(&err);
+        assert!(rendered.len() < err.to_string().len(), "must be shorter than input");
+        assert!(rendered.contains("truncated"), "must mark the truncation: {rendered}");
+    }
+
+    /// A short error is forwarded verbatim.
+    #[test]
+    fn bounded_error_passes_short_errors_through() {
+        let err = anyhow::anyhow!("ENOENT: no such file");
+        assert_eq!(bounded_error(&err), "ENOENT: no such file");
     }
 }
