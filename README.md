@@ -343,3 +343,13 @@ All team members use multi-factor authentication for GitHub and SignPath.
 **Privacy policy.** This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.
 
 **Uninstall.** See docs/deploy.md.
+
+## See also — State & Forward Docket v1.0 (2026-10-17)
+
+A complete bound snapshot of sharecli at `5f2425ca` on `chore/cvp-1h-queue-2026-10-17`, anchored to the deep-state-audit deliverable at `134888ede`. 19 templates, 1 JSON snapshot (51 evidence, 33 leaves, 16 limitations), 1 HTML + 1 PDF report.
+
+- Mirror: [audit-sessions/2026-10-17-state-forward-docket/](audit-sessions/2026-10-17-state-forward-docket/)
+- Audit-pointer: [audit/2026-10-17-state-forward-docket.json](audit/2026-10-17-state-forward-docket.json)
+- Authoritative copy: PhenoRegistry [projects/sharecli/state/2026-10-17-sfd-001/](https://github.com/KooshaPari/PhenoRegistry/tree/docs/sharecli-sfd-20261017/projects/sharecli/state/2026-10-17-sfd-001) (PR [PhenoRegistry#666](https://github.com/KooshaPari/PhenoRegistry/pull/666))
+- Adoption rationale: [ADR-0010](docs/adr/0010-state-forward-docket-2026-10-17.md)
+- Intent: [docs/intent/2026-10-17-state-forward-docket.md](docs/intent/2026-10-17-state-forward-docket.md)
