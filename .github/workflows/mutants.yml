@@ -2,7 +2,12 @@ name: Mutation Testing
 
 # C07 L65 — cargo-mutants hard gate (T-640 / FR-003).
 # Promotion: docs/ops/mutants-hard-gate.md phase 4.
-# Aggregated into CI Success via .github/workflows/ci.yml `mutants` job.
+# The PR-side mutation run that used to live in `.github/workflows/ci.yml`
+# (`mutants` job feeding the `ci-success` aggregator) was retired together
+# with the legacy CI workflow (2026-10-17). This workflow is the single
+# source of truth for cargo-mutants coverage: it keeps cron/dispatch plus
+# a path-filtered main push for drift detection, and is NOT in the required
+# `ci / lint` / `ci / test` branch-protection contexts.
 #
 # T-86 follow-up (2026-08-07): matrix-extended to cover sharecli-fuse
 # alongside sharecli-thermal-tui. Each crate has its own per-crate
@@ -13,9 +18,6 @@ on:
   schedule:
     - cron: "30 7 * * *"
   workflow_dispatch:
-  # PR coverage lives in ci.yml `mutants` (ci-success aggregator). This workflow
-  # keeps cron/dispatch + path-filtered main push for drift detection without
-  # double-running mutants on every PR.
   push:
     branches: [main]
     paths:
@@ -27,7 +29,6 @@ on:
       - "docs/ops/mutants-threshold.md"
       - "docs/ops/mutants-hard-gate.md"
       - ".github/workflows/mutants.yml"
-      - ".github/workflows/ci.yml"
 
 permissions:
   contents: read
