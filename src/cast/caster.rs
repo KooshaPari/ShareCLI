@@ -911,10 +911,18 @@ mod tests {
         // Mock always reports "not available" for ghostty
         let _runner = MockProcessRunner::from_ok(&[]);
         // Override is_available to return false
+        // Resolved 2026-10-17 (caster-isagent lane, audit code-maturity.md:29):
+        // This mock's `run` and `run_with_stdin` bodies are unreachable from the
+        // owning test (`ghostty_send_unsupported_when_not_on_path`), which makes
+        // `is_available("ghostty") -> false`; `GhosttyCaster::send` (caster.rs:262-264)
+        // early-returns `Unsupported` before invoking the runner. Converted from
+        // `unimplemented!()` (was a CRITICAL-marked audit finding) to `unreachable!()`
+        // so a contract violation is now a self-documenting panic, not a panic risk in
+        // production.
         struct NoGhosttyRunner;
         impl ProcessRunner for NoGhosttyRunner {
             fn run(&self, _: &str, _: &[&str]) -> std::io::Result<std::process::Output> {
-                unimplemented!()
+                unreachable!("NoGhosttyRunner::run — see owning test `ghostty_send_unsupported_when_not_on_path`")
             }
             fn run_with_stdin(
                 &self,
@@ -922,7 +930,7 @@ mod tests {
                 _: &[&str],
                 _: &[u8],
             ) -> std::io::Result<std::process::Output> {
-                unimplemented!()
+                unreachable!("NoGhosttyRunner::run_with_stdin — see owning test `ghostty_send_unsupported_when_not_on_path`")
             }
             fn is_available(&self, _: &str) -> bool {
                 false
@@ -936,10 +944,20 @@ mod tests {
 
     #[test]
     fn ghostty_send_pbcopy_fails() {
+        // Resolved 2026-10-17 (caster-isagent lane, audit code-maturity.md:29):
+        // `PbcopyFailRunner::run` is unreachable because `caster.send` only
+        // reaches `ghostty`/`paste-from-clipboard` once `pbcopy` has succeeded
+        // (caster.rs:267-269); here `pbcopy` returns `Err` first, so the
+        // early-return aborts the flow before the runner is invoked again.
+        // `PbcopyFailRunner::run_with_stdin` is reached only for `bin == "pbcopy"`;
+        // the `else` branch was `unimplemented!()` and remains unreachable for any
+        // other `bin` because GhosttyCaster::send's earlier early-returns keep any
+        // subsequent runner call from happening once pbcopy fails. Converted from
+        // `unimplemented!()` to `unreachable!()` for both bodies.
         struct PbcopyFailRunner;
         impl ProcessRunner for PbcopyFailRunner {
             fn run(&self, _: &str, _: &[&str]) -> std::io::Result<std::process::Output> {
-                unimplemented!()
+                unreachable!("PbcopyFailRunner::run — pbcopy fails first, sending aborts before the runner is consulted (see ghostty_send_pbcopy_fails)")
             }
             fn run_with_stdin(
                 &self,
@@ -950,7 +968,7 @@ mod tests {
                 if bin == "pbcopy" {
                     Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied"))
                 } else {
-                    unimplemented!()
+                    unreachable!("PbcopyFailRunner::run_with_stdin called for non-pbcopy bin {}; GhosttyCaster::send only invokes pbcopy under this test", bin)
                 }
             }
             fn is_available(&self, bin: &str) -> bool {
