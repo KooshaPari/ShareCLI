@@ -42,6 +42,8 @@ jobs:
       - name: Use desk Rust toolchain
         run: |
           echo "/home/sharecli-run/.cargo/bin" >> "$GITHUB_PATH"
+          echo "CARGO_HOME=/home/sharecli-run/.cargo" >> "$GITHUB_ENV"
+          echo "RUSTUP_HOME=/home/sharecli-run/.rustup" >> "$GITHUB_ENV"
           echo "/usr/local/bin" >> "$GITHUB_PATH"
 
       - name: Cache cargo
