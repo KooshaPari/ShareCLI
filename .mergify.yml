@@ -9,11 +9,11 @@ queue_rules:
     queue_conditions:
       - check-success=ci / lint
       - check-success=ci / test
-      - check-success=CI Success Gate Success Gate
+      - check-success=CI Success Gate
     merge_conditions:
       - check-success=ci / lint
       - check-success=ci / test
-      - check-success=CI Success Gate Success Gate
+      - check-success=CI Success Gate
     merge_method: squash
 
 pull_request_rules:
@@ -23,7 +23,7 @@ pull_request_rules:
       - label=automerge
       - check-success=ci / lint
       - check-success=ci / test
-      - check-success=CI Success Gate Success Gate
+      - check-success=CI Success Gate
       - -conflict
       - -closed
       - -draft
@@ -41,7 +41,7 @@ pull_request_rules:
           - author=renovate[bot]
       - check-success=ci / lint
       - check-success=ci / test
-      - check-success=CI Success Gate Success Gate
+      - check-success=CI Success Gate
       - -conflict
       - -closed
       - -draft
@@ -60,7 +60,7 @@ pull_request_rules:
           - author=github-actions[bot]
       - check-success=ci / lint
       - check-success=ci / test
-      - check-success=CI Success Gate Success Gate
+      - check-success=CI Success Gate
       - -conflict
       - -closed
       - -draft
@@ -149,7 +149,7 @@ pull_request_rules:
       - check-success=ci / test
       - check-success=ci / lint
       - check-success=ci / test
-      - check-success=CI Success Gate Success Gate
+      - check-success=CI Success Gate
     actions:
       label:
         add:
