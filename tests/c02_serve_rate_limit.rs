@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C02 L25 — serve HTTP rate limit wiring (FR-003).
 //!
 //! FR: FR-003

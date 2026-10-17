@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-006 — extended cmdline fingerprints (codex, amp, aider, cursor-agent)
 //! FR: FR-006
 //!

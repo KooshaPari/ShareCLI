@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Embedded Phenotype UI pack assets for `sharecli serve` (`assets/dashboard/ui/`).
 //!
 //! Served at `/assets/dashboard/ui/*` so the dashboard HTML can reference favicons,

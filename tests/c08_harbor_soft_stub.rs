@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C08 L76 FR-003 gate - Harbor 7d soak mirrored visibility (Wave17 onward)
 //! FR: FR-003
 //! Scope: honest mirror of the EXTRACTED Harbor soak; asserts 0/7 (no false claim).

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Bridge implementations for each MCP tool. Each function takes the raw
 //! `arguments` from the MCP tool-call envelope and forwards them — under
 //! the daemon's wire names — to the `teamcomm-client` typed methods. No

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — `sharecli proc --pid N --csv --watch`
 //! FR: FR-007
 //!

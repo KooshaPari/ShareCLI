@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — `sharecli proc` CSV pool + proc-scan operator companion rows (AC-007.79)
 //! FR: FR-007
 //!

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C05 L50 — chaos restart hard gate wired into `ci-success` (FR-003).
 //!
 //! FR: FR-003

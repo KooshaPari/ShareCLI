@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-011 — Thermal Contention Gate
 //! FR: FR-011
 //!

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — tray refresh consumes embedded pool + status from monitoring.report (AC-007.72)
 //! FR: FR-007
 //!

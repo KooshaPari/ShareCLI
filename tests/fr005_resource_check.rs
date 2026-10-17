@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-005 — Per-Project Resource Limits (ResourceCheck / check output)
 //! FR: FR-005
 //!

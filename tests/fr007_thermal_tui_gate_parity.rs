@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — thermal TUI gate panel parity with proc/status JSON gate
 //! FR: FR-007, FR-011
 //!

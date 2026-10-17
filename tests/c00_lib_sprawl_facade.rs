@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C00 L1 / FR-003 — Phase 1 util facade boundary for `src/lib.rs`.
 //!
 //! Root `pub mod` must stay Tier A/B (+ `util` umbrella). Parity/expansion

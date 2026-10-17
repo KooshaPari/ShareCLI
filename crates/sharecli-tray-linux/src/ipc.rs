@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Blocking Unix-socket NDJSON-RPC client for the sharecli IPC server.
 //!
 //! Mirrors the wire contract in `crates/sharecli-ipc/src/handler.rs` and the

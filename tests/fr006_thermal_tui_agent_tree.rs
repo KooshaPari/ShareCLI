@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-006 — thermal TUI DetectedAgent tree panel (`build_agent_forests`)
 //! FR: FR-006
 //!

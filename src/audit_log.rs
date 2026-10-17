@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Append-only JSONL audit log for security-relevant serve events.
 //!
 //! Default path: `$XDG_STATE_HOME/sharecli/audit.jsonl` or

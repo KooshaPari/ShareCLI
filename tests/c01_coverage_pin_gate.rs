@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C01 L11 — measured `--lib` coverage pin (FR-003).
 //!
 //! FR: FR-003

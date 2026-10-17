@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Notification dispatch — desktop alerts and webhook POSTs.
 //!
 //! Wire-up: when `HealthCheckScheduler` marks a process unhealthy, call

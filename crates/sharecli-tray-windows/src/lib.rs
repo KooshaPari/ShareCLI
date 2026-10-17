@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Library surface for the Windows WinUI tray (wire types + mapping helpers).
 //!
 //! The WinUI binary lives under `windows/ShareCLITray/`; this crate compiles

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-006 — Agent Detection (proc pattern, no bin wrap)
 //! FR: FR-006
 //!
