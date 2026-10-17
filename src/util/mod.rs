@@ -23,11 +23,11 @@ pub mod graph;
 pub mod hash_util;
 #[path = "../lazy.rs"]
 pub mod lazy;
+#[path = "../rate_limiter.rs"]
+pub mod rate_limiter;
 #[path = "../retry.rs"]
 pub mod retry;
 #[path = "../slice_ext.rs"]
 pub mod slice_ext;
 #[path = "../uuid.rs"]
 pub mod uuid;
-#[path = "../rate_limiter.rs"]
-pub mod rate_limiter;

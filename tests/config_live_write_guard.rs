@@ -21,9 +21,9 @@ fn test_binary_cannot_write_the_live_config() {
     // 1. Without an override the write must be refused.
     let refused = Config::default().save();
     let err = match refused {
-        Ok(()) => panic!(
-            "Config::save() wrote to the live config from a test binary; the guard is inert"
-        ),
+        Ok(()) => {
+            panic!("Config::save() wrote to the live config from a test binary; the guard is inert")
+        }
         Err(e) => e,
     };
     let message = err.to_string();
