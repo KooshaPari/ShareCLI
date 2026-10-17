@@ -1,3 +1,5 @@
+//! FR: FR-001
+//!
 //! Regression guard for live-config safety.
 //!
 //! Integration tests run as their own binary, so process-global environment
