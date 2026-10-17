@@ -84,4 +84,47 @@ mod tests {
         let progress = StepProgress::new("stopping", PROGRESS_MIN_ITEMS - 1);
         assert!(progress.uses_line_output());
     }
+
+    #[test]
+    fn step_progress_uses_line_output_for_zero_length_batch() {
+        // Empty batch is a no-op render — `len < PROGRESS_MIN_ITEMS` short-circuits.
+        let progress = StepProgress::new("stopping", 0);
+        assert!(progress.uses_line_output());
+    }
+
+    #[test]
+    fn step_progress_uses_line_output_for_one_item_batch() {
+        // One-item batch is below the threshold and must use line output.
+        let progress = StepProgress::new("stopping", 1);
+        assert!(progress.uses_line_output());
+    }
+
+    #[test]
+    fn step_progress_uses_line_output_at_threshold_minus_two() {
+        // Boundary: any value below PROGRESS_MIN_ITEMS uses line output.
+        let progress = StepProgress::new("stopping", PROGRESS_MIN_ITEMS - 2);
+        assert!(progress.uses_line_output());
+    }
+
+    #[test]
+    fn step_progress_inc_handles_none_item_label_without_panicking() {
+        // In non-TTY (CI) the bar is None; `inc(None)` must be a quiet no-op
+        // and not consume the message or move any counter.
+        let progress = StepProgress::new("stopping", 10);
+        progress.inc(None);
+        progress.inc(None);
+        // Multiple inc calls do not panic; finish still works.
+        progress.finish("done");
+    }
+
+    #[test]
+    fn step_progress_inc_with_label_is_quiet_no_op_in_non_tty() {
+        // Mirror the existing disabled test but with explicit label semantics
+        // so the call is exercised even when stderr is a piped stream.
+        let progress = StepProgress::new("stopping", 10);
+        for i in 0..5 {
+            progress.inc(Some(&format!("pid {i}")));
+        }
+        progress.finish("done");
+    }
 }
