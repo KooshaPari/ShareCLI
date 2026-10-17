@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C-ABI FFI surface for sharecli desktop apps (macOS, Windows).
 //!
 //! FFI choice: plain C ABI via `extern "C"` + `#[no_mangle]`.
