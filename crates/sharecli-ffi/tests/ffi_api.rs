@@ -1,3 +1,5 @@
+//! FR: FR-001
+//!
 //! Integration tests for the `sharecli-ffi` C-ABI surface.
 //!
 //! These tests load `libsharecli_ffi.{dylib,so}` at runtime via the
