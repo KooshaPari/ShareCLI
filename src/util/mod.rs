@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Parity / expansion utilities (`sharecli::util` + library helpers).
 //!
 //! C00 L1 Phase 1 facade — see `docs/ops/lib-sprawl-plan.md`.

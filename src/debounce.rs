@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Trailing-edge debouncer.
 //!
 //! `should_fire()` returns true only after `quiet_period` has elapsed

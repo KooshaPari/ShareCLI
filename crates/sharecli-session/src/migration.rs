@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Schema migration scaffold for `sharecli-session` (C00 L3 / FR-SESSION-002).
 //!
 //! The session store uses SQLite with WAL mode. Migrations are numbered and

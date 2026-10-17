@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Process-local registry of live FUSE mounts (`mountpoint` → [`InterceptFs`]).
 //!
 //! Populated by [`FuseSessionRegistry::mount_background`] (CLI `fuse mount`) so

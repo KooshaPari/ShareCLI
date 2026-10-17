@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR: FR-003 — C05 L42 OTel instrumentation acceptance gate.
 //!
 //! Verifies the trace-context inject/extract counters are wired end-to-end:

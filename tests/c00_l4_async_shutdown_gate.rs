@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C00 L4 / FR-003 — structured async shutdown + scoped spawn env (CancellationToken).
 //!
 //! Evidence: `src/shutdown.rs`, `src/commands/serve.rs`, `docs/ops/async-shutdown.md`.

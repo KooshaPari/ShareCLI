@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — thermal gate JSON key ordering on one-shot `sharecli proc` surfaces
 //! FR: FR-007
 //!

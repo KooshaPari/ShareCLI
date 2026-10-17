@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Wire types and mapping helpers for Windows tray IPC (AC-007.51 / AC-007.54).
 //!
 //! Mirrors `sharecli-tray-linux/src/ipc.rs` mapping + kill contract; the WinUI tray uses

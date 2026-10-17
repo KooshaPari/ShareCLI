@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! N-slot priority queue for mutating / nocache command paths.
 //!
 //! Origin: Feb `core.sh` `harness::strategy::queue` — concurrency limiter with

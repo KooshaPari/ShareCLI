@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C08 eval harness gate (T-1110, Wave19 gap remediation)
 //! FR: FR-002, FR-004, FR-007, FR-012
 //! Scope: eval.yaml existence, benchmark/target alignment, threshold reasonableness,

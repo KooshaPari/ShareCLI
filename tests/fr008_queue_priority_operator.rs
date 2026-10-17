@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-008 / AC-008.15 — operator queue priority → `SpawnRequest::queue_priority`.
 //!
 //! AC-008.15: `SHARECLI_QUEUE_PRIORITY` and rules.conf `priority=` MUST propagate

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-008 / TODO(hypervisor): speculative — pre-execute high-probability commands.
 //!
 //! The [`SpeculationTracker`] records command-frequency histograms in-process.

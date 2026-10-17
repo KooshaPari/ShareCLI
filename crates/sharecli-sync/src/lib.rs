@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Synchronous PID → name index modeled after sharecli `ProcessPool`'s
 //! `processes: RwLock<HashMap<u32, …>>` map (C00 L7).
 

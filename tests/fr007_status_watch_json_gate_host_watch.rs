@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — `sharecli status --watch --json` NDJSON gate + host_watch parity
 //! FR: FR-007
 //!

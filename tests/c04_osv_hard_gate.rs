@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C04 L38 — OSV / GHSA hard gate wired into `ci-success` (FR-003).
 //!
 //! FR: FR-003

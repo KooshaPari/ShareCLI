@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR: FR-003
 //! T-810 C01 coverage lift prep toward 82% — uncovered helpers (config, registry, fleet).
 

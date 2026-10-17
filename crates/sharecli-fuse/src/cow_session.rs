@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Shared CoW mount handle (Linux/macOS InterceptFs + Windows WinFsp).
 //!
 //! Per-agent staging via [`AgentCowStore`]; commit stamps write provenance.

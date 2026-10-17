@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Optional privileged FUSE mount smoke (operator / CI with macFUSE or libfuse).
 //!
 //! Default `cargo test` skips live mount verification. Set

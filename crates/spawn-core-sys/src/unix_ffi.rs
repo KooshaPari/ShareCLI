@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FFI declarations for the Zig `spawn_core` static library (Unix).
 //!
 //! # FFI boundary

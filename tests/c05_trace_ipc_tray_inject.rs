@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C05 L44 — traceparent inject on IPC/tray spawn paths (T-530 / W13.4).
 //! FR: FR-003
 

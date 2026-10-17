@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! # gateway-tools
 //!
 //! CLI binary exposing utility modules from the `gateway` crate as observable
