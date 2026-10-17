@@ -7,35 +7,51 @@ use crate::{AgentSession, SurfaceRecord};
 /// Capabilities advertised by a terminal surface adapter.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SurfaceCapabilities {
+    /// Adapter can read the surface's current pane contents.
     pub read: bool,
+    /// Adapter can inject input / paste.
     pub write: bool,
+    /// Adapter can request a resize on the underlying pty.
     pub resize: bool,
+    /// Adapter can snapshot / restore the pane topology.
     pub layout: bool,
+    /// Adapter owns a durable PTY that survives the parent process.
     pub durable_pty: bool,
 }
 
 /// Why an observation was appended.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ObservationKind {
+    /// A new surface was first observed.
     Discovered,
+    /// An existing surface changed (focus, title, cwd, etc).
     Updated,
+    /// The surface's process has exited.
     Exited,
+    /// The session was rebuilt from a previous observation.
     Recovered,
 }
 
 /// Append-only state observed from a terminal surface.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SessionObservation {
+    /// Stable observation sequence; assigned at write time.
     #[serde(default)]
     pub seq: i64,
+    /// RFC 3339 timestamp the observation was captured at.
     pub observed_at: String,
+    /// Surface this observation describes.
     pub surface: SurfaceRecord,
+    /// Optional resolved agent session, when an adapter could identify one.
     pub session: Option<AgentSession>,
+    /// Surface capabilities at observation time.
     pub capabilities: SurfaceCapabilities,
+    /// Why this observation was recorded.
     pub kind: ObservationKind,
 }
 
 impl SessionObservation {
+    /// Build a new observation with `seq = 0`; the store assigns the real seq on append.
     pub fn new(
         observed_at: impl Into<String>,
         surface: SurfaceRecord,

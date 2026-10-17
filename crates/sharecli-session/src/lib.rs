@@ -180,56 +180,91 @@ pub use state::{append_record, SidecarRecord, SidecarStateProvider};
 /// Default freshness window for automatic recovery plans.
 pub const DEFAULT_RECOVERY_MAX_AGE_SECONDS: u64 = 4 * 60 * 60;
 
+/// Resumable launch command for a known harness.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ResumeRecipe {
+    /// Harness binary name (e.g. `codex`, `forge`).
     pub harness: String,
+    /// Stable harness-side session identifier.
     pub session_id: String,
+    /// Working directory the recipe was captured from.
     pub cwd: PathBuf,
+    /// argv vector the harness accepts to resume the session.
     pub argv: Vec<String>,
 }
 
+/// Strength of evidence behind a resolved resume recipe.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ResolutionConfidence {
+    /// Adapter or argv gave an exact session id.
     Exact,
+    /// State file and argv agree on the session id.
     Corroborated,
+    /// Best-effort heuristic; not safe for unattended recovery.
     Heuristic,
+    /// No evidence; resume must be skipped.
     Unavailable,
 }
 
+/// Runtime state of a captured session.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum SessionState {
+    /// Session was discovered but not yet observed active.
     Pending,
+    /// Session is currently running.
     Active,
+    /// Session has exited cleanly.
     Exited,
+    /// Session state is not yet known (e.g. just discovered).
     Unknown,
 }
 
+/// Process-side evidence collected for a single terminal surface.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ProcessEvidence {
+    /// Process id, when known.
     pub pid: Option<u32>,
+    /// Controlling TTY path, when known.
     pub tty: Option<String>,
+    /// Process working directory.
     pub cwd: PathBuf,
+    /// Process argv vector.
     pub argv: Vec<String>,
+    /// Process start timestamp as captured by the source.
     pub started_at: Option<String>,
 }
 
+/// One terminal surface observed by an adapter.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SurfaceRecord {
+    /// Stable surface identifier (e.g. `ghostty:1`).
     pub id: String,
+    /// Terminal application name.
     pub terminal: String,
+    /// Optional window/tab title.
     pub title: Option<String>,
+    /// Resolved working directory for the surface.
     pub cwd: PathBuf,
+    /// Best-effort process evidence when available.
     pub process: Option<ProcessEvidence>,
 }
 
+/// Materialized sharecli session: a harness process plus its safe resume recipe.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AgentSession {
+    /// Composite `<handle>:<session_id>` identifier.
     pub id: String,
+    /// Harness binary name (e.g. `codex`, `forge`).
     pub harness: String,
+    /// Stable harness-side session identifier.
     pub session_id: String,
+    /// Working directory the session was observed in.
     pub cwd: PathBuf,
+    /// Safe argv recipe to reattach to the session.
     pub resume: ResumeRecipe,
+    /// Confidence in the resume recipe.
     pub confidence: ResolutionConfidence,
+    /// Most-recent runtime state.
     pub state: SessionState,
 }
 
@@ -243,6 +278,8 @@ impl AgentSession {
 }
 
 impl AgentSession {
+    /// Build an `AgentSession` from explicit harness / id / cwd, inferring the
+    /// resume recipe as `<harness> resume <id>`.
     pub fn new(
         harness: impl Into<String>,
         session_id: impl Into<String>,
@@ -264,22 +301,27 @@ impl AgentSession {
         }
     }
 
+    /// Build an `AgentSession` for the `forge` harness.
     pub fn forge(session_id: impl Into<String>, cwd: impl Into<PathBuf>) -> Self {
         Self::with_recipe("forge", session_id, cwd, |id| {
             vec!["forge".into(), "--conversation-id".into(), id]
         })
     }
+    /// Build an `AgentSession` for the `codex` harness.
     pub fn codex(session_id: impl Into<String>, cwd: impl Into<PathBuf>) -> Self {
         Self::with_recipe("codex", session_id, cwd, |id| vec!["codex".into(), "resume".into(), id])
     }
+    /// Build an `AgentSession` for the `opencode` harness.
     pub fn opencode(session_id: impl Into<String>, cwd: impl Into<PathBuf>) -> Self {
         Self::with_recipe("opencode", session_id, cwd, |id| {
             vec!["opencode".into(), "--session".into(), id]
         })
     }
+    /// Build an `AgentSession` for the `kilo` harness.
     pub fn kilo(session_id: impl Into<String>, cwd: impl Into<PathBuf>) -> Self {
         Self::with_recipe("kilo", session_id, cwd, |id| vec!["kilo".into(), "--session".into(), id])
     }
+    /// Build an `AgentSession` for the `cursor` / `cursor-agent` harness.
     pub fn cursor(session_id: impl Into<String>, cwd: impl Into<PathBuf>) -> Self {
         Self::with_recipe("cursor-agent", session_id, cwd, |id| {
             vec!["cursor-agent".into(), "--resume".into(), id]
@@ -309,11 +351,14 @@ impl AgentSession {
     }
 }
 
+/// Durable SQLite-backed store for sessions and per-surface observations.
 pub struct SessionStore {
     conn: Mutex<Connection>,
 }
 
 impl SessionStore {
+    /// Open or create a session store backed by `path`. Parent directories are
+    /// created with best-effort permission defaults.
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
         if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
@@ -324,6 +369,7 @@ impl SessionStore {
         let conn = Connection::open(path).context("open session database")?;
         Self::init(conn)
     }
+    /// Open an in-memory session store, primarily used by tests.
     pub fn open_memory() -> Result<Self> {
         Self::init(Connection::open_in_memory()?)
     }
@@ -347,10 +393,12 @@ impl SessionStore {
         )?;
         Ok(Self { conn: Mutex::new(conn) })
     }
+    /// Insert or replace one session row keyed by `session.id`.
     pub fn upsert(&self, session: &AgentSession) -> Result<()> {
         let conn = self.conn.lock().map_err(|_| anyhow::anyhow!("session store poisoned"))?;
         Self::upsert_locked(&conn, session)
     }
+    /// List every session row in stable id order.
     pub fn list(&self) -> Result<Vec<AgentSession>> {
         let conn = self.conn.lock().map_err(|_| anyhow::anyhow!("session store poisoned"))?;
         let mut stmt =
@@ -420,6 +468,7 @@ impl SessionStore {
         }
         Ok(sessions.into_values().collect())
     }
+    /// Fetch one session by id; returns `Ok(None)` if no row matches.
     pub fn get(&self, id: &str) -> Result<Option<AgentSession>> {
         let conn = self.conn.lock().map_err(|_| anyhow::anyhow!("session store poisoned"))?;
         let mut stmt =
@@ -576,25 +625,32 @@ impl SessionStore {
     }
 }
 
+/// Service-layer facade over [`SessionStore`] used by the JSON-RPC entry points.
 pub struct SessionService {
     store: SessionStore,
 }
 impl SessionService {
+    /// Build a service over an existing store.
     pub fn new(store: SessionStore) -> Self {
         Self { store }
     }
+    /// List every known session.
     pub fn list(&self) -> Result<Vec<AgentSession>> {
         self.store.list()
     }
+    /// Fetch one session by id.
     pub fn inspect(&self, id: &str) -> Result<Option<AgentSession>> {
         self.store.get(id)
     }
+    /// Build a recovery plan from observations fresher than `max_age`.
     pub fn recovery_plan(&self, max_age: Duration) -> Result<Vec<AgentSession>> {
         self.store.recovery_plan(max_age)
     }
+    /// Read observations in append order, optionally restricted to one surface.
     pub fn observations(&self, surface_id: Option<&str>) -> Result<Vec<SessionObservation>> {
         self.store.observations(surface_id)
     }
+    /// Compact observation history, retaining the latest per surface.
     pub fn compact_observations(&self) -> Result<usize> {
         self.store.compact_observations()
     }

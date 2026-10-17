@@ -14,9 +14,13 @@ use crate::{SessionStateProvider, SurfaceRecord};
 /// from being applied after a terminal surface has been recycled.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SidecarRecord {
+    /// Surface id the record maps.
     pub surface_id: String,
+    /// Harness binary name (e.g. `codex`, `forge`).
     pub harness: String,
+    /// Stable harness-side session identifier.
     pub session_id: String,
+    /// Optional launcher pid; used to reject stale records.
     #[serde(default)]
     pub pid: Option<u32>,
 }
@@ -64,6 +68,7 @@ impl SidecarStateProvider {
         Self { path: path.into() }
     }
 
+    /// Path the provider reads on every lookup.
     pub fn path(&self) -> &Path {
         &self.path
     }

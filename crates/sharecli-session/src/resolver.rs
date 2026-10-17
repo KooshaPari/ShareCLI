@@ -16,8 +16,11 @@ pub enum EvidenceSource {
 /// Resolver output, including confidence and the safe resume recipe.
 #[derive(Clone, Debug)]
 pub struct Resolution {
+    /// Resolved agent session, or `None` if no evidence was found.
     pub session: Option<AgentSession>,
+    /// Confidence in the returned session / recipe.
     pub confidence: ResolutionConfidence,
+    /// Which evidence path was used to build the resolution.
     pub source: EvidenceSource,
 }
 

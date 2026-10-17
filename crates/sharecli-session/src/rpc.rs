@@ -17,6 +17,8 @@ use crate::{
 #[path = "rpc_transport.rs"]
 mod transport;
 #[cfg(unix)]
+/// Re-export of [`serve_surface_unix_with_token`] for callers that don't need
+/// to import the gated `transport` module directly.
 pub use transport::serve_surface_unix_with_token;
 
 const JSON_RPC_VERSION: &str = "2.0";
@@ -27,26 +29,40 @@ pub use crate::events::{
     SurfaceEventKind, SurfaceEventNotification, SurfaceEventParams,
     SurfaceSubscriptionCapabilities, MAX_EVENT_CHUNK_BYTES, MAX_EVENT_QUEUE_CAPACITY,
 };
+/// Inbound JSON-RPC request envelope.
 #[derive(Debug, Deserialize)]
 pub struct Request {
+    /// Caller-supplied request id (echoed in the response).
     pub id: serde_json::Value,
+    /// Method name to dispatch.
     pub method: String,
+    /// Method parameters; may be `null` if the method takes none.
     #[serde(default)]
     pub params: serde_json::Value,
 }
+/// Outbound JSON-RPC response envelope.
 #[derive(Debug, Serialize)]
 pub struct Response {
+    /// Echo of the request id.
     pub id: serde_json::Value,
+    /// Successful result; mutually exclusive with `error`.
     pub result: Option<serde_json::Value>,
+    /// Human-readable error message; mutually exclusive with `result`.
     pub error: Option<String>,
 }
+/// Abstract surface provider used by the surface-control JSON-RPC entry points.
 pub trait SurfaceControl: Send + Sync {
+    /// Enumerate every surface the provider can drive right now.
     fn list(&self) -> Result<Vec<SurfaceRecord>> {
         anyhow::bail!("surface discovery unavailable")
     }
+    /// Inject raw bytes into the surface's input stream.
     fn send(&self, surface_id: &str, bytes: &[u8]) -> Result<()>;
+    /// Read up to `max_bytes` from the surface's current output.
     fn read(&self, surface_id: &str, max_bytes: usize) -> Result<Vec<u8>>;
+    /// Resize the surface to `rows x cols` columns.
     fn resize(&self, surface_id: &str, rows: u16, cols: u16) -> Result<()>;
+    /// Report the capabilities the provider offers for the given surface.
     fn capabilities(&self, surface_id: &str) -> Result<SurfaceCapabilities>;
 
     /// Capture the provider's current pane topology.
@@ -76,17 +92,25 @@ struct SurfaceRequest {
     #[serde(default)]
     token: Option<String>,
 }
+/// Structured JSON-RPC error payload.
 #[derive(Debug, Serialize)]
 pub struct RpcError {
+    /// Numeric JSON-RPC error code.
     pub code: i32,
+    /// Human-readable error message.
     pub message: String,
 }
+/// Outbound JSON-RPC envelope for surface-control methods.
 #[derive(Debug, Serialize)]
 pub struct SurfaceResponse {
+    /// JSON-RPC version literal (`"2.0"`).
     pub jsonrpc: &'static str,
+    /// Echo of the request id, or `Value::Null` for notifications.
     pub id: Value,
+    /// Successful result; mutually exclusive with `error`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<Value>,
+    /// Structured error; mutually exclusive with `result`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<RpcError>,
 }
@@ -121,6 +145,7 @@ struct ReadResult {
     bytes: Vec<u8>,
 }
 
+/// Dispatch a single `SessionService` JSON-RPC line and return the response.
 pub async fn dispatch(service: Arc<SessionService>, line: &str) -> Response {
     let request = match serde_json::from_str::<Request>(line) {
         Ok(value) => value,
@@ -153,6 +178,7 @@ pub async fn dispatch(service: Arc<SessionService>, line: &str) -> Response {
     }
 }
 
+/// Dispatch a single surface-control JSON-RPC line and return the response.
 pub async fn dispatch_surface(control: Arc<dyn SurfaceControl>, line: &str) -> SurfaceResponse {
     dispatch_surface_internal(control, line, None).await
 }
@@ -212,6 +238,7 @@ async fn dispatch_surface_internal(
     }
 }
 
+/// Dispatch a surface-control request while enforcing an optional bearer token.
 pub async fn dispatch_surface_with_token(
     control: Arc<dyn SurfaceControl>,
     line: &str,
@@ -232,6 +259,7 @@ pub async fn dispatch_surface_with_token(
     dispatch_surface(control, line).await
 }
 
+/// Dispatch a surface-control request, enforce an optional token, and surface events.
 pub async fn dispatch_surface_with_token_and_events(
     control: Arc<dyn SurfaceControl>,
     events: Arc<SurfaceEventHub>,
@@ -381,6 +409,7 @@ fn surface_error(id: Value, code: i32, message: String) -> SurfaceResponse {
 }
 
 #[cfg(unix)]
+/// Serve `SessionService` JSON-RPC on a Unix domain socket at `path`.
 pub async fn serve_unix(path: &std::path::Path, service: Arc<SessionService>) -> Result<()> {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     let _ = std::fs::remove_file(path);
@@ -409,6 +438,7 @@ pub async fn serve_unix(path: &std::path::Path, service: Arc<SessionService>) ->
 }
 
 #[cfg(unix)]
+/// Serve surface-control JSON-RPC on a Unix domain socket at `path`.
 pub async fn serve_surface_unix(
     path: &std::path::Path,
     control: Arc<dyn SurfaceControl>,
