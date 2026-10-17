@@ -511,6 +511,7 @@ enum SessionCmd {
     /// Inspect one persisted session
     Inspect {
         id: String,
+        /// Path to the durable SQLite session ledger; falls back to the operator data dir when omitted.
         #[arg(long)]
         db: Option<std::path::PathBuf>,
     },
@@ -519,6 +520,7 @@ enum SessionCmd {
         /// Maximum observation age in seconds (default: four hours)
         #[arg(long, default_value_t = DEFAULT_RECOVERY_MAX_AGE_SECONDS, value_parser = clap::value_parser!(u64).range(1..=604800))]
         max_age_seconds: u64,
+        /// Path to the durable SQLite session ledger; falls back to the operator data dir when omitted.
         #[arg(long)]
         db: Option<std::path::PathBuf>,
     },
@@ -533,6 +535,7 @@ enum SessionCmd {
     Observations {
         #[arg(long)]
         surface_id: Option<String>,
+        /// Path to the durable SQLite session ledger; falls back to the operator data dir when omitted.
         #[arg(long)]
         db: Option<std::path::PathBuf>,
     },
@@ -552,6 +555,7 @@ enum SessionCmd {
         /// Maximum observation age in seconds (default: four hours)
         #[arg(long, default_value_t = DEFAULT_RECOVERY_MAX_AGE_SECONDS, value_parser = clap::value_parser!(u64).range(1..=604800))]
         max_age_seconds: u64,
+        /// Path to the durable SQLite session ledger; falls back to the operator data dir when omitted.
         #[arg(long)]
         db: Option<std::path::PathBuf>,
     },
@@ -563,6 +567,7 @@ enum SessionCmd {
     /// Inspect one durable terminal layout snapshot
     LayoutInspect {
         id: String,
+        /// Path to the durable SQLite session ledger; falls back to the operator data dir when omitted.
         #[arg(long)]
         db: Option<std::path::PathBuf>,
     },
@@ -577,13 +582,16 @@ enum SessionCmd {
     Register {
         #[arg(long, env = "GHOSTTY_SURFACE_ID")]
         surface_id: Option<String>,
+        /// Harness identifier (e.g. `claude`, `forge`, `node`, `bun`).
         #[arg(long)]
         harness: String,
+        /// Durable session id (UUID v4 or operator-assigned label).
         #[arg(long)]
         session_id: String,
         /// PID of the harness process, when the launcher can provide it
         #[arg(long)]
         pid: Option<u32>,
+        /// Override path to the session-sidecar JSONL state file.
         #[arg(long, env = "SHARECLI_SESSION_SIDECAR")]
         state_sidecar: Option<std::path::PathBuf>,
     },
@@ -594,12 +602,16 @@ enum SessionCmd {
         /// Capture one inventory and exit instead of sleeping
         #[arg(long)]
         once: bool,
+        /// Path to the Ghostty IPC socket (env: `SHARECLI_GHOSTTY_SOCKET`, default: `/tmp/sharecli-ghostty.sock`).
         #[arg(long, env = "SHARECLI_GHOSTTY_SOCKET", default_value = "/tmp/sharecli-ghostty.sock")]
         socket: std::path::PathBuf,
+        /// Ghostty IPC authentication token (env: `SHARECLI_GHOSTTY_TOKEN`).
         #[arg(long, env = "SHARECLI_GHOSTTY_TOKEN")]
         token: Option<String>,
+        /// Override path to the session-sidecar JSONL state file.
         #[arg(long, env = "SHARECLI_SESSION_SIDECAR")]
         state_sidecar: Option<std::path::PathBuf>,
+        /// Path to the durable SQLite session ledger; falls back to the operator data dir when omitted.
         #[arg(long)]
         db: Option<std::path::PathBuf>,
     },
@@ -611,12 +623,16 @@ enum SurfaceCmd {
     Send {
         #[arg(long, env = "SHARECLI_GHOSTTY_SOCKET", default_value = "/tmp/sharecli-ghostty.sock")]
         socket: std::path::PathBuf,
+        /// Target Ghostty surface id (UUID).
         #[arg(long)]
         surface_id: String,
+        /// UTF-8 text payload to write to the surface. Mutually exclusive with `--bytes`.
         #[arg(long, conflicts_with = "bytes")]
         text: Option<String>,
+        /// Hex-encoded byte payload to write to the surface. Mutually exclusive with `--text`.
         #[arg(long, conflicts_with = "text")]
         bytes: Option<String>,
+        /// Ghostty IPC authentication token (env: `SHARECLI_GHOSTTY_TOKEN`).
         #[arg(long, env = "SHARECLI_GHOSTTY_TOKEN")]
         token: Option<String>,
     },
@@ -624,10 +640,13 @@ enum SurfaceCmd {
     Read {
         #[arg(long, env = "SHARECLI_GHOSTTY_SOCKET", default_value = "/tmp/sharecli-ghostty.sock")]
         socket: std::path::PathBuf,
+        /// Target Ghostty surface id (UUID).
         #[arg(long)]
         surface_id: String,
+        /// Maximum bytes to read from the surface snapshot (default: 4096).
         #[arg(long, default_value_t = 4096)]
         max_bytes: usize,
+        /// Ghostty IPC authentication token (env: `SHARECLI_GHOSTTY_TOKEN`).
         #[arg(long, env = "SHARECLI_GHOSTTY_TOKEN")]
         token: Option<String>,
     },
@@ -635,12 +654,16 @@ enum SurfaceCmd {
     Resize {
         #[arg(long, env = "SHARECLI_GHOSTTY_SOCKET", default_value = "/tmp/sharecli-ghostty.sock")]
         socket: std::path::PathBuf,
+        /// Target Ghostty surface id (UUID).
         #[arg(long)]
         surface_id: String,
+        /// Target row count (height in cells) for the resize request.
         #[arg(long)]
         rows: u16,
+        /// Target column count (width in cells) for the resize request.
         #[arg(long)]
         cols: u16,
+        /// Ghostty IPC authentication token (env: `SHARECLI_GHOSTTY_TOKEN`).
         #[arg(long, env = "SHARECLI_GHOSTTY_TOKEN")]
         token: Option<String>,
     },
@@ -648,17 +671,22 @@ enum SurfaceCmd {
     Watch {
         #[arg(long, env = "SHARECLI_GHOSTTY_SOCKET", default_value = "/tmp/sharecli-ghostty.sock")]
         socket: std::path::PathBuf,
+        /// Target Ghostty surface id; omit to follow all surfaces.
         #[arg(long)]
         surface_id: Option<String>,
+        /// Resume streaming from this event sequence number (inclusive).
         #[arg(long)]
         from_seq: Option<u64>,
+        /// Maximum bytes per event chunk in the follow stream (default: 65536).
         #[arg(long, default_value_t = 65536)]
         max_chunk_bytes: usize,
+        /// Bounded queue capacity for the follow stream (default: 64).
         #[arg(long, default_value_t = 64)]
         queue_capacity: usize,
         /// Read one event, unsubscribe, and exit.
         #[arg(long)]
         once: bool,
+        /// Ghostty IPC authentication token (env: `SHARECLI_GHOSTTY_TOKEN`).
         #[arg(long, env = "SHARECLI_GHOSTTY_TOKEN")]
         token: Option<String>,
     },
@@ -669,6 +697,7 @@ enum SurfaceCmd {
         /// Write the snapshot to this path instead of stdout
         #[arg(long, short = 'o')]
         output: Option<std::path::PathBuf>,
+        /// Ghostty IPC authentication token (env: `SHARECLI_GHOSTTY_TOKEN`).
         #[arg(long, env = "SHARECLI_GHOSTTY_TOKEN")]
         token: Option<String>,
     },
@@ -678,6 +707,7 @@ enum SurfaceCmd {
         input: std::path::PathBuf,
         #[arg(long, env = "SHARECLI_GHOSTTY_SOCKET", default_value = "/tmp/sharecli-ghostty.sock")]
         socket: std::path::PathBuf,
+        /// Ghostty IPC authentication token (env: `SHARECLI_GHOSTTY_TOKEN`).
         #[arg(long, env = "SHARECLI_GHOSTTY_TOKEN")]
         token: Option<String>,
     },
