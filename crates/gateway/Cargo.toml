@@ -1,0 +1,11 @@
+[package]
+name = "gateway"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+rust-version = "1.89"
+description = "Utility/protocol modules exposed to gateway-tools (JWT/DNS/RESP/TLS/PKCS#7/PEM/M3U/JSON-Patch/Prometheus/Chunked)."
+
+[dependencies]
+base64 = "0.22"
+sha2 = "0.11"
