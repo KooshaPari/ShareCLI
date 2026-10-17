@@ -322,7 +322,7 @@ fn router(port: u16) -> Router {
         .route("/v1/cast", get(cast))
         .route("/v1/util", get(util))
         .route("/v1/splash", get(splash))
-        .route("/v1/inspect/:module", get(inspect_one))
+        .route("/v1/inspect/{module}", get(inspect_one))
         .fallback(not_found)
         .with_state(state)
 }
