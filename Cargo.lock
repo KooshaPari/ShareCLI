@@ -1908,7 +1908,7 @@ dependencies = [
  "libc",
  "log",
  "rustversion",
- "windows-link 0.2.1",
+ "windows-link 0.1.3",
  "windows-result 0.4.1",
 ]
 
@@ -4587,7 +4587,7 @@ dependencies = [
 [[package]]
 name = "runtime-process"
 version = "0.3.10"
-source = "git+https://github.com/KooshaPari/PhenoShared#68beca269720d582a408dc5bbb62982fe86964af"
+source = "git+https://github.com/KooshaPari/PhenoShared#ea27186296734f441813907eb98b052923c06f4f"
 dependencies = [
  "async-trait",
  "command-group",
@@ -5467,7 +5467,7 @@ dependencies = [
 [[package]]
 name = "substrate"
 version = "0.3.10"
-source = "git+https://github.com/KooshaPari/PhenoShared#68beca269720d582a408dc5bbb62982fe86964af"
+source = "git+https://github.com/KooshaPari/PhenoShared#ea27186296734f441813907eb98b052923c06f4f"
 dependencies = [
  "substrate-core",
 ]
@@ -5475,7 +5475,7 @@ dependencies = [
 [[package]]
 name = "substrate-core"
 version = "0.3.10"
-source = "git+https://github.com/KooshaPari/PhenoShared#68beca269720d582a408dc5bbb62982fe86964af"
+source = "git+https://github.com/KooshaPari/PhenoShared#ea27186296734f441813907eb98b052923c06f4f"
 dependencies = [
  "async-trait",
  "serde",
@@ -6638,7 +6638,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
