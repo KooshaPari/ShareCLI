@@ -11,7 +11,9 @@ use crate::SessionStore;
 /// Direction in which a terminal surface is split.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum LayoutAxis {
+    /// Side-by-side panes (left/right).
     Horizontal,
+    /// Stacked panes (top/bottom).
     Vertical,
 }
 
@@ -27,24 +29,33 @@ pub enum LayoutNode {
 /// Durable snapshot of a terminal application's pane topology.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct LayoutSnapshot {
+    /// Stable identifier (typically `<terminal>:<id>`).
     pub id: String,
+    /// Terminal application name.
     pub terminal: String,
+    /// RFC 3339 timestamp at which the snapshot was captured.
     pub captured_at: String,
+    /// Root of the recursive pane tree.
     pub root: LayoutNode,
 }
 
 /// Per-surface result produced by a layout restore adapter.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct LayoutRestoreItem {
+    /// Surface id this item refers to.
     pub surface_id: String,
+    /// Whether the adapter successfully restored the surface.
     pub restored: bool,
+    /// Optional human-readable explanation (especially when `restored == false`).
     pub detail: Option<String>,
 }
 
 /// Typed report for a completed or partially completed layout restore.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct LayoutRestoreReport {
+    /// Identifier of the layout snapshot this report restores.
     pub layout_id: String,
+    /// One entry per surface the adapter attempted to restore.
     pub items: Vec<LayoutRestoreItem>,
 }
 

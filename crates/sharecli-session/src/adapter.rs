@@ -8,7 +8,9 @@ use crate::{ledger::SurfaceCapabilities, LayoutRestoreReport, LayoutSnapshot, Su
 
 /// A discovered terminal surface and its capabilities.
 pub trait SurfaceAdapter: Send + Sync {
+    /// Report the capabilities this adapter can offer for `surface`.
     fn capabilities(&self, surface: &SurfaceRecord) -> Result<SurfaceCapabilities>;
+    /// Enumerate every surface the adapter can observe right now.
     fn discover(&self) -> Result<Vec<SurfaceRecord>>;
     /// Capture the adapter's current pane topology.
     fn snapshot_layout(&self) -> Result<LayoutSnapshot> {
@@ -40,7 +42,9 @@ pub trait SurfaceIo: Send + Sync {
 /// Explicitly degraded Ghostty adapter until a native control transport is proven.
 #[derive(Clone, Debug, Default)]
 pub struct GhosttySurfaceAdapter {
+    /// Whether the adapter has a native RPC channel into Ghostty.
     pub native_rpc: bool,
+    /// Whether the adapter can drive Ghostty via Apple Events as a fallback.
     pub apple_events: bool,
 }
 
@@ -66,7 +70,9 @@ impl SurfaceAdapter for GhosttySurfaceAdapter {
 /// Managed PTY adapter used for ShareCLI-owned zmx sessions.
 #[derive(Clone, Debug)]
 pub struct ZmxSurfaceAdapter {
+    /// Whether the adapter believes zmx is reachable for IO operations.
     pub available: bool,
+    /// Pre-discovered surfaces (used for tests and zmx-less fallbacks).
     pub surfaces: Arc<Vec<SurfaceRecord>>,
 }
 

@@ -3,6 +3,8 @@
 use super::*;
 
 #[cfg(unix)]
+/// Serve plain request/response surface-control JSON-RPC on a Unix domain socket,
+/// enforcing `expected_token` when one is configured.
 pub async fn serve_surface_unix_with_token(
     path: &std::path::Path,
     control: Arc<dyn SurfaceControl>,

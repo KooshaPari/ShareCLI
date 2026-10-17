@@ -6,64 +6,99 @@ use std::sync::Mutex;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 
+/// Hard upper bound on a single surface event chunk.
 pub const MAX_EVENT_CHUNK_BYTES: usize = 64 * 1024;
+/// Maximum number of queued events per surface subscription.
 pub const MAX_EVENT_QUEUE_CAPACITY: usize = 256;
 
+/// Kinds of surface event delivered to subscribers.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SurfaceEventKind {
+    /// PTY/process output bytes for the surface.
     Output,
+    /// Surface geometry changed (resize, split, etc).
     Resize,
+    /// Process exit code (with the process id when known).
     Exit,
+    /// Surface title changed.
     Title,
+    /// Surface working directory changed.
     Cwd,
+    /// Events were dropped because the subscription queue was saturated.
     Dropped,
 }
 
+/// Per-event payload delivered to subscribers.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SurfaceEventParams {
+    /// Subscription id this event belongs to.
     pub subscription_id: u64,
+    /// Surface identifier this event belongs to.
     pub surface_id: String,
+    /// Monotonic sequence number assigned by the hub.
     pub seq: u64,
+    /// Event kind discriminator.
     pub kind: SurfaceEventKind,
+    /// Optional event timestamp (ISO 8601) as captured by the source.
     pub timestamp: Option<String>,
+    /// Optional base64-encoded raw output bytes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub event_bytes_base64: Option<String>,
+    /// Optional count of events dropped prior to this one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dropped: Option<u64>,
+    /// Optional signal that the client must resync the surface state.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resync_required: Option<bool>,
 }
 
+/// JSON-RPC shaped event notification pushed to a subscribed client.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SurfaceEventNotification {
+    /// JSON-RPC version literal (`"2.0"`).
     pub jsonrpc: &'static str,
+    /// JSON-RPC method name (`"surface.io.event"`).
     pub method: &'static str,
+    /// Event payload.
     pub params: SurfaceEventParams,
 }
 
+/// Capabilities negotiated when a client subscribes to a surface.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SurfaceSubscriptionCapabilities {
+    /// Maximum bytes per event chunk negotiated for the subscription.
     pub max_chunk_bytes: usize,
+    /// Maximum events the subscription's queue will hold.
     pub queue_capacity: usize,
+    /// Whether the hub will replay missed events on reconnect.
     pub replay: bool,
 }
 
+/// Acknowledgement returned to the client after a successful subscription.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SurfaceSubscribeAck {
+    /// Identifier the client should use to drain events.
     pub subscription_id: u64,
+    /// First sequence number the client should expect on drain.
     pub next_seq: u64,
+    /// Effective capabilities negotiated for the subscription.
     pub capabilities: SurfaceSubscriptionCapabilities,
 }
 
+/// Client-side request to subscribe to one or all surfaces.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 pub struct SurfaceSubscribeRequest {
+    /// Optional surface id; `None` means "every surface".
     #[serde(default)]
     pub surface_id: Option<String>,
+    /// Optional sequence to replay from on connect.
     #[serde(default)]
     pub from_seq: Option<u64>,
+    /// Maximum bytes the client accepts per event chunk.
     #[serde(default = "default_chunk_bytes")]
     pub max_chunk_bytes: usize,
+    /// Maximum events to hold in the subscription queue.
     #[serde(default = "default_queue_capacity")]
     pub queue_capacity: usize,
 }
@@ -77,6 +112,7 @@ fn default_queue_capacity() -> usize {
 }
 
 impl SurfaceSubscribeRequest {
+    /// Build a subscription request for one surface with default chunk/queue limits.
     pub fn new(surface_id: impl Into<String>) -> Self {
         Self {
             surface_id: Some(surface_id.into()),
@@ -86,6 +122,7 @@ impl SurfaceSubscribeRequest {
         }
     }
 
+        /// Override the desired per-subscription queue capacity.
     pub fn with_queue_capacity(mut self, queue_capacity: usize) -> Self {
         self.queue_capacity = queue_capacity;
         self
@@ -116,10 +153,12 @@ pub struct SurfaceEventHub {
 }
 
 impl SurfaceEventHub {
+    /// Build a new hub with default per-subscription queue capacity.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Register a new subscription, returning the negotiated ack.
     pub fn subscribe(
         &self,
         request: SurfaceSubscribeRequest,
@@ -156,11 +195,13 @@ impl SurfaceEventHub {
         })
     }
 
+        /// Drop the subscription, returning `true` if a subscription was removed.
     pub fn unsubscribe(&self, subscription_id: u64) -> Result<bool, SurfaceEventError> {
         let mut state = self.state.lock().expect("surface event hub mutex poisoned");
         Ok(state.subscriptions.remove(&subscription_id).is_some())
     }
 
+        /// Publish raw PTY/process output bytes for `surface_id`.
     pub fn publish_output(
         &self,
         surface_id: &str,
@@ -170,6 +211,7 @@ impl SurfaceEventHub {
         self.publish(surface_id, SurfaceEventKind::Output, bytes, timestamp)
     }
 
+    /// Publish a structured event chunked across subscribers; returns the last seq.
     pub fn publish(
         &self,
         surface_id: &str,
@@ -223,6 +265,7 @@ impl SurfaceEventHub {
         Ok(seq)
     }
 
+        /// Drain up to `max_events` queued notifications for the subscription.
     pub fn drain(
         &self,
         subscription_id: u64,
@@ -270,10 +313,14 @@ fn enqueue(subscription: &mut SubscriptionState, event: SurfaceEventNotification
     }
 }
 
+/// Errors that the surface event hub may surface to clients.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SurfaceEventError {
+    /// `max_chunk_bytes` was zero or exceeded [`MAX_EVENT_CHUNK_BYTES`].
     InvalidChunkBytes,
+    /// `queue_capacity` was zero or exceeded [`MAX_EVENT_QUEUE_CAPACITY`].
     InvalidQueueCapacity,
+    /// The supplied subscription id did not match any active subscription.
     UnknownSubscription,
 }
 

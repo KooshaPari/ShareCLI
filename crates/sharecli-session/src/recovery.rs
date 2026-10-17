@@ -10,17 +10,24 @@ use crate::{AgentSession, ResumeRecipe, SessionState};
 /// Per-session recovery result.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub enum RecoveryOutcome {
+    /// The harness process was successfully spawned for the session.
     Resumed,
+    /// Plan was previewed without launching anything.
     DryRun,
+    /// Session was eligible but evidence was too weak to safely resume.
     SkippedAmbiguous,
+    /// No adapter can drive the surface this session lives on.
     UnsupportedSurface,
+    /// Recipe was well-formed but the underlying `Command::spawn` failed.
     LaunchFailed(String),
 }
 
 /// Recovery item paired with its durable session identity.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct RecoveryResult {
+    /// Composite session id this result refers to.
     pub session_id: String,
+    /// Per-session outcome (see [`RecoveryOutcome`]).
     pub outcome: RecoveryOutcome,
 }
 
@@ -30,14 +37,17 @@ pub struct RecoveryResult {
 /// not wait for an agent UI to exit, which keeps recovery non-blocking for long
 /// lived sessions.
 pub struct RecoveryExecutor {
+    /// Maximum number of recipes launched in parallel.
     pub max_parallel: usize,
 }
 
 impl RecoveryExecutor {
+    /// Build an executor; `max_parallel` is clamped to at least one.
     pub fn new(max_parallel: usize) -> Self {
         Self { max_parallel: max_parallel.max(1) }
     }
 
+    /// Compute what `execute` would do without launching any process.
     pub fn dry_run(&self, sessions: &[AgentSession]) -> Vec<RecoveryResult> {
         sessions
             .iter()
@@ -52,6 +62,7 @@ impl RecoveryExecutor {
             .collect()
     }
 
+    /// Launch the recipes for every eligible session in bounded parallel batches.
     pub fn execute(&self, sessions: &[AgentSession]) -> Vec<RecoveryResult> {
         let mut results = Vec::with_capacity(sessions.len());
         for batch in sessions.chunks(self.max_parallel) {
@@ -96,7 +107,7 @@ fn launch(session: &AgentSession) -> RecoveryOutcome {
     }
 }
 
-/// Validate that a recipe is argv-based and has a usable cwd before launch.
+/// Validate a recipe: non-empty argv, absolute cwd, and no shell metacharacters.
 pub fn validate_recipe(recipe: &ResumeRecipe) -> Result<()> {
     if recipe.argv.is_empty() || recipe.argv.iter().any(|arg| arg.contains('\0')) {
         anyhow::bail!("resume recipe has no safe argv")
