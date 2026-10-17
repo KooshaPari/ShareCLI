@@ -1,0 +1,163 @@
+# Mergify Configuration - multi-language monorepo
+# Docs: https://docs.mergify.com/
+# Merges route through the merge queue; ci.yml already triggers on merge_group.
+# Required gates: "ci / lint" + "ci / test" + "CI Success Gate"
+# (aggregate jobs in .github/workflows/ci.yml; this PR also adds merge_group to its triggers).
+
+queue_rules:
+  - name: default
+    queue_conditions:
+      - check-success=ci / lint
+      - check-success=ci / test
+      - check-success=CI Success Gate Success Gate
+    merge_conditions:
+      - check-success=ci / lint
+      - check-success=ci / test
+      - check-success=CI Success Gate Success Gate
+    merge_method: squash
+
+pull_request_rules:
+  # Human/agent PRs opt in with the automerge label; single maintainer, no review gate
+  - name: Queue PRs labeled automerge
+    conditions:
+      - label=automerge
+      - check-success=ci / lint
+      - check-success=ci / test
+      - check-success=CI Success Gate Success Gate
+      - -conflict
+      - -closed
+      - -draft
+    actions:
+      queue:
+        name: default
+        merge_method: squash
+        update_method: rebase
+
+  # Dependency updates queue themselves once CI is green
+  - name: Queue dependency updates
+    conditions:
+      - or:
+          - author=dependabot[bot]
+          - author=renovate[bot]
+      - check-success=ci / lint
+      - check-success=ci / test
+      - check-success=CI Success Gate Success Gate
+      - -conflict
+      - -closed
+      - -draft
+    actions:
+      queue:
+        name: default
+        merge_method: squash
+        update_method: rebase
+
+  # Bot housekeeping PRs (CI configs, formatting) queue when CI passes
+  - name: Queue bot housekeeping PRs
+    conditions:
+      - or:
+          - author=trunk-io[bot]
+          - author=mergify[bot]
+          - author=github-actions[bot]
+      - check-success=ci / lint
+      - check-success=ci / test
+      - check-success=CI Success Gate Success Gate
+      - -conflict
+      - -closed
+      - -draft
+    actions:
+      queue:
+        name: default
+        merge_method: squash
+        update_method: rebase
+
+  # Label PRs based on changed files
+  - name: Label Python changes
+    conditions:
+      - files~=\\.py$
+    actions:
+      label:
+        add:
+          - python
+
+  - name: Label Rust changes
+    conditions:
+      - files~=\\.rs$|Cargo\\.
+    actions:
+      label:
+        add:
+          - rust
+
+  - name: Label Go changes
+    conditions:
+      - files~=\\.go$|go\\.
+    actions:
+      label:
+        add:
+          - go
+
+  - name: Label TypeScript changes
+    conditions:
+      - files~=\\.ts$|\\.tsx$|package\\.json
+    actions:
+      label:
+        add:
+          - typescript
+
+  # Flag conflicts so they leave the queue path until rebased
+  - name: Flag conflicts for rebase
+    conditions:
+      - conflict
+    actions:
+      label:
+        add:
+          - needs-rebase
+        remove:
+          - automerge
+
+  # Close stale PRs after 30 days
+  - name: Close stale PRs
+    conditions:
+      - -closed
+      - -draft
+      - updated-at < 30 days ago
+      - "#review-requested=0"
+    actions:
+      comment:
+        message: >
+          This PR has been automatically closed after 30 days of inactivity.
+          Feel free to reopen if still relevant.
+      close: {}
+
+  # Warn on large PRs
+  - name: Warn on large PRs
+    conditions:
+      - -closed
+      - -draft
+      - "#files>20"
+    actions:
+      comment:
+        message: >
+          **Large PR Alert**: This PR touches {{ number }} files.
+          Consider splitting into smaller PRs for easier review.
+
+  # Add ready-to-merge label when all gate checks pass (current check names)
+  - name: Add ready-to-merge label
+    conditions:
+      - -closed
+      - -draft
+      - check-success=ci / lint
+      - check-success=ci / test
+      - check-success=ci / lint
+      - check-success=ci / test
+      - check-success=CI Success Gate Success Gate
+    actions:
+      label:
+        add:
+          - ready-to-merge
+
+  # Clean up merged branches
+  - name: Delete head branch after merge
+    conditions:
+      - merged
+    actions:
+      delete_head_branch: {}
