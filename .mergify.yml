@@ -30,8 +30,6 @@ pull_request_rules:
     actions:
       queue:
         name: default
-        merge_method: squash
-        update_method: rebase
 
   # Dependency updates queue themselves once CI is green
   - name: Queue dependency updates
@@ -48,8 +46,6 @@ pull_request_rules:
     actions:
       queue:
         name: default
-        merge_method: squash
-        update_method: rebase
 
   # Bot housekeeping PRs (CI configs, formatting) queue when CI passes
   - name: Queue bot housekeeping PRs
@@ -67,8 +63,6 @@ pull_request_rules:
     actions:
       queue:
         name: default
-        merge_method: squash
-        update_method: rebase
 
   # Label PRs based on changed files
   - name: Label Python changes
