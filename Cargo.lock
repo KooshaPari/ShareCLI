@@ -5116,8 +5116,11 @@ version = "0.8.0"
 dependencies = [
  "anyhow",
  "dirs",
+ "libloading",
  "serde_json",
+ "serial_test",
  "sharecli",
+ "tempfile",
  "tokio",
 ]
 
