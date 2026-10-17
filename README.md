@@ -33,10 +33,10 @@ Core crates:
 | `sharecli-fleet` | Fleet registry + thermal governor                     |
 
 Harbor / agent-eval soft harness lives **outside** this repo: suite-facing
-stubs in [`phenotype-tooling/crates/benchora`](https://github.com/KooshaPari/phenotype-tooling)
-(`harbor-soft/`); Harbor fork/env in
-[`portage-temp`](https://github.com/KooshaPari/portage-temp) (standing home
-while `portage` awaits GH restore). See [ADR 0002](docs/adr/0002-eval-surface-out-of-scope.md).
+stubs in the upstream `phenotype-tooling/benchora` crate (formerly under
+`KooshaPari/phenotype-tooling`, now archived) and the Harbor fork/env under
+the previous `portage-temp` placeholder (work moved; that URL is no longer
+maintained). See [ADR 0002](docs/adr/0002-eval-surface-out-of-scope.md).
 
 The CLI also ships a declarative supervisor surface (TOML config, hot-reload,
 HTTP health/metrics, tray/dashboard, plugins) for process lifecycle on top of
@@ -60,7 +60,7 @@ cargo binstall sharecli
 ```
 
 Homebrew formula lives at `Formula/sharecli.rb` (version tracks `Cargo.toml` /
-latest tag `v0.3.0`). Bottle `sha256` is filled for `v0.3.0` darwin — see
+latest tag `v1.0.0`). Bottle `sha256` is filled for `v1.0.0` darwin — see
 [`docs/ops/brew-bottle.md`](docs/ops/brew-bottle.md) and [`docs/deploy.md`](docs/deploy.md).
 
 ```bash
@@ -267,7 +267,7 @@ config_path   = "./sharecli.toml"
 
 [notifications]
 desktop       = true
-webhook_url   = "https://example.com/sharecli-hook"
+# webhook_url   = ""  # set to your HTTPS endpoint to receive webhook events
 webhook_secret = "env:SHARECLI_WEBHOOK_SECRET"  # HMAC-SHA256 signing key
 
 [healthcheck]
