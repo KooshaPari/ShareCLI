@@ -113,7 +113,30 @@ pub extern "C" fn sharecli_health_json() -> *mut c_char {
 }
 
 /// Send an arbitrary JSON-RPC request string, return the response JSON string.
-/// Caller frees the returned string with `sharecli_free_string`.
+///
+/// Builds and dispatches a single JSON-RPC 2.0 request to the daemon and
+/// returns the raw JSON response. The transport is fire-and-await: no
+/// streaming, no subscriptions, and no retries. On the first byte boundary
+/// failure the call returns `NULL` and the caller should treat the daemon
+/// as unreachable.
+///
+/// # Arguments
+///
+/// - `request_json` — fully-formed JSON-RPC 2.0 envelope (id, method, params)
+///   serialized to a single-line JSON string. Required; `NULL` is treated as
+///   a malformed request.
+///
+/// # Returns
+///
+/// A heap-allocated, null-terminated JSON string on success (the response
+/// body), or `NULL` if the call could not be dispatched or decoded. The
+/// returned string must be released with [`sharecli_free_string`].
+///
+/// # Safety
+///
+/// `request_json` must be either `NULL` or a valid null-terminated C string
+/// whose contents are valid UTF-8 JSON. The library copies the string
+/// before returning, so callers may free it as soon as the call completes.
 #[no_mangle]
 pub extern "C" fn sharecli_request(request_json: *const c_char) -> *mut c_char {
     if request_json.is_null() {
@@ -165,7 +188,28 @@ pub extern "C" fn sharecli_request(request_json: *const c_char) -> *mut c_char {
 
 /// GET an HTTP URL from the tray (e.g. `http://127.0.0.1:9000/healthz`), injecting
 /// W3C `traceparent` when the operator env or active OTel context provides one.
-/// Returns the response body (must free with `sharecli_free_string`) or null on error.
+///
+/// Used by tray clients to fetch a dashboard fragment while propagating a W3C
+/// `TRACEPARENT` header so the request joins the same trace as the calling
+/// client. The full URL is required; the request runs to completion or fails.
+///
+/// # Arguments
+///
+/// - `url` — Absolute HTTP URL to GET (e.g. `"http://127.0.0.1:9000/healthz"`).
+///   Required; `NULL` returns `NULL`. The library logs to `stderr` and
+///   returns `NULL` when the URL is not valid UTF-8.
+///
+/// # Returns
+///
+/// A heap-allocated, null-terminated response body on success, or `NULL` if
+/// the URL is missing, the tray HTTP layer rejected the request, or the
+/// response contained an interior NUL. The returned string must be released
+/// with [`sharecli_free_string`].
+///
+/// # Safety
+///
+/// `url` must be either `NULL` or a valid null-terminated C string. UTF-8
+/// is required; non-UTF-8 input is reported on `stderr` and rejected.
 #[no_mangle]
 pub extern "C" fn sharecli_serve_get(url: *const c_char) -> *mut c_char {
     if url.is_null() {
