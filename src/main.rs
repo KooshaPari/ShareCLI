@@ -1277,15 +1277,16 @@ fn session_cmd(cmd: &SessionCmd) -> Result<()> {
                 if *execute { executor.execute(&sessions) } else { executor.dry_run(&sessions) };
             serde_json::to_value(results)?
         }
-        SessionCmd::Observe { .. } => unreachable!("observe handled before service dispatch"),
-        SessionCmd::LayoutSave { .. } => {
-            unreachable!("layout save handled before service dispatch")
-        }
-        SessionCmd::LayoutList { .. } | SessionCmd::LayoutInspect { .. } => {
-            unreachable!("layout operation handled before service dispatch")
-        }
-        SessionCmd::Register { .. } => unreachable!("register handled before service dispatch"),
-        SessionCmd::Watch { .. } => unreachable!("watch handled before service dispatch"),
+        SessionCmd::Observe { .. }
+        | SessionCmd::LayoutSave { .. }
+        | SessionCmd::LayoutList { .. }
+        | SessionCmd::LayoutInspect { .. }
+        | SessionCmd::Register { .. }
+        | SessionCmd::Watch { .. } => unreachable!(
+            "SessionCmd variant is dispatched via `if let` early-return above; \
+             reaching this match arm means a new SessionCmd variant was added \
+             without adding its `if let` arm — please add it to the dispatch block."
+        ),
     };
     println!("{}", serde_json::to_string_pretty(&value)?);
     Ok(())
