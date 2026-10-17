@@ -51,9 +51,16 @@
 //! `cwd` so that identical commands produce the same cache entry regardless
 //! of whether FUSE was active.
 //!
-//! # TODO hooks (follow-up PRs)
-//! - `// TODO(hypervisor): speculative` — pre-execute high-probability commands during
-//!   idle periods and pre-populate the coalesce cache.
+//! # FR-008 — speculative execution & speculative coalesce
+//!
+//! Two complementary mechanisms reduce redundant command execution:
+//!
+//! - [`SpeculationTracker`] (long-running, background) pre-executes
+//!   high-probability commands during idle periods and pre-populates the
+//!   [`CoalesceCache`] so the next real `Hypervisor::run` call is a hit.
+//! - [`SpeculativeCoalescer`] (per-call, request-local) merges concurrent
+//!   identical calls arriving within [`SPECULATIVE_COALESCE_WINDOW`] into
+//!   a single execution that broadcasts the same result to every caller.
 
 pub mod transaction_contract;
 
@@ -89,7 +96,10 @@ pub use sharecli_ipc::{
     CachedResult, CoalesceCache, CoalesceHitKind, CommandKey, QueuePriority, SlotQueue,
     DEFAULT_NOCACHE_ARGS, QUEUE_PRIORITY_ENV,
 };
-pub use speculation::{SpeculationTracker, SPECULATION_THRESHOLD, SPECULATION_WINDOW};
+pub use speculation::{
+    SpeculativeCoalescer, SpeculationTracker, SPECULATIVE_COALESCE_WINDOW, SPECULATION_THRESHOLD,
+    SPECULATION_WINDOW,
+};
 
 // ---------------------------------------------------------------------------
 // Thermal gate — trait + decisions
