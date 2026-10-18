@@ -46,9 +46,6 @@ pub fn parse_chunk_size(line: &str) -> Result<usize, String> {
     if line.is_empty() {
         return Err("empty chunk size line".into());
     }
-    let end = line
-        .find(';')
-        .map(|i| line[..i].trim())
-        .unwrap_or(line);
+    let end = line.find(';').map(|i| line[..i].trim()).unwrap_or(line);
     usize::from_str_radix(end, 16).map_err(|e| format!("bad hex size `{end}`: {e}"))
 }

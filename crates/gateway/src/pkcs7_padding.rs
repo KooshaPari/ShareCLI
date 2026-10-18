@@ -8,7 +8,11 @@ pub const PKCS7_ERR: &str = "invalid PKCS#7 padding";
 
 pub fn required_padding_len(len: usize, block: usize) -> usize {
     let rem = len % block;
-    if rem == 0 { block } else { block - rem }
+    if rem == 0 {
+        block
+    } else {
+        block - rem
+    }
 }
 
 pub fn pad(data: &[u8], block: usize) -> Vec<u8> {

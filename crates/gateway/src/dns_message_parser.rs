@@ -42,10 +42,7 @@ impl std::error::Error for DnsError {}
 
 pub fn parse_header(buf: &[u8]) -> Result<DnsHeader, DnsError> {
     if buf.len() < 12 {
-        return Err(DnsError::TooShort {
-            need: 12,
-            got: buf.len(),
-        });
+        return Err(DnsError::TooShort { need: 12, got: buf.len() });
     }
     Ok(DnsHeader {
         id: u16::from_be_bytes([buf[0], buf[1]]),
@@ -74,7 +71,8 @@ pub fn parse_question(buf: &[u8], offset: usize) -> Result<(Question, usize), Dn
         if i + len > buf.len() {
             return Err(DnsError::BadLabel { at: i });
         }
-        labels.push(std::str::from_utf8(&buf[i..i + len]).map_err(|_| DnsError::BadLabel { at: i })?);
+        labels
+            .push(std::str::from_utf8(&buf[i..i + len]).map_err(|_| DnsError::BadLabel { at: i })?);
         i += len;
     }
     if i + 4 > buf.len() {
@@ -83,14 +81,7 @@ pub fn parse_question(buf: &[u8], offset: usize) -> Result<(Question, usize), Dn
     let qtype = u16::from_be_bytes([buf[i], buf[i + 1]]);
     let qclass = u16::from_be_bytes([buf[i + 2], buf[i + 3]]);
     i += 4;
-    Ok((
-        Question {
-            qname: labels.join("."),
-            qtype,
-            qclass,
-        },
-        i - offset,
-    ))
+    Ok((Question { qname: labels.join("."), qtype, qclass }, i - offset))
 }
 
 /// Inverse of `parse_question`: encode a qname + qtype + qclass into a buffer.

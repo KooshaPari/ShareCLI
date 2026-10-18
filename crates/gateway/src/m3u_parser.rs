@@ -15,19 +15,11 @@ pub struct M3uEntry {
 
 impl M3uEntry {
     fn path(uri: String) -> Self {
-        M3uEntry {
-            duration_secs: None,
-            title: None,
-            uri,
-        }
+        M3uEntry { duration_secs: None, title: None, uri }
     }
 
     fn extinf(duration: f64, title: String, uri: String) -> Self {
-        M3uEntry {
-            duration_secs: Some(duration),
-            title: Some(title),
-            uri,
-        }
+        M3uEntry { duration_secs: Some(duration), title: Some(title), uri }
     }
 }
 

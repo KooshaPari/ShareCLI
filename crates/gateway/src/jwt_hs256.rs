@@ -31,10 +31,7 @@ pub fn encode_hs256(header: &str, payload: &str, key: &[u8]) -> String {
 }
 
 /// Verify a JWT and return `(header_str, payload_str)` on success.
-pub fn verify_hs256(
-    token: &str,
-    key: &[u8],
-) -> Result<(String, String), &'static str> {
+pub fn verify_hs256(token: &str, key: &[u8]) -> Result<(String, String), &'static str> {
     let parts: Vec<&str> = token.split('.').collect();
     if parts.len() != 3 {
         return Err("invalid token shape (expected 3 parts)");

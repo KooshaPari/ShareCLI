@@ -23,11 +23,7 @@ impl Histogram {
         let mut sorted: Vec<f64> = boundaries.to_vec();
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
         let n = sorted.len();
-        Histogram {
-            boundaries: sorted,
-            counts: vec![0; n],
-            observations: Vec::new(),
-        }
+        Histogram { boundaries: sorted, counts: vec![0; n], observations: Vec::new() }
     }
 
     pub fn record(&mut self, value: f64) {
@@ -44,10 +40,7 @@ impl Histogram {
     /// Used by the Prometheus exposition layer to emit one `_bucket{le=…}`
     /// sample per boundary, plus the `+Inf` bucket which equals the total.
     pub fn snapshot(&self) -> impl Iterator<Item = (f64, u64)> + '_ {
-        self.boundaries
-            .iter()
-            .copied()
-            .zip(self.counts.iter().copied())
+        self.boundaries.iter().copied().zip(self.counts.iter().copied())
     }
 
     /// Total observations (including those that fell into `+Inf`).

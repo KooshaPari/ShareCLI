@@ -62,7 +62,9 @@ pub enum TlsError {
 impl fmt::Display for TlsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TlsError::TooShort { need, got } => write!(f, "tls: too short (need {need}, got {got})"),
+            TlsError::TooShort { need, got } => {
+                write!(f, "tls: too short (need {need}, got {got})")
+            }
             TlsError::UnknownContentType(b) => write!(f, "tls: unknown content type {b}"),
             TlsError::BadLength { declared, available } => {
                 write!(f, "tls: declared len {declared} > available {available}")
@@ -82,32 +84,24 @@ pub struct TlsRecord<'a> {
 
 pub fn parse_record(buf: &[u8]) -> Result<TlsRecord<'_>, TlsError> {
     if buf.len() < 5 {
-        return Err(TlsError::TooShort {
-            need: 5,
-            got: buf.len(),
-        });
+        return Err(TlsError::TooShort { need: 5, got: buf.len() });
     }
     let ct = ContentType::from_byte(buf[0]).ok_or(TlsError::UnknownContentType(buf[0]))?;
-    let version = ProtocolVersion {
-        major: buf[1],
-        minor: buf[2],
-    };
+    let version = ProtocolVersion { major: buf[1], minor: buf[2] };
     let len = u16::from_be_bytes([buf[3], buf[4]]) as usize;
     if buf.len() < 5 + len {
-        return Err(TlsError::BadLength {
-            declared: len,
-            available: buf.len() - 5,
-        });
+        return Err(TlsError::BadLength { declared: len, available: buf.len() - 5 });
     }
-    Ok(TlsRecord {
-        content_type: ct,
-        version,
-        payload: &buf[5..5 + len],
-    })
+    Ok(TlsRecord { content_type: ct, version, payload: &buf[5..5 + len] })
 }
 
 /// Append a record header + payload to `buf`. The payload is copied.
-pub fn write_record(kind: ContentType, version: ProtocolVersion, payload: &[u8], buf: &mut Vec<u8>) {
+pub fn write_record(
+    kind: ContentType,
+    version: ProtocolVersion,
+    payload: &[u8],
+    buf: &mut Vec<u8>,
+) {
     buf.push(kind.to_byte());
     buf.push(version.major);
     buf.push(version.minor);
