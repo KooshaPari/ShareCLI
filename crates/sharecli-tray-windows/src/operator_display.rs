@@ -27,6 +27,7 @@ pub struct TrayGateVisual {
     pub swift_symbol_name: &'static str,
 }
 
+/// Map `gate_decision` → dashboard gate CSS class (AC-007.41 / AC-007.57).
 pub fn resolve_gate_decision_class(gate_decision: &str) -> &'static str {
     match gate_decision {
         "ADMIT" => "gate-admit",
@@ -35,6 +36,7 @@ pub fn resolve_gate_decision_class(gate_decision: &str) -> &'static str {
     }
 }
 
+/// Map `thermal_pressure` → dashboard `#thermal-status` CSS suffix.
 pub fn resolve_thermal_class(thermal_pressure: &str) -> &'static str {
     match thermal_pressure {
         "GREEN" => "",
@@ -44,6 +46,7 @@ pub fn resolve_thermal_class(thermal_pressure: &str) -> &'static str {
     }
 }
 
+/// Resolve tray icon/badge/color from live gate fields (AC-007.57).
 pub fn resolve_tray_gate_visual(
     thermal_pressure: &str,
     gate_decision: &str,
@@ -97,6 +100,7 @@ pub fn resolve_tray_gate_visual(
     }
 }
 
+/// Convenience: derive visuals from a gate snapshot + IPC connectivity.
 pub fn resolve_tray_gate_visual_from_gate(
     gate: &GateStatusSnapshot,
     connected: bool,

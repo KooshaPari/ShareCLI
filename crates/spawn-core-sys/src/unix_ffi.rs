@@ -55,13 +55,22 @@ pub struct SpawnParams {
 }
 
 extern "C" {
+    /// Allocate a new Zig counting semaphore with `max` permits.
     pub fn spc_semaphore_new(max: usize) -> *mut std::ffi::c_void;
+    /// Acquire one permit, blocking until a slot is free.
     pub fn spc_semaphore_acquire(ptr: *mut std::ffi::c_void) -> c_int;
+    /// Try to acquire one permit without blocking.
+    /// Returns 1 if no permit was available (not an error).
     pub fn spc_semaphore_try_acquire(ptr: *mut std::ffi::c_void) -> c_int;
+    /// Release one permit, waking a waiter if any.
     pub fn spc_semaphore_release(ptr: *mut std::ffi::c_void) -> c_int;
+    /// Return the approximate number of available permits.
     pub fn spc_semaphore_available(ptr: *mut std::ffi::c_void) -> usize;
+    /// Free a semaphore previously allocated with `spc_semaphore_new`.
     pub fn spc_semaphore_destroy(ptr: *mut std::ffi::c_void);
+    /// Spawn a child process per `SpawnParams`. Returns child PID (>0) on success.
     pub fn spc_spawn(params: *const SpawnParams) -> c_int;
+    /// Wait for child `pid` to exit. Returns exit status (0-255).
     pub fn spc_waitpid(pid: c_int) -> c_int;
 }
 

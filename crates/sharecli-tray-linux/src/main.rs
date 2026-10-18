@@ -253,6 +253,7 @@ mod linux {
         }
     }
 
+    /// Launch the tray binary: configure tracing, spawn the SNI icon, and run the event loop.
     pub fn run() {
         tracing_subscriber::fmt()
             .with_env_filter(

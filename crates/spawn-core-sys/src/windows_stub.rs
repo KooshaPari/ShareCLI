@@ -41,11 +41,13 @@ pub struct ZigSemaphore {
 }
 
 impl ZigSemaphore {
+    /// Construct a semaphore with `max` permits (clamped to at least 1).
     pub fn new(max: usize) -> Self {
         let max = max.max(1);
         Self { inner: Mutex::new(SemInner { available: max, max }), cond: Condvar::new() }
     }
 
+    /// Acquire one permit, blocking until a slot is free.
     pub fn acquire(&self) -> Result<(), Error> {
         let mut guard = self.inner.lock().map_err(|_| Error::other("semaphore mutex poisoned"))?;
         while guard.available == 0 {
@@ -56,6 +58,8 @@ impl ZigSemaphore {
         Ok(())
     }
 
+    /// Try to acquire one permit without blocking.
+    /// Returns `Ok(true)` on success, `Ok(false)` if the semaphore is full.
     pub fn try_acquire(&self) -> Result<bool, Error> {
         let mut guard = self.inner.lock().map_err(|_| Error::other("semaphore mutex poisoned"))?;
         if guard.available == 0 {
@@ -65,6 +69,7 @@ impl ZigSemaphore {
         Ok(true)
     }
 
+    /// Release one permit, waking a waiter if any. No-op when already at max.
     pub fn release(&self) -> Result<(), Error> {
         let mut guard = self.inner.lock().map_err(|_| Error::other("semaphore mutex poisoned"))?;
         if guard.available < guard.max {
@@ -74,6 +79,7 @@ impl ZigSemaphore {
         Ok(())
     }
 
+    /// Return the approximate number of available permits (0 on poisoned lock).
     pub fn available(&self) -> usize {
         self.inner.lock().map(|g| g.available).unwrap_or(0)
     }
