@@ -102,6 +102,3 @@ pub use thermal_gate::{
     ThermalDecision, ThermalGate, THERMAL_MAX_RETRIES, THERMAL_RETRY_SLEEP,
 };
 pub use types::{HypervisorConfig, SpawnOutcome, SpawnRequest};
-
-// Re-export `queue_lane_from_argv` for tests / harness-native callers.
-pub(crate) use hypervisor::queue_lane_from_argv;
