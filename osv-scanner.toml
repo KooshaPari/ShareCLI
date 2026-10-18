@@ -19,35 +19,31 @@ reason = "Informational 'unmaintained' advisory for the paste crate. paste 1.0.1
 # backend exclusively; glib 0.18.5's patched version is 0.20.0, a breaking
 # release that gtk 0.18.2 does not accept, so there is no non-breaking upgrade.
 [[IgnoredVulns]]
-id = "RUSTSEC-2024-0413"
-reason = "gtk-rs 0.18 family, Linux-only gtk backend of tray-icon; not compiled or shipped by sharecli (Linux tray uses ksni). Dead platform-gated code."
-[[IgnoredVulns]]
-id = "RUSTSEC-2024-0416"
-reason = "gtk-rs 0.18 family, Linux-only gtk backend of tray-icon; not compiled or shipped by sharecli (Linux tray uses ksni). Dead platform-gated code."
-[[IgnoredVulns]]
-id = "RUSTSEC-2024-0412"
-reason = "gtk-rs 0.18 family, Linux-only gtk backend of tray-icon; not compiled or shipped by sharecli (Linux tray uses ksni). Dead platform-gated code."
-[[IgnoredVulns]]
-id = "RUSTSEC-2024-0418"
-reason = "gtk-rs 0.18 family, Linux-only gtk backend of tray-icon; not compiled or shipped by sharecli (Linux tray uses ksni). Dead platform-gated code."
-[[IgnoredVulns]]
-id = "RUSTSEC-2024-0429"
-reason = "gtk-rs 0.18 family (glib). Linux-only gtk backend of tray-icon; not compiled/shipped. Patched 0.20.0 is a breaking release gtk 0.18.2 cannot accept; no non-breaking upgrade."
-[[IgnoredVulns]]
 id = "GHSA-wrw7-89jp-8q8g"
 reason = "gtk-rs 0.18 family, Linux-only gtk backend of tray-icon (glib advisory); not compiled or shipped by sharecli (Linux tray uses ksni). Dead platform-gated code."
 [[IgnoredVulns]]
-id = "RUSTSEC-2024-0415"
-reason = "gtk-rs 0.18 family, Linux-only gtk backend of tray-icon; not compiled or shipped by sharecli (Linux tray uses ksni). Dead platform-gated code."
-[[IgnoredVulns]]
-id = "RUSTSEC-2024-0420"
-reason = "gtk-rs 0.18 family, Linux-only gtk backend of tray-icon; not compiled or shipped by sharecli (Linux tray uses ksni). Dead platform-gated code."
-[[IgnoredVulns]]
-id = "RUSTSEC-2024-0419"
-reason = "gtk-rs 0.18 family (gtk3-macros), Linux-only gtk backend of tray-icon; not compiled or shipped by sharecli (Linux tray uses ksni). Dead platform-gated code."
-[[IgnoredVulns]]
 id = "RUSTSEC-2024-0370"
 reason = "gtk-rs 0.18 family (proc-macro-error via gtk3-macros), Linux-only gtk backend of tray-icon; a build-time transitive that is not compiled or shipped by sharecli (Linux tray uses ksni). Dead platform-gated code."
+
+# zbus_names/zvariant/zvariant_derive (libayatana-appindicator backend of
+# tray-icon's libappindicator feature, Linux-only). INFO unmaintained
+# advisories; all three crates merged into zbus 6.0.0. Migrating requires
+# a tray-icon bump (current 0.25 does not accept zbus 6.x) and is tracked
+# as a follow-up. Same exception pattern as RUSTSEC-2024-0449.
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0370"
+ignoreUntil = 2026-11-15
+reason = "INFO unmaintained advisory for zvariant; merged into zbus 6.0.0 as the wire module. Migrating requires a tray-icon bump (current 0.25 does not accept zbus 6.x) and is tracked as a follow-up; this exception expires in 30 days to force re-triage."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0371"
+ignoreUntil = 2026-11-15
+reason = "INFO unmaintained advisory for zbus_names; merged into zbus 6.0.0 as the names module. Migrating requires a tray-icon bump (current 0.25 does not accept zbus 6.x) and is tracked as a follow-up; this exception expires in 30 days to force re-triage."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0372"
+ignoreUntil = 2026-11-15
+reason = "INFO unmaintained advisory for zvariant_derive; merged into zbus 6.0.0 as derive macros. Migrating requires a tray-icon bump (current 0.25 does not accept zbus 6.x) and is tracked as a follow-up; this exception expires in 30 days to force re-triage."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0449"
