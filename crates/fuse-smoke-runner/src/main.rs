@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `fuse-smoke` CLI — OS×arch privileged FUSE mount-smoke matrix (AC-009.22+).
 
 use std::process::ExitCode;

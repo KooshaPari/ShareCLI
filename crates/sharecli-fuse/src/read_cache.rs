@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! In-process read content cache keyed by path + mtime (FR-009 coalesce).
 
 use std::{

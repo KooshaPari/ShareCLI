@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C09 L81.7 — indicatif progress bars with ETA for long batch CLI operations.
 //!
 //! Progress renders to stderr when stderr is a TTY and the batch has at least

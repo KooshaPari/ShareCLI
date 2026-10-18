@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-003 acceptance gates for C07 L67 — Fuzz harness
 //!
 //! These tests assert that the fuzz infrastructure is properly set up,

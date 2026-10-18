@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FUSE inode ↔ relative-path map for passthrough InterceptFs.
 
 use std::{

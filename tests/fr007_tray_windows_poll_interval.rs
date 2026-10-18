@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — Windows tray periodic poll parity (AC-007.52)
 //! FR: FR-007
 //!

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — Windows tray process grid harness column parity (AC-007.55)
 //! FR: FR-007
 //!

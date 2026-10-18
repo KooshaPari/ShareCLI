@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Monitoring and health check functionality
 // These types are a stub reserved for future dashboard integration; none are
 // wired into the binary yet.  Suppress dead_code for the whole module rather

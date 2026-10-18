@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Pane registry — a TOML-backed name → `PaneAddress` map.
 //!
 //! Persisted to `<sharecli-config-dir>/cast/pane-map.toml` by default; tests

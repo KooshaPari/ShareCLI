@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C10 L105 — dashboard hex tokens stay locked to assets/tokens.css / VISUAL_SPEC.
 //! FR: FR-003
 //!

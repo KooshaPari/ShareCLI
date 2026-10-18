@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Request dispatch for the IPC server.
 //!
 //! Methods exposed:

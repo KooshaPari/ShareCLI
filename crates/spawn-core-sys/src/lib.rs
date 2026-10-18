@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FFI / platform bindings for `spawn_core`.
 //!
 //! * **Unix** — links the Zig static library (`fork` / `posix_spawn` / pthread).

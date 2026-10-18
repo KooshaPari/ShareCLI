@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR: FR-001
 //!
 //! Integration tests for the public API of `sharecli_core::transaction_contract`.

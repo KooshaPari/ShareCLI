@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Minimal DNS packet parser: 12-byte header + a single question section.
 //!
 //! Used by `gateway-tools dns` for parse + print. The full RFC-1035 surface

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C10 L100 — designed empty / zero-data states with actionable CTAs.
 //! FR: FR-003
 

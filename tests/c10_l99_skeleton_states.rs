@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C10 L99 — designed loading / skeleton states for async dashboard views.
 //! FR: FR-003
 

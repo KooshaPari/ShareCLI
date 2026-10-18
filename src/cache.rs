@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `sharecli mesh …` — Maildir task-queue operator surface (FR-010).
 //!
 //! Exposes [`MaildirQueue::status`] and [`MaildirQueue::reclaim_owner`] so

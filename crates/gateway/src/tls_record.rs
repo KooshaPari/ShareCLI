@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! TLS 1.x record parse + write helpers. Parses one record header
 //! (`type || version || length`) and returns a view onto the payload bytes.
 
