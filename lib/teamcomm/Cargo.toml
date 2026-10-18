@@ -16,6 +16,7 @@ edition = "2021"
 rust-version = "1.75"
 repository = "https://github.com/KooshaPari/phenotype-teamcomm"
 authors = ["kooshapari"]
+description = "teamcomm — multi-agent coordination protocol (sessions, threads, reservations, RPC)"
 
 [workspace.dependencies]
 serde = { version = "1.0", features = ["derive"] }
