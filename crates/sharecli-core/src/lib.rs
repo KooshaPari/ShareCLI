@@ -97,8 +97,8 @@ pub use sharecli_ipc::{
     DEFAULT_NOCACHE_ARGS, QUEUE_PRIORITY_ENV,
 };
 pub use speculation::{
-    SpeculativeCoalescer, SpeculationTracker, SPECULATIVE_COALESCE_WINDOW, SPECULATION_THRESHOLD,
-    SPECULATION_WINDOW,
+    SpeculationTracker, SpeculativeCoalescer, SPECULATION_THRESHOLD, SPECULATION_WINDOW,
+    SPECULATIVE_COALESCE_WINDOW,
 };
 
 // ---------------------------------------------------------------------------

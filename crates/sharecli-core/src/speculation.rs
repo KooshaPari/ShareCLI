@@ -294,8 +294,9 @@ impl SpeculativeCoalescer {
             });
         }
 
-        rx.await
-            .map_err(|_| anyhow!("speculative coalesce: executor task dropped before delivering result"))?
+        rx.await.map_err(|_| {
+            anyhow!("speculative coalesce: executor task dropped before delivering result")
+        })?
     }
 }
 
@@ -753,12 +754,10 @@ mod tests {
     }
 
     /// Helper: an `exec` closure that returns `Err`.
-    fn exec_err()
-    -> impl FnOnce() -> std::pin::Pin<Box<dyn Future<Output = Result<CachedResult>> + Send + 'static>>
+    fn exec_err(
+    ) -> impl FnOnce() -> std::pin::Pin<Box<dyn Future<Output = Result<CachedResult>> + Send + 'static>>
     {
-        || {
-            Box::pin(async move { Err(anyhow!("intentional exec failure")) })
-        }
+        || Box::pin(async move { Err(anyhow!("intentional exec failure")) })
     }
 
     #[test]
@@ -783,18 +782,9 @@ mod tests {
         // All three callers reference the same `SpeculativeCoalescer` via
         // `&self` — `coalesce` does NOT consume the receiver.
         let (r1, r2, r3) = tokio::join!(
-            coalescer.coalesce(
-                &key,
-                exec_ok(Arc::clone(&counter), "shared-payload"),
-            ),
-            coalescer.coalesce(
-                &key,
-                exec_ok(Arc::clone(&counter), "different-payload"),
-            ),
-            coalescer.coalesce(
-                &key,
-                exec_ok(Arc::clone(&counter), "another-payload"),
-            ),
+            coalescer.coalesce(&key, exec_ok(Arc::clone(&counter), "shared-payload"),),
+            coalescer.coalesce(&key, exec_ok(Arc::clone(&counter), "different-payload"),),
+            coalescer.coalesce(&key, exec_ok(Arc::clone(&counter), "another-payload"),),
         );
 
         let r1 = r1.expect("r1 ok");
@@ -824,20 +814,16 @@ mod tests {
 
         // First cycle — runs once.
         let cnt1 = Arc::clone(&counter);
-        let r1 = coalescer
-            .coalesce(&key, exec_ok(Arc::clone(&cnt1), "cycle-1"))
-            .await
-            .expect("r1 ok");
+        let r1 =
+            coalescer.coalesce(&key, exec_ok(Arc::clone(&cnt1), "cycle-1")).await.expect("r1 ok");
 
         // Yield to give the spawned executor task a chance to drain.
         tokio::time::sleep(Duration::from_millis(20)).await;
 
         // Second cycle — must run a fresh executor.
         let cnt2 = Arc::clone(&counter);
-        let r2 = coalescer
-            .coalesce(&key, exec_ok(Arc::clone(&cnt2), "cycle-2"))
-            .await
-            .expect("r2 ok");
+        let r2 =
+            coalescer.coalesce(&key, exec_ok(Arc::clone(&cnt2), "cycle-2")).await.expect("r2 ok");
 
         assert_eq!(r1.stdout, b"cycle-1");
         assert_eq!(r2.stdout, b"cycle-2");
@@ -857,15 +843,11 @@ mod tests {
         let key_b = CommandKey("key-b".into());
 
         let cnt = Arc::clone(&counter);
-        let r_a = coalescer
-            .coalesce(&key_a, exec_ok(Arc::clone(&cnt), "payload-a"))
-            .await
-            .expect("r_a");
+        let r_a =
+            coalescer.coalesce(&key_a, exec_ok(Arc::clone(&cnt), "payload-a")).await.expect("r_a");
         let cnt = Arc::clone(&counter);
-        let r_b = coalescer
-            .coalesce(&key_b, exec_ok(Arc::clone(&cnt), "payload-b"))
-            .await
-            .expect("r_b");
+        let r_b =
+            coalescer.coalesce(&key_b, exec_ok(Arc::clone(&cnt), "payload-b")).await.expect("r_b");
 
         assert_eq!(r_a.stdout, b"payload-a");
         assert_eq!(r_b.stdout, b"payload-b");
@@ -903,17 +885,10 @@ mod tests {
         let coalescer = test_coalescer();
         let key = CommandKey("lifecycle".into());
 
-        assert_eq!(
-            coalescer.pending_len().await,
-            0,
-            "fresh coalescer MUST have no pending"
-        );
+        assert_eq!(coalescer.pending_len().await, 0, "fresh coalescer MUST have no pending");
 
         let cnt = Arc::new(AtomicU32::new(0));
-        let r = coalescer
-            .coalesce(&key, exec_ok(cnt, "lifecycle"))
-            .await
-            .expect("ok");
+        let r = coalescer.coalesce(&key, exec_ok(cnt, "lifecycle")).await.expect("ok");
         assert_eq!(r.stdout, b"lifecycle");
 
         // After the cycle completes, the pending group MUST be drained.
@@ -976,9 +951,7 @@ mod tests {
             let c = Arc::clone(&coalescer);
             let k = key.clone();
             let cnt = Arc::clone(&counter);
-            handles.push(tokio::spawn(async move {
-                c.coalesce(&k, exec_ok(cnt, "stress")).await
-            }));
+            handles.push(tokio::spawn(async move { c.coalesce(&k, exec_ok(cnt, "stress")).await }));
         }
 
         for handle in handles {
