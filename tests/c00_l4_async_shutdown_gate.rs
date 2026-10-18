@@ -28,7 +28,10 @@ fn c00_l4_serve_uses_graceful_shutdown() {
         serve_rs.contains("with_graceful_shutdown"),
         "serve module must call axum::serve with_graceful_shutdown"
     );
-    assert!(serve_rs.contains("serve_shutdown_signal"), "serve module must wire serve_shutdown_signal");
+    assert!(
+        serve_rs.contains("serve_shutdown_signal"),
+        "serve module must wire serve_shutdown_signal"
+    );
     assert!(
         serve_rs.contains("thermal_cancel"),
         "serve module must fan out CancellationToken to thermal poller"
