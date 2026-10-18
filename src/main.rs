@@ -327,7 +327,7 @@ enum Commands {
         watch: Option<u64>,
     },
 
-    /// Run using pooled runtime
+    /// Pooled execution (currently unavailable; returns an error without executing work)
     Run {
         /// Harness type (node, bun)
         #[arg(required = true)]
