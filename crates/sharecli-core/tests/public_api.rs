@@ -122,11 +122,8 @@ fn spawn_outcome_remap_fuse_path_returns_none_without_intercept() {
 
 #[test]
 fn cached_result_into_spawn_outcome_sets_from_cache_true() {
-    let cached = CachedResult {
-        exit_code: 42,
-        stdout: b"hello".to_vec(),
-        stderr: b"warn".to_vec(),
-    };
+    let cached =
+        CachedResult { exit_code: 42, stdout: b"hello".to_vec(), stderr: b"warn".to_vec() };
     let outcome: SpawnOutcome = cached.into();
     assert_eq!(outcome.exit_code, 42);
     assert_eq!(outcome.stdout, b"hello");

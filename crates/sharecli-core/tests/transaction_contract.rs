@@ -191,10 +191,7 @@ fn shared_producer_join_inserts_consumer_when_eligible() {
 #[test]
 fn shared_producer_join_rejects_stale_generation() {
     let mut producer = SharedProducer::new(4);
-    assert_eq!(
-        producer.join(3, "human-a", true, true, true),
-        Err(GuardError::StaleGeneration)
-    );
+    assert_eq!(producer.join(3, "human-a", true, true, true), Err(GuardError::StaleGeneration));
 }
 
 #[test]
@@ -203,28 +200,16 @@ fn shared_producer_join_rejects_stopping_state() {
     producer.join(4, "human-a", true, true, true).expect("first join");
     // Detach to drive the producer to Stopping (single consumer).
     let _ = producer.detach(4, "human-a").expect("detach");
-    assert_eq!(
-        producer.join(4, "late-agent", true, true, true),
-        Err(GuardError::ProducerStopping)
-    );
+    assert_eq!(producer.join(4, "late-agent", true, true, true), Err(GuardError::ProducerStopping));
 }
 
 #[test]
 fn shared_producer_join_rejects_when_share_not_eligible() {
     let mut producer = SharedProducer::new(4);
     // equivalent=false should fail even with share_allowed + output_authorized.
-    assert_eq!(
-        producer.join(4, "human", false, true, true),
-        Err(GuardError::IneligibleShare)
-    );
-    assert_eq!(
-        producer.join(4, "human", true, false, true),
-        Err(GuardError::IneligibleShare)
-    );
-    assert_eq!(
-        producer.join(4, "human", true, true, false),
-        Err(GuardError::IneligibleShare)
-    );
+    assert_eq!(producer.join(4, "human", false, true, true), Err(GuardError::IneligibleShare));
+    assert_eq!(producer.join(4, "human", true, false, true), Err(GuardError::IneligibleShare));
+    assert_eq!(producer.join(4, "human", true, true, false), Err(GuardError::IneligibleShare));
 }
 
 #[test]
@@ -241,10 +226,7 @@ fn shared_producer_detach_returns_true_when_becoming_empty() {
     let mut producer = SharedProducer::new(4);
     producer.join(4, "human", true, true, true).unwrap();
     assert!(producer.detach(4, "human").unwrap());
-    assert_eq!(
-        producer.state,
-        sharecli_core::transaction_contract::ProducerState::Stopping
-    );
+    assert_eq!(producer.state, sharecli_core::transaction_contract::ProducerState::Stopping);
 }
 
 #[test]
