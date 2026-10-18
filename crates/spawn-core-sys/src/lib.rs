@@ -9,9 +9,11 @@
 #[cfg(unix)]
 mod unix_ffi;
 #[cfg(unix)]
+/// Re-export of the Unix FFI surface (POSIX fork / posix_spawn / pthread).
 pub use unix_ffi::*;
 
 #[cfg(windows)]
 mod windows_stub;
 #[cfg(windows)]
+/// Re-export of the Windows stub surface (working semaphore; spawn returns `Unsupported`).
 pub use windows_stub::*;
