@@ -340,10 +340,7 @@ mod tests {
             "Pool node 4/2 idle · bun 1/0 idle · max 4 · healthy"
         );
 
-        let degraded = crate::ipc::PoolSnapshot {
-            healthy: false,
-            ..pool.clone()
-        };
+        let degraded = crate::ipc::PoolSnapshot { healthy: false, ..pool.clone() };
         assert!(format_pool_tray_line(&degraded).ends_with("· degraded"));
     }
 
