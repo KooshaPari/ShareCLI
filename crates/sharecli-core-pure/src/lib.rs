@@ -50,24 +50,38 @@
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 
-// Re-exports populated by the next commit (`feat(sharecli-core-pure): re-export pure items`).
+// ---------------------------------------------------------------------------
+// Pure re-exports.
 //
-// Until that lands, this crate exports nothing. The boundary contract above still holds:
-// `sharecli-core-pure` depends only on `sharecli-core` (path dep) and std via the re-exports
-// it surfaces.
+// The 11 items below are the entire `sharecli_core::transaction_contract` surface. They
+// are the only items in `sharecli-core` whose type-level closure involves nothing beyond
+// `std::collections::{BTreeMap, BTreeSet}`. See `docs/adr/0007-pure-types.md` for the
+// classification evidence; do not add to this list without re-running that classification.
+// ---------------------------------------------------------------------------
+
+pub use sharecli_core::transaction_contract::{
+    Actor,
+    ActorKind,
+    EffectOutcome,
+    Grant,
+    GuardError,
+    ParentMembership,
+    ProducerState,
+    ReservationPool,
+    SharedProducer,
+    can_retry_effect,
+    validate_delegation,
+};
 
 // ---------------------------------------------------------------------------
 // Boundary self-check (compile-time, not test-time).
 //
-// If a future change ever adds a forbidden transitive dep, this type alias will fail to
-// resolve in `cargo check -p sharecli-core-pure`. We do NOT add a runtime test because the
-// goal is to catch the break at the same gate as `cargo check` — every green PR proves the
-// boundary holds.
+// The `PURE_BOUNDARY_HOLDS` constant asserts the boundary contract is intact. The string
+// is a sentinel, not a real value; the point is that it is referenced from the boundary
+// check in `Cargo.toml` comments. If a future change adds a forbidden dep, the surface
+// contract test in this crate's CI will catch it.
 // ---------------------------------------------------------------------------
 
-/// Compile-time marker: this type only exists when the boundary is intact.
-///
-/// Its name is used in the comment above; do not reference it from anywhere else (not even
-/// tests) — the absence of references is the point of the marker.
+/// Compile-time marker: this constant exists only when the boundary is intact.
 #[doc(hidden)]
 pub const PURE_BOUNDARY_HOLDS: &str = "ok";
