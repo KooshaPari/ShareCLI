@@ -58,9 +58,7 @@ pub fn classify(content: &str) -> bool {
 }
 
 fn session_file(harness_var: &str, ppid: &str) -> PathBuf {
-    Path::new(harness_var)
-        .join("agent_sessions")
-        .join(ppid)
+    Path::new(harness_var).join("agent_sessions").join(ppid)
 }
 
 /// Process-wide memoised result of [`is_agent`]. The first call performs
@@ -74,10 +72,7 @@ static CACHED: OnceLock<bool> = OnceLock::new();
 /// process and cached for the lifetime of the program.
 pub fn is_agent() -> bool {
     *CACHED.get_or_init(|| {
-        detect_from_env(
-            env::var("HARNESS_VAR").ok().as_deref(),
-            env::var("PPID").ok().as_deref(),
-        )
+        detect_from_env(env::var("HARNESS_VAR").ok().as_deref(), env::var("PPID").ok().as_deref())
     })
 }
 
