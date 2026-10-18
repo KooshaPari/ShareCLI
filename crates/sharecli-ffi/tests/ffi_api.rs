@@ -351,8 +351,9 @@ fn ffi_health_json_round_trips_json_response() {
     let raw = unsafe { (ffi().health_json)() };
     let s = unsafe { OwnedFfiString::from_raw(raw) };
     assert!(!s.is_null(), "expected a health JSON string; got NULL");
-    let v: serde_json::Value = serde_json::from_str(s.as_str())
-        .unwrap_or_else(|e| panic!("health_json did not return valid JSON: {e}; body={}", s.as_str()));
+    let v: serde_json::Value = serde_json::from_str(s.as_str()).unwrap_or_else(|e| {
+        panic!("health_json did not return valid JSON: {e}; body={}", s.as_str())
+    });
     assert_eq!(v.get("jsonrpc").and_then(|v| v.as_str()), Some("2.0"));
 }
 
@@ -394,10 +395,7 @@ fn ffi_request_round_trips_arbitrary_json_rpc() {
     });
     wait_for_ready(ready, "unix rpc handler");
     let _g = SocketPathGuard::set("SHARECLI_IPC_SOCK", sock);
-    let payload = CString::new(
-        r#"{"jsonrpc":"2.0","id":42,"method":"tools.list"}"#,
-    )
-    .unwrap();
+    let payload = CString::new(r#"{"jsonrpc":"2.0","id":42,"method":"tools.list"}"#).unwrap();
     let raw = unsafe { (ffi().request)(payload.as_ptr()) };
     let s = unsafe { OwnedFfiString::from_raw(raw) };
     assert!(!s.is_null(), "expected a JSON-RPC response; got NULL");
@@ -440,10 +438,7 @@ fn ffi_serve_get_fetches_local_http_endpoint() {
     let s = unsafe { OwnedFfiString::from_raw(raw) };
     assert!(!s.is_null(), "expected a non-NULL body; got NULL");
     let body = s.as_str();
-    assert!(
-        body.contains("\"status\":\"ok\""),
-        "unexpected body: {body}"
-    );
+    assert!(body.contains("\"status\":\"ok\""), "unexpected body: {body}");
 }
 
 #[test]
@@ -484,10 +479,7 @@ fn ffi_ipc_start_returns_one_when_no_sidecar_and_no_socket() {
     // 1 == "no sidecar available, no pre-existing socket". Anything else
     // (especially a long hang) means the function is trying to spawn
     // something it shouldn't in the test env.
-    assert!(
-        rc == 1 || rc == 0,
-        "ipc_start returned unexpected rc={rc} (elapsed={elapsed:?})"
-    );
+    assert!(rc == 1 || rc == 0, "ipc_start returned unexpected rc={rc} (elapsed={elapsed:?})");
     assert!(
         elapsed < Duration::from_secs(3),
         "ipc_start took too long ({elapsed:?}) — likely a spawn attempt"
