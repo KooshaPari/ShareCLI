@@ -1,8 +1,11 @@
 name: OSV Scanner
 
 # C04 L38 — OSV/GHSA feed beyond RustSec cargo-audit (hard HIGH/CRITICAL gate).
-# PR coverage lives in ci.yml `osv` (ci-success aggregator). This workflow
-# retains weekly SARIF + workflow_dispatch parity.
+# The PR-side OSV scan that used to live in `.github/workflows/ci.yml` (`osv`
+# job feeding the `ci-success` aggregator) was retired together with the
+# legacy CI workflow (2026-10-17). This workflow retains weekly SARIF +
+# workflow_dispatch parity and is NOT in the required `ci / lint` / `ci / test`
+# branch-protection contexts.
 on:
   push:
     branches: [main]

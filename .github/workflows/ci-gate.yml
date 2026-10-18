@@ -11,6 +11,22 @@
 #     failures) is resolved - they are named `* (informational)` so the status
 #     rollup makes their non-gating nature explicit.
 # =============================================================================
+#
+# Sole-CI declaration (2026-10-17): the legacy `.github/workflows/ci.yml`
+# (workflow name `CI`) was deleted in the same PR that added this note.
+# This file is the single source of truth for the required `ci / lint` and
+# `ci / test` branch-protection contexts. All language detection, multi-job
+# aggregation, and per-tool guards previously in `ci.yml` are either:
+#   (a) already covered by dedicated workflows in this directory
+#       (cargo-deny -> `deny.yml`; cargo-audit -> `audit.yml`; cargo-test
+#       coverage -> `coverage.yml`; security scans -> `security.yml` /
+#       `gitleaks`-equivalent steps; cross-platform -> `cross-platform.yml`;
+#       quality gate -> `quality-gate.yml`), or
+#   (b) superseded by the hard `cargo fmt --check` and `cargo check
+#       --all-targets` gates in `ci-lint` and `ci-test` below.
+# If you reintroduce a second CI workflow, expect branch protection to fail
+# because the required `ci / lint` / `ci / test` contexts would compete.
+# =============================================================================
 
 name: ci
 
