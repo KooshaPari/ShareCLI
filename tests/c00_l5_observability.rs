@@ -2,6 +2,8 @@
 //!
 //! Evidence: `src/metrics.rs`, `src/log_sink.rs`, `src/otel.rs`, `src/commands/serve.rs`,
 //! `src/main.rs`, `Cargo.toml`.
+//!
+//! FR: FR-003
 
 #[test]
 fn c00_l5_metrics_module_exposes_counter_gauge_registry() {

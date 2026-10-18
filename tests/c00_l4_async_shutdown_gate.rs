@@ -1,6 +1,8 @@
 //! C00 L4 / FR-003 — structured async shutdown + scoped spawn env (CancellationToken).
 //!
 //! Evidence: `src/shutdown.rs`, `src/commands/serve.rs`, `docs/ops/async-shutdown.md`.
+//!
+//! FR: FR-003
 
 #[test]
 fn c00_l4_shutdown_module_present() {
