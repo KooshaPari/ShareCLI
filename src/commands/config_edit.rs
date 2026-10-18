@@ -34,7 +34,8 @@ pub fn assign(root: &mut Value, path: &[&str], new: Value) -> Result<()> {
         *root = new;
         return Ok(());
     }
-    let map = root.as_object_mut().ok_or_else(|| anyhow::anyhow!("'{}' is not a table", path[0]))?;
+    let map =
+        root.as_object_mut().ok_or_else(|| anyhow::anyhow!("'{}' is not a table", path[0]))?;
     let entry =
         map.entry(path[0].to_string()).or_insert_with(|| Value::Object(serde_json::Map::new()));
     assign(entry, &path[1..], new)
