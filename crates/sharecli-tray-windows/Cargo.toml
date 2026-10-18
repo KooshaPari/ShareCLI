@@ -21,3 +21,9 @@ serde_json = "1"
 tray-icon = { version = "0.25", default-features = false, features = ["libappindicator"] }
 
 [dev-dependencies]
+
+# tray-icon 0.25 refuses to compile on Linux/BSD unless `libappindicator` or `ksni`
+# is on. ksni conflicts with sharecli-tray-linux (ksni default = tokio vs tray-icon's
+# async-io zbus flavour), so use libappindicator; CI installs the system lib (#944).
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+tray-icon = { version = "0.25", default-features = false, features = ["libappindicator"] }
