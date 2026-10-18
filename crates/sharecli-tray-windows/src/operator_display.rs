@@ -86,7 +86,10 @@ pub fn resolve_tray_gate_visual(
             ("#d29922", label, "dialog-warning", "exclamationmark.triangle.fill")
         }
         TrayGateSeverity::Normal => ("#3fb950", "Normal", "utilities-system-monitor", "cpu"),
-        TrayGateSeverity::Offline => unreachable!("handled above"),
+        // Phase C fix: tray-offline-unreachable-fix — graceful fallback tokens
+        // identical to the `!connected` early-return values. Future refactors
+        // that bypass the early-return never panic on this arm.
+        TrayGateSeverity::Offline => ("#d29922", "Offline", "network-offline", "wifi.slash"),
     };
 
     TrayGateVisual {
@@ -428,5 +431,46 @@ mod tests {
         assert!(matches!(TrayGateSeverity::Warning, TrayGateSeverity::Warning));
         assert!(matches!(TrayGateSeverity::Critical, TrayGateSeverity::Critical));
         assert!(matches!(TrayGateSeverity::Offline, TrayGateSeverity::Offline));
+    }
+
+    // -- Phase C offline-state coverage -------------------------------------
+    // Linux/Windows tray offline tokens MUST be identical (shared design
+    // system, AC-007.57). Each test runs the disconnected path and asserts
+    // the full token set matches the Linux offline contract exactly.
+
+    #[test]
+    fn resolve_tray_gate_visual_offline_full_token_set() {
+        let v = resolve_tray_gate_visual("GREEN", "ADMIT", false);
+        assert_eq!(v.severity, TrayGateSeverity::Offline);
+        assert_eq!(v.decision_class, "gate-unavailable");
+        assert_eq!(v.thermal_class, "warning");
+        assert_eq!(v.color_hex, "#d29922");
+        assert_eq!(v.badge_label, "Offline");
+        assert_eq!(v.linux_icon_name, "network-offline");
+        assert_eq!(v.swift_symbol_name, "wifi.slash");
+    }
+
+    #[test]
+    fn resolve_tray_gate_visual_offline_never_panics_with_any_inputs() {
+        for &gate_decision in &["ADMIT", "DENY", "THROTTLE", "UNKNOWN", ""] {
+            for &thermal_pressure in &["GREEN", "YELLOW", "RED", "UNAVAILABLE", ""] {
+                let v = resolve_tray_gate_visual(thermal_pressure, gate_decision, false);
+                assert_eq!(v.severity, TrayGateSeverity::Offline);
+                assert_eq!(v.badge_label, "Offline");
+                assert_eq!(v.color_hex, "#d29922");
+                assert_eq!(v.linux_icon_name, "network-offline");
+            }
+        }
+    }
+
+    #[test]
+    fn resolve_tray_gate_visual_offline_matches_linux_token_set() {
+        let windows = resolve_tray_gate_visual("GREEN", "ADMIT", false);
+        // The windows-side values are computed; they must equal the
+        // canonical Offline tokens shared with the Linux crate.
+        assert_eq!(windows.color_hex, "#d29922");
+        assert_eq!(windows.badge_label, "Offline");
+        assert_eq!(windows.linux_icon_name, "network-offline");
+        assert_eq!(windows.swift_symbol_name, "wifi.slash");
     }
 }
