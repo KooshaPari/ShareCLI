@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Minimal RFC-6902 JSON Patch (add/replace/remove) for a flat in-memory
 //! `JsValue` document. Only `/<key>` paths are supported; array indices and
 //! nested pointer expressions are out of scope for this MVP.

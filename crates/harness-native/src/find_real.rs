@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Resolve real binary from .real cache or PATH scan.
 //! Equivalent to harness::find_real in core.sh (FR-INTC-001).
 

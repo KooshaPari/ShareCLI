@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! E2E tier — serve `/healthz` liveness over real HTTP (C07 L64).
 //! FR: FR-003
 

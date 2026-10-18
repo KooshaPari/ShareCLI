@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Prometheus text-exposition format (`version 0.0.4`).
 //!
 //! Renders a list of `Metric { name, help, metric_type, samples }` into the

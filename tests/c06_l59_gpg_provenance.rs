@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR:003 acceptance gates for **C06 L59** (Source code provenance).
 //!
 //! Verifies the actual on-disk state of the Forge Bot GPG key (used by

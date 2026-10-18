@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — health/pool/status/ps --all text pool + proc-scan operator sections (AC-007.76)
 //! FR: FR-007
 //!

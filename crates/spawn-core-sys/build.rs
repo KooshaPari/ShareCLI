@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! build.rs — compile the Zig spawn-core static library and link it.
 //!
 //! # Why Zig for the hot core

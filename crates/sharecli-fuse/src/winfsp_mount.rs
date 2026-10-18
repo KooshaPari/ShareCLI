@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Windows WinFsp mount adapter (AC-009.25).
 //!
 //! wraps: [`winfsp`](https://crates.io/crates/winfsp) 0.13 (SnowflakePowered/winfsp-rs).

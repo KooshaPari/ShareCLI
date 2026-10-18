@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Golden CLI/TUI snapshot suite (L30.7 / WORK_DAG T-250).
 //!
 //! Fixtures live under `tests/golden/`. Regenerate with:

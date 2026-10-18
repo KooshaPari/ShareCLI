@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-010 — Agent Mesh / Shared Substrate
 //! FR: FR-010
 //!

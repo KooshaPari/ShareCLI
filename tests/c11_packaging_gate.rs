@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C11 L108 — packaging hard gate (T-990/T-1000/T-1010).
 //!
 //! FR: FR-001

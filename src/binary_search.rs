@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 pub fn search<T: Ord>(items: &[T], target: &T) -> Option<usize> {
     let mut lo = 0;
     let mut hi = items.len();

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! teamcomm-smoke — E2E smoke harness for the teamcomm daemon.
 //!
 //! Brings up the daemon on a Unix socket, exercises all 14 wire methods

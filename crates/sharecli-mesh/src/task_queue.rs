@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Maildir-style teammate task queue (ported from `thegent.mesh.task_queue`).
 //!
 //! All file operations use atomic rename. The queue is crash-recoverable: no

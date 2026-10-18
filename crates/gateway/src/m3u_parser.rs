@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! M3U / M3U8 playlist parse + render.
 //!
 //! Parses a text playlist into `M3uEntry { duration_secs, title, uri }`.

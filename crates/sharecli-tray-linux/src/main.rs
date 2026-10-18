@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! sharecli-tray — Linux system-tray client for sharecli.
 //!
 //! Renders a StatusNotifierItem tray (via `ksni`, the KDE/freedesktop SNI
