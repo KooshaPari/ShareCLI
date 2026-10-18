@@ -8,8 +8,11 @@
 #     parse error on this repo)
 #   * Footer drops the `{{ now }}` variable (removed in git-cliff 2.x; use
 #     `git cliff --tag <tag>` to anchor the release date externally)
-#   * `^Merge` parser rule drops the 182 merge commits that previously
-#     tripped the "Missing type in commit summary" parse error.
+#   * `^Merge` / `^merge` parser rules + `filter_unconventional = false`
+#     drop the 182 merge commits that previously tripped the
+#     "Missing type in commit summary" parse error. 37 grouping errors
+#     remain, all from genuinely non-conventional historical commits
+#     (auto-commit daemon era, pre-conventional-commits policy).
 #
 # The hand-curated CHANGELOG.md (Wave/Plan structure) remains the source
 # of truth for historical release notes; this config is kept functional
@@ -45,6 +48,7 @@ trim = true
 
 [git]
 conventional_commits = true
+filter_unconventional = false
 
 commit_parsers = [
   { message = "^feat", group = "Features" },
@@ -56,6 +60,7 @@ commit_parsers = [
   { message = "^chore", skip = true },
   { message = "^ci", skip = true },
   { message = "^Merge", skip = true },
+  { message = "^merge", skip = true },
 ]
 
 commit_filters = [{ remove_if_matches = ".*skip.*changelog.*" }]
