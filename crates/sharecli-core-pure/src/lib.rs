@@ -43,7 +43,7 @@
 //! sub-module (the canonical home). This crate is the SSOT for "what does sharecli's
 //! domain model look like without the infra stack".
 //!
-//! See `docs/adr/0007-pure-types.md` for the full PURE vs INFRA classification that
+//! See `docs/adr/0007-pure-classification.md` for the full PURE vs INFRA classification that
 //! produced this re-export surface, and `docs/adr/0010-core-pure-hybrid.md` (ADR-0007
 //! amendment) for the boundary rationale.
 
@@ -55,7 +55,7 @@
 //
 // The 11 items below are the entire `sharecli_core::transaction_contract` surface. They
 // are the only items in `sharecli-core` whose type-level closure involves nothing beyond
-// `std::collections::{BTreeMap, BTreeSet}`. See `docs/adr/0007-pure-types.md` for the
+// `std::collections::{BTreeMap, BTreeSet}`. See `docs/adr/0007-pure-classification.md` for the
 // classification evidence; do not add to this list without re-running that classification.
 // ---------------------------------------------------------------------------
 

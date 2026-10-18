@@ -5507,6 +5507,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sharecli-core-pure"
+version = "0.8.0"
+dependencies = [
+ "sharecli-core",
+]
+
+[[package]]
 name = "sharecli-ffi"
 version = "0.8.0"
 dependencies = [

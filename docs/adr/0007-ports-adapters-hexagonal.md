@@ -1,7 +1,8 @@
 # ADR 0007 — Ports & Adapters (Hexagonal) Architecture
 
-**Status:** Accepted
+**Status:** Accepted (Amended 2026-10-18)
 **Date:** 2026-08-28
+**Amended by:** [0010-core-pure-hybrid.md](0010-core-pure-hybrid.md) (HYBRID: keep sharecli-core infra, add sharecli-core-pure re-export crate)
 **Deciders:** sharecli maintainers
 **Supersedes:** —
 **Related:** [lib-sprawl-plan.md](../ops/lib-sprawl-plan.md) (Phases 2–4 crate extraction)
@@ -101,3 +102,30 @@ domain errors to JSON at the boundary, not inside handlers.
 - Error envelope: [`../ops/error-envelope.md`](../ops/error-envelope.md)
 - Concurrency docs: [`../ops/concurrency.md`](../ops/concurrency.md)
 - ADR 0006 (Feb harness lineage): [`0006-feb-harness-recovery-lineage.md`](0006-feb-harness-recovery-lineage.md)
+
+## Amendment 2026-10-18
+
+The 2026-10-17 reaudit flagged that `sharecli-core`'s actual `Cargo.toml`
+deps contradict the "domain core is dependency-free" decision above.
+`sharecli-core` declares path deps on `sharecli-ipc`, `sharecli-fleet`, and
+`sharecli-fuse`, plus `tokio`, `anyhow`, `tracing`, and `tempfile`. The
+aspirational layer table on line 22–27 is therefore inaccurate for
+`sharecli-core` as it exists today.
+
+**Resolution:** [ADR 0010](0010-core-pure-hybrid.md) adopts a HYBRID design
+— keep `sharecli-core`'s current state (working, integrated), and add a new
+`sharecli-core-pure` crate that re-exports the 11 items in
+`sharecli_core::transaction_contract` (the only items in `sharecli-core`
+whose type-level closure involves nothing beyond
+`std::collections::{BTreeMap, BTreeSet}`). Embedders who want a Cargo-level
+pure-surface marker can now `use sharecli_core_pure;` directly. The
+`sharecli-core` source remains untouched, so existing callers see no diff.
+
+This amendment does **not** delete or rewrite the original "domain core is
+dependency-free" decision above. ADR 0010 is the explicit record that the
+aspiration remains the target, that a HYBRID interim is now in place, and
+that a future "deep split" (moving the source of truth into
+`sharecli-core-pure`) is the path to fully realising the original decision.
+
+See [0007-pure-classification.md](0007-pure-classification.md) for the
+item-level PURE/INFRA evidence that motivated this amendment.
