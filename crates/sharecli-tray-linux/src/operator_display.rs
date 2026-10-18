@@ -93,7 +93,10 @@ pub fn resolve_tray_gate_visual(
             ("#d29922", label, "dialog-warning", "exclamationmark.triangle.fill")
         }
         TrayGateSeverity::Normal => ("#3fb950", "Normal", "utilities-system-monitor", "cpu"),
-        TrayGateSeverity::Offline => unreachable!("handled above"),
+        // Phase C fix: tray-offline-unreachable-fix — graceful fallback tokens
+        // identical to the `!connected` early-return values. Future refactors
+        // that bypass the early-return never panic on this arm.
+        TrayGateSeverity::Offline => ("#d29922", "Offline", "network-offline", "wifi.slash"),
     };
 
     TrayGateVisual {
@@ -546,5 +549,57 @@ mod tests {
         assert!(matches!(TrayGateSeverity::Warning, TrayGateSeverity::Warning));
         assert!(matches!(TrayGateSeverity::Critical, TrayGateSeverity::Critical));
         assert!(matches!(TrayGateSeverity::Offline, TrayGateSeverity::Offline));
+    }
+
+    // -- Phase C offline-state coverage -------------------------------------
+    // Verifies the post-fix match arm: connecting=false produces an Offline
+    // visual that NEVER panics across any (decision, pressure) combination,
+    // and that all four severity buckets have distinct color tokens so a future
+    // regression cannot silently collapse Offline into another bucket.
+
+    #[test]
+    fn resolve_tray_gate_visual_offline_full_token_set() {
+        let v = resolve_tray_gate_visual("GREEN", "ADMIT", false);
+        assert_eq!(v.severity, TrayGateSeverity::Offline);
+        assert_eq!(v.decision_class, "gate-unavailable");
+        assert_eq!(v.thermal_class, "warning");
+        assert_eq!(v.color_hex, "#d29922");
+        assert_eq!(v.badge_label, "Offline");
+        assert_eq!(v.linux_icon_name, "network-offline");
+        assert_eq!(v.swift_symbol_name, "wifi.slash");
+    }
+
+    #[test]
+    fn resolve_tray_gate_visual_offline_never_panics_with_any_inputs() {
+        for &gate_decision in &["ADMIT", "DENY", "THROTTLE", "UNKNOWN", ""] {
+            for &thermal_pressure in &["GREEN", "YELLOW", "RED", "UNAVAILABLE", ""] {
+                let v = resolve_tray_gate_visual(thermal_pressure, gate_decision, false);
+                assert_eq!(v.severity, TrayGateSeverity::Offline);
+                assert_eq!(v.badge_label, "Offline");
+                assert_eq!(v.color_hex, "#d29922");
+                assert_eq!(v.linux_icon_name, "network-offline");
+            }
+        }
+    }
+
+    #[test]
+    fn resolve_tray_gate_visual_offline_tooltip_uses_offline_template() {
+        let v = resolve_tray_gate_visual("GREEN", "ADMIT", false);
+        let line = format_tray_tooltip_offline_line(&v);
+        assert!(line.contains("Offline"), "got: {line}");
+        assert!(line.contains("daemon not reachable"), "got: {line}");
+    }
+
+    #[test]
+    fn all_severity_variants_have_distinct_color_tokens() {
+        let normal = resolve_tray_gate_visual("GREEN", "ADMIT", true);
+        let warning = resolve_tray_gate_visual("YELLOW", "THROTTLE", true);
+        let critical = resolve_tray_gate_visual("RED", "DENY", true);
+        let offline = resolve_tray_gate_visual("GREEN", "ADMIT", false);
+        let palette: std::collections::HashSet<&str> =
+            [normal.color_hex, warning.color_hex, critical.color_hex, offline.color_hex]
+                .into_iter()
+                .collect();
+        assert_eq!(palette.len(), 4, "each severity must have a unique color_hex");
     }
 }
