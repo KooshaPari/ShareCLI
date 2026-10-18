@@ -257,7 +257,9 @@ fn hex_to_bytes(s: &str) -> Result<Vec<u8>> {
     }
     (0..s.len())
         .step_by(2)
-        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).with_context(|| format!("bad hex at byte {i}")))
+        .map(|i| {
+            u8::from_str_radix(&s[i..i + 2], 16).with_context(|| format!("bad hex at byte {i}"))
+        })
         .collect()
 }
 
@@ -280,9 +282,7 @@ fn jsvalue_from_json(v: serde_json::Value) -> Result<JsValue> {
         serde_json::Value::Null => JsValue::Null,
         serde_json::Value::Bool(b) => JsValue::Bool(b),
         serde_json::Value::Number(n) => {
-            let f = n
-                .as_f64()
-                .ok_or_else(|| anyhow::anyhow!("non-f64 number not supported"))?;
+            let f = n.as_f64().ok_or_else(|| anyhow::anyhow!("non-f64 number not supported"))?;
             JsValue::Number(f)
         }
         serde_json::Value::String(s) => JsValue::String(s),
@@ -364,12 +364,11 @@ fn run_dns(hex: &Option<String>, demo: bool) -> Result<()> {
         let v = hex_to_bytes("c0ff01000001000000000000076578616d706c6503636f6d0000010001")?;
         v
     } else {
-        let h = hex
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("--hex or --demo required"))?;
+        let h = hex.as_ref().ok_or_else(|| anyhow::anyhow!("--hex or --demo required"))?;
         hex_to_bytes(h)?
     };
-    let hdr = dns::parse_header(&bytes).map_err(|e| anyhow::anyhow!("header parse failed: {e:?}"))?;
+    let hdr =
+        dns::parse_header(&bytes).map_err(|e| anyhow::anyhow!("header parse failed: {e:?}"))?;
     let (question, _consumed) = dns::parse_question(&bytes, 12)
         .map_err(|e| anyhow::anyhow!("question parse failed: {e:?}"))?;
     write_stdout(format!(
@@ -386,16 +385,14 @@ fn run_redis(value: &Option<String>, demo: bool) -> Result<()> {
             RespValue::BulkString(Some(b"hello".to_vec())),
         ]))
     } else {
-        let raw = value
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("--value or --demo required"))?;
+        let raw = value.as_ref().ok_or_else(|| anyhow::anyhow!("--value or --demo required"))?;
         parse_cli_resp(raw)?
     };
     let encoded = resp_encode(&v);
     write_stdout(bytes_to_hex(&encoded));
     // round-trip
-    let (back, n) = resp_parse(&encoded)
-        .map_err(|e| anyhow::anyhow!("round-trip parse failed: {e:?}"))?;
+    let (back, n) =
+        resp_parse(&encoded).map_err(|e| anyhow::anyhow!("round-trip parse failed: {e:?}"))?;
     write_stdout(format!("CONSUMED={} OK", n));
     assert_eq!(back, v);
     Ok(())
@@ -406,20 +403,13 @@ fn run_tls(hex: &Option<String>, demo: bool) -> Result<()> {
         // Hand-rolled TLS record: Handshake (22), TLS 1.2 (03 03), 0-byte body
         hex_to_bytes("1603030000")?
     } else {
-        let h = hex
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("--hex or --demo required"))?;
+        let h = hex.as_ref().ok_or_else(|| anyhow::anyhow!("--hex or --demo required"))?;
         hex_to_bytes(h)?
     };
     let rec = tls_parse(&raw).map_err(|e| anyhow::anyhow!("tls parse failed: {e:?}"))?;
     let mut buf = Vec::new();
     let _ = rec.content_type; // touch field to ensure it's reached
-    tls_write(
-        ContentType::Handshake,
-        ProtocolVersion { major: 3, minor: 3 },
-        &[],
-        &mut buf,
-    );
+    tls_write(ContentType::Handshake, ProtocolVersion { major: 3, minor: 3 }, &[], &mut buf);
     write_stdout(format!(
         "TYPE={:?} VERSION={}.{} LEN={} ROUND_TRIP_HEX={}",
         rec.content_type,
@@ -437,11 +427,8 @@ fn run_pkcs7(op: &Pkcs7Cmd) -> Result<()> {
             let (bytes, bs) = if *demo {
                 (b"YELLOW SUBMARINE".to_vec(), 20)
             } else {
-                let h = hex
-                    .as_ref()
-                    .ok_or_else(|| anyhow::anyhow!("--hex or --demo required"))?;
-                let b = block
-                    .ok_or_else(|| anyhow::anyhow!("--block or --demo required"))?;
+                let h = hex.as_ref().ok_or_else(|| anyhow::anyhow!("--hex or --demo required"))?;
+                let b = block.ok_or_else(|| anyhow::anyhow!("--block or --demo required"))?;
                 (hex_to_bytes(h)?, b)
             };
             let padded = p7::pad(&bytes, bs);
@@ -452,14 +439,12 @@ fn run_pkcs7(op: &Pkcs7Cmd) -> Result<()> {
                 let padded = p7::pad(b"YELLOW SUBMARINE", 20);
                 (padded, 20)
             } else {
-                let h = hex
-                    .as_ref()
-                    .ok_or_else(|| anyhow::anyhow!("--hex or --demo required"))?;
-                let b = block
-                    .ok_or_else(|| anyhow::anyhow!("--block or --demo required"))?;
+                let h = hex.as_ref().ok_or_else(|| anyhow::anyhow!("--hex or --demo required"))?;
+                let b = block.ok_or_else(|| anyhow::anyhow!("--block or --demo required"))?;
                 (hex_to_bytes(h)?, b)
             };
-            let unpadded = p7::unpad(&bytes, bs).map_err(|e| anyhow::anyhow!("unpad failed: {e}"))?;
+            let unpadded =
+                p7::unpad(&bytes, bs).map_err(|e| anyhow::anyhow!("unpad failed: {e}"))?;
             write_stdout(bytes_to_hex(unpadded));
         }
     }
@@ -469,10 +454,7 @@ fn run_pkcs7(op: &Pkcs7Cmd) -> Result<()> {
 fn run_patch(doc: &Option<String>, patch: &Option<String>, demo: bool) -> Result<()> {
     let (initial, patches) = if demo {
         // {"a":1,"b":2} -> add c=3, replace b=20, remove a
-        let d = js_object(vec![
-            ("a", JsValue::from_number(1.0)),
-            ("b", JsValue::from_number(2.0)),
-        ]);
+        let d = js_object(vec![("a", JsValue::from_number(1.0)), ("b", JsValue::from_number(2.0))]);
         let p = vec![
             Patch::Add("/c".into(), JsValue::from_number(3.0)),
             Patch::Replace("/b".into(), JsValue::from_number(20.0)),
@@ -480,17 +462,13 @@ fn run_patch(doc: &Option<String>, patch: &Option<String>, demo: bool) -> Result
         ];
         (d, p)
     } else {
-        let d_str = doc
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("--doc or --demo required"))?;
-        let p_str = patch
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("--patch or --demo required"))?;
-        let d_json: serde_json::Value = serde_json::from_str(d_str)
-            .with_context(|| format!("bad doc JSON: {d_str}"))?;
+        let d_str = doc.as_ref().ok_or_else(|| anyhow::anyhow!("--doc or --demo required"))?;
+        let p_str = patch.as_ref().ok_or_else(|| anyhow::anyhow!("--patch or --demo required"))?;
+        let d_json: serde_json::Value =
+            serde_json::from_str(d_str).with_context(|| format!("bad doc JSON: {d_str}"))?;
         let d = jsvalue_from_json(d_json)?;
-        let p_arr: Vec<serde_json::Value> = serde_json::from_str(p_str)
-            .with_context(|| format!("bad patch JSON: {p_str}"))?;
+        let p_arr: Vec<serde_json::Value> =
+            serde_json::from_str(p_str).with_context(|| format!("bad patch JSON: {p_str}"))?;
         let mut patches = Vec::with_capacity(p_arr.len());
         for op in p_arr {
             let path = op
@@ -527,7 +505,8 @@ fn run_metrics(demo: bool) -> Result<()> {
         anyhow::bail!("--demo is required for the metrics subcommand in this MVP");
     }
     // Real histogram -> Prometheus exposition: each bucket becomes a sample
-    let mut hist = Histogram::with_buckets(&[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0]);
+    let mut hist =
+        Histogram::with_buckets(&[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0]);
     for v in [0.001, 0.002, 0.003, 0.004, 0.006, 0.012, 0.05, 0.2, 1.5, 3.0] {
         hist.record(v);
     }
@@ -545,10 +524,7 @@ fn run_metrics(demo: bool) -> Result<()> {
         name: "gateway_demo_total".into(),
         help: "Demo counter".into(),
         metric_type: MetricType::Counter,
-        samples: vec![(
-            vec![("route".into(), "demo".into())],
-            42.0,
-        )],
+        samples: vec![(vec![("route".into(), "demo".into())], 42.0)],
     };
     let gauge_metric = Metric {
         name: "gateway_demo_seconds".into(),
@@ -585,8 +561,8 @@ fn run_pem(op: &PemCmd) -> Result<()> {
         PemCmd::Demo => {
             let der = b"\x30\x82\x01\x0a\x02\x82\x01\x01\x00".to_vec(); // fake rsa key prefix
             let text = pem::encode_pem("EXAMPLE PUBLIC KEY", &der);
-            let (label, parsed) = pem::decode_pem(&text)
-                .map_err(|e| anyhow::anyhow!("demo decode failed: {e}"))?;
+            let (label, parsed) =
+                pem::decode_pem(&text).map_err(|e| anyhow::anyhow!("demo decode failed: {e}"))?;
             assert_eq!(label, "EXAMPLE PUBLIC KEY");
             assert_eq!(parsed, der);
             write_stdout(format!("ROUND_TRIP_OK LABEL={label}"));
@@ -605,9 +581,8 @@ fn run_m3u(op: &M3uCmd) -> Result<()> {
                     anyhow::bail!("--pairs expects duration,uri pairs (even count)");
                 }
                 for pair in parts.chunks(2) {
-                    let dur: f64 = pair[0]
-                        .parse()
-                        .with_context(|| format!("bad duration `{}`", pair[0]))?;
+                    let dur: f64 =
+                        pair[0].parse().with_context(|| format!("bad duration `{}`", pair[0]))?;
                     v.push(gateway::m3u_parser::M3uEntry {
                         duration_secs: Some(dur),
                         title: None,
@@ -631,10 +606,7 @@ fn run_m3u(op: &M3uCmd) -> Result<()> {
             let entries = m3u::parse(&raw);
             let mut out = String::new();
             for e in &entries {
-                let d = e
-                    .duration_secs
-                    .map(|x| format!("{x}"))
-                    .unwrap_or_else(|| "-1".into());
+                let d = e.duration_secs.map(|x| format!("{x}")).unwrap_or_else(|| "-1".into());
                 let t = e.title.clone().unwrap_or_default();
                 out.push_str(&format!("URI={} DUR={} TITLE={}\n", e.uri, d, t));
             }
@@ -705,9 +677,7 @@ fn parse_cli_resp(s: &str) -> Result<RespValue> {
         "simple" => Ok(RespValue::SimpleString(rest.to_string())),
         "error" => Ok(RespValue::Error(rest.to_string())),
         "integer" => {
-            let n: i64 = rest
-                .parse()
-                .with_context(|| format!("bad integer `{rest}`"))?;
+            let n: i64 = rest.parse().with_context(|| format!("bad integer `{rest}`"))?;
             Ok(RespValue::Integer(n))
         }
         "bulk" => Ok(RespValue::BulkString(Some(rest.as_bytes().to_vec()))),
@@ -777,7 +747,9 @@ fn substrate_splash() {
 fn inspect_registry() -> Vec<(&'static str, &'static str, Vec<&'static str>)> {
     vec![
         (
-            "jwt", "gateway::jwt_hs256", vec![
+            "jwt",
+            "gateway::jwt_hs256",
+            vec![
                 "fn b64url_encode(input: &[u8]) -> String",
                 "fn b64url_decode(input: &str) -> Result<Vec<u8>, _>",
                 "fn sign_hs256(header_b64: &str, payload_b64: &str, key: &[u8]) -> String",
@@ -786,7 +758,9 @@ fn inspect_registry() -> Vec<(&'static str, &'static str, Vec<&'static str>)> {
             ],
         ),
         (
-            "dns", "gateway::dns_message_parser", vec![
+            "dns",
+            "gateway::dns_message_parser",
+            vec![
                 "pub struct DnsHeader { id, flags, qdcount, ancount, nscount, arcount }",
                 "pub struct Question { qname, qtype, qclass }",
                 "fn parse_header(buf: &[u8]) -> Result<DnsHeader, _>",
@@ -795,7 +769,9 @@ fn inspect_registry() -> Vec<(&'static str, &'static str, Vec<&'static str>)> {
             ],
         ),
         (
-            "redis", "gateway::redis_resp", vec![
+            "redis",
+            "gateway::redis_resp",
+            vec![
                 "pub enum RespValue { SimpleString, Error, Integer, BulkString, Array }",
                 "fn encode(v: &RespValue) -> Vec<u8>",
                 "fn parse(input: &[u8]) -> Result<(RespValue, usize), _>",
@@ -804,7 +780,9 @@ fn inspect_registry() -> Vec<(&'static str, &'static str, Vec<&'static str>)> {
             ],
         ),
         (
-            "tls", "gateway::tls_record", vec![
+            "tls",
+            "gateway::tls_record",
+            vec![
                 "pub enum ContentType { ChangeCipherSpec, Alert, Handshake, ApplicationData }",
                 "pub struct ProtocolVersion { major: u8, minor: u8 }",
                 "fn parse_record(buf: &[u8]) -> Result<(ContentType, ProtocolVersion, &[u8]), _>",
@@ -813,7 +791,9 @@ fn inspect_registry() -> Vec<(&'static str, &'static str, Vec<&'static str>)> {
             ],
         ),
         (
-            "pkcs7", "gateway::pkcs7_padding", vec![
+            "pkcs7",
+            "gateway::pkcs7_padding",
+            vec![
                 "fn pad(data: &[u8], block: usize) -> Vec<u8>",
                 "fn unpad(data: &[u8], block: usize) -> Result<&[u8], _>",
                 "fn required_padding_len(len: usize, block: usize) -> usize",
@@ -822,7 +802,9 @@ fn inspect_registry() -> Vec<(&'static str, &'static str, Vec<&'static str>)> {
             ],
         ),
         (
-            "patch", "gateway::json_patch", vec![
+            "patch",
+            "gateway::json_patch",
+            vec![
                 "pub enum Patch { Add, Remove, Replace, Move, Copy, Test }",
                 "pub type JsValue = serde_json::Value",
                 "fn apply(doc: &mut JsValue, patch: &Patch) -> Result<(), _>",
@@ -831,7 +813,9 @@ fn inspect_registry() -> Vec<(&'static str, &'static str, Vec<&'static str>)> {
             ],
         ),
         (
-            "metrics", "gateway::prometheus_exposition", vec![
+            "metrics",
+            "gateway::prometheus_exposition",
+            vec![
                 "pub enum MetricType { Counter, Gauge, Histogram, Summary }",
                 "pub struct Metric { name, kind, labels, value }",
                 "fn render(metrics: &[Metric]) -> String",
@@ -840,7 +824,9 @@ fn inspect_registry() -> Vec<(&'static str, &'static str, Vec<&'static str>)> {
             ],
         ),
         (
-            "pem", "gateway::pem_codec", vec![
+            "pem",
+            "gateway::pem_codec",
+            vec![
                 "pub struct PemBlock { label, data }",
                 "fn encode(label: &str, der: &[u8]) -> String",
                 "fn decode(input: &str) -> Result<PemBlock, _>",
@@ -849,7 +835,9 @@ fn inspect_registry() -> Vec<(&'static str, &'static str, Vec<&'static str>)> {
             ],
         ),
         (
-            "m3u", "gateway::m3u_parser", vec![
+            "m3u",
+            "gateway::m3u_parser",
+            vec![
                 "pub struct Playlist { items: Vec<Entry> }",
                 "pub enum Entry { Path(String), ExtInfo { path, duration, title } }",
                 "fn parse(text: &str) -> Result<Playlist, _>",
@@ -858,7 +846,9 @@ fn inspect_registry() -> Vec<(&'static str, &'static str, Vec<&'static str>)> {
             ],
         ),
         (
-            "chunked", "gateway::chunked_transfer", vec![
+            "chunked",
+            "gateway::chunked_transfer",
+            vec![
                 "fn encode_chunks(data: &[u8], chunk: usize) -> Vec<Vec<u8>>",
                 "fn decode_chunks(chunks: &[Vec<u8>]) -> Vec<u8>",
                 "fn hex_chunk_header(n: usize) -> String",
@@ -886,10 +876,12 @@ fn run_inspect(module: Option<&str>) -> Result<()> {
             Ok(())
         }
         Some(name) => {
-            let entry = reg
-                .iter()
-                .find(|(alias, _, _)| *alias == name)
-                .ok_or_else(|| anyhow::anyhow!("unknown module `{name}`; try one of: {}", reg.iter().map(|(a, _, _)| *a).collect::<Vec<_>>().join(", ")))?;
+            let entry = reg.iter().find(|(alias, _, _)| *alias == name).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "unknown module `{name}`; try one of: {}",
+                    reg.iter().map(|(a, _, _)| *a).collect::<Vec<_>>().join(", ")
+                )
+            })?;
             let (alias, path, sigs) = entry;
             println!("# gateway module: {alias}");
             println!("path: {path}");
@@ -1060,10 +1052,10 @@ mod tests {
         // must surface this as a non-zero exit (which `run_cli` reports as Err).
         let token = jwt::encode_hs256(header, payload, b"good-secret");
         let _ = token; // token is valid by construction
-        // Use the verify subcommand path with a wrong secret: dispatch
-        // through the CLI to ensure the error propagates.
-        // We invoke the run_jwt function directly because the test helper
-        // surfaces errors as anyhow::Result, not exit codes.
+                       // Use the verify subcommand path with a wrong secret: dispatch
+                       // through the CLI to ensure the error propagates.
+                       // We invoke the run_jwt function directly because the test helper
+                       // surfaces errors as anyhow::Result, not exit codes.
         let res = jwt::verify_hs256(&token, b"wrong-secret");
         assert!(res.is_err(), "verify with wrong secret must fail");
     }
@@ -1099,13 +1091,8 @@ mod tests {
 
     #[test]
     fn redis_with_custom_bulk_string_round_trips() {
-        run_cli(&[
-            "gateway-tools",
-            "redis",
-            "--value",
-            "bulk:hello-world",
-        ])
-        .expect("redis bulk round-trip");
+        run_cli(&["gateway-tools", "redis", "--value", "bulk:hello-world"])
+            .expect("redis bulk round-trip");
     }
 
     #[test]
@@ -1125,13 +1112,8 @@ mod tests {
     #[test]
     fn tls_with_custom_hex_parses_handshake_record() {
         // TLS Handshake (22), TLS 1.2 (03 03), 4-byte payload "test"
-        run_cli(&[
-            "gateway-tools",
-            "tls",
-            "--hex",
-            "160303000474657374",
-        ])
-        .expect("tls with custom hex");
+        run_cli(&["gateway-tools", "tls", "--hex", "160303000474657374"])
+            .expect("tls with custom hex");
     }
 
     #[test]
@@ -1190,29 +1172,15 @@ mod tests {
     fn patch_apply_custom_operations_modifies_doc() {
         let doc = r#"{"a":1,"b":2}"#;
         let patch = r#"[{"op":"add","path":"/c","value":3},{"op":"replace","path":"/b","value":20},{"op":"remove","path":"/a"}]"#;
-        run_cli(&[
-            "gateway-tools",
-            "patch",
-            "--doc",
-            doc,
-            "--patch",
-            patch,
-        ])
-        .expect("patch apply custom ops");
+        run_cli(&["gateway-tools", "patch", "--doc", doc, "--patch", patch])
+            .expect("patch apply custom ops");
     }
 
     #[test]
     fn patch_with_missing_op_field_errors() {
         let doc = r#"{"a":1}"#;
         let patch = r#"[{"path":"/b","value":2}]"#; // no "op" key
-        let res = run_cli(&[
-            "gateway-tools",
-            "patch",
-            "--doc",
-            doc,
-            "--patch",
-            patch,
-        ]);
+        let res = run_cli(&["gateway-tools", "patch", "--doc", doc, "--patch", patch]);
         assert!(res.is_err(), "patch op missing `op` field must error");
     }
 
@@ -1220,14 +1188,7 @@ mod tests {
     fn patch_with_unsupported_op_errors() {
         let doc = r#"{"a":1}"#;
         let patch = r#"[{"op":"copy","path":"/b","from":"/a"}]"#; // copy is not MVP
-        let res = run_cli(&[
-            "gateway-tools",
-            "patch",
-            "--doc",
-            doc,
-            "--patch",
-            patch,
-        ]);
+        let res = run_cli(&["gateway-tools", "patch", "--doc", doc, "--patch", patch]);
         assert!(res.is_err(), "unsupported patch op (copy) must error");
     }
 
@@ -1263,27 +1224,14 @@ mod tests {
 
     #[test]
     fn m3u_render_with_pairs_emits_lines() {
-        run_cli(&[
-            "gateway-tools",
-            "m3u",
-            "render",
-            "--pairs",
-            "120,a.mp3,240,b.mp3",
-        ])
-        .expect("m3u render with pairs");
+        run_cli(&["gateway-tools", "m3u", "render", "--pairs", "120,a.mp3,240,b.mp3"])
+            .expect("m3u render with pairs");
     }
 
     #[test]
     fn m3u_parse_with_text_emits_entries() {
         let text = "#EXTM3U\n#EXTINF:120,Track 1\na.mp3\n#EXTINF:240,Track 2\nb.mp3\n";
-        run_cli(&[
-            "gateway-tools",
-            "m3u",
-            "parse",
-            "--text",
-            text,
-        ])
-        .expect("m3u parse with text");
+        run_cli(&["gateway-tools", "m3u", "parse", "--text", text]).expect("m3u parse with text");
     }
 
     #[test]
@@ -1308,13 +1256,7 @@ mod tests {
 
     #[test]
     fn chunked_encode_without_demo_flag_errors() {
-        let res = run_cli(&[
-            "gateway-tools",
-            "chunked",
-            "encode",
-            "--size",
-            "16",
-        ]);
+        let res = run_cli(&["gateway-tools", "chunked", "encode", "--size", "16"]);
         assert!(res.is_err(), "chunked encode without --demo must error");
     }
 }

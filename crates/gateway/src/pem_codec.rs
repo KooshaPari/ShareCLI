@@ -87,9 +87,7 @@ pub fn decode(input: &str) -> Result<PemBlock, PemError> {
     if begin != end {
         return Err(PemError::LabelMismatch { begin, end });
     }
-    let data = STANDARD
-        .decode(body.as_bytes())
-        .map_err(PemError::BadBase64)?;
+    let data = STANDARD.decode(body.as_bytes()).map_err(PemError::BadBase64)?;
     Ok(PemBlock { label: begin, data })
 }
 

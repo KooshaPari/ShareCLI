@@ -67,9 +67,7 @@ fn key_from_path(path: &str) -> Result<&str, PatchError> {
         }
         Ok(k)
     } else {
-        Err(PatchError(format!(
-            "unsupported path `{path}` (MVP supports `/<key>` only)"
-        )))
+        Err(PatchError(format!("unsupported path `{path}` (MVP supports `/<key>` only)")))
     }
 }
 
