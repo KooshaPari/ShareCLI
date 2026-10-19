@@ -65,10 +65,28 @@ ignore = [
   { id = "RUSTSEC-2024-0418", reason = "gtk-rs GTK3 unmaintained - Linux-only dep of tray-icon gtk backend; not compiled for Windows tray." },
   { id = "RUSTSEC-2024-0419", reason = "gtk-rs GTK3 unmaintained - Linux-only dep of tray-icon gtk backend; not compiled for Windows tray." },
   { id = "RUSTSEC-2024-0420", reason = "gtk-rs GTK3 unmaintained - Linux-only dep of tray-icon gtk backend; not compiled for Windows tray." },
-  # proc-macro-error pulled in by tray-icon's Linux gtk backend (via tao/muda
-  # gtk deps). Linux-only, not compiled for the Windows tray artifact; no safe
-  # upgrade in the 1.x line.
-  { id = "RUSTSEC-2024-0370", reason = "proc-macro-error unmaintained - transitive via tray-icon Linux gtk backend only; not compiled for Windows tray." },
+  # proc-macro-error pulled in by tray-icon's libappindicator backend:
+  # sharecli-tray-windows -> tray-icon -> libappindicator -> gtk -> atk -> glib
+  # -> glib-macros -> proc-macro-error. Build-time only macro crate; no
+  # runtime impact. 1.0.4 is the last released version; no patched release
+  # exists in the proc-macro-error 1.x line.
+  { id = "RUSTSEC-2024-0370", reason = "proc-macro-error 1.0.4 unmaintained. Build-time macro transitive of sharecli-tray-windows via tray-icon's libappindicator backend. No patched release; build-time-only." },
+  # zbus family (zvariant / zbus_names / zvariant_derive) — Linux-only transitive
+  # deps of sharecli-tray-linux's ksni-based StatusNotifierItem client. zbus 5.x
+  # still re-exports the pre-merge crate names for source compat, but RustSec
+  # has flagged each as unmaintained now that they are folded into the
+  # monolithic `zbus` 6.x. sharecli does not use these crates directly; ksni
+  # pulls them in only when sharecli-tray-linux is built, and that crate is
+  # cfg(target_os = "linux")-gated.
+  { id = "RUSTSEC-2026-0370", reason = "zvariant unmaintained (folded into zbus 6.0.0 as zbus::wire); Linux-only transitive of sharecli-tray-linux via ksni/zbus. cfg(target_os = \"linux\")-gated; not compiled into Windows/macOS sharecli artifacts." },
+  { id = "RUSTSEC-2026-0371", reason = "zbus_names unmaintained (folded into zbus 6.0.0 as zbus::names); Linux-only transitive of sharecli-tray-linux via ksni/zbus. cfg(target_os = \"linux\")-gated; not compiled into Windows/macOS sharecli artifacts." },
+  { id = "RUSTSEC-2026-0372", reason = "zvariant_derive unmaintained (folded into zbus 6.0.0 derive macros); Linux-only transitive of sharecli-tray-linux via ksni/zbus. cfg(target_os = \"linux\")-gated; not compiled into Windows/macOS sharecli artifacts." },
+  # glib 0.18.x (RUSTSEC-2024-0429 / GHSA-wrw7-89jp-8q8g alias) — the patched
+  # 0.20.0 release is a breaking change gtk 0.18.2 does not accept, so there is
+  # no non-breaking upgrade path. Transitive via tray-icon's libappindicator
+  # backend. Listed for OSV/CI parity; cargo-deny considers 0.18.5 patched so
+  # the advisory-not-detected warning is expected.
+  { id = "RUSTSEC-2024-0429", reason = "glib 0.18.x unmaintained. Transitive of sharecli-tray-windows via tray-icon's libappindicator backend. Patched 0.20.0 is a breaking release gtk 0.18.2 cannot accept; no non-breaking upgrade." },
   # unsafe-libyaml was archived 2024-03-25 by its owner and is read-only.
   # The last release is 0.2.11; no safe upgrade exists. It is transitively
   # pulled in by serde_yaml 0.9.34+deprecated (itself deprecated). sharecli
