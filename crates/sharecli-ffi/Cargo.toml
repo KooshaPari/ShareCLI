@@ -19,7 +19,7 @@ dirs = "5"
 [dev-dependencies]
 tempfile = "3"
 serial_test = "4"
-libloading = "0.8"
+libloading = "0.9"
 
 # The integration tests load `libsharecli_ffi.{dylib,so}` at runtime via
 # `libloading`, so the test target never needs to link the cdylib's symbols
