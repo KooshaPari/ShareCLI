@@ -35,28 +35,36 @@ reason = "zvariant_derive unmaintained (folded into zbus 6.0.0 derive macros); L
 # RustSec flagged proc-macro-error as unmaintained; 1.0.4 is the last released
 # version and the maintainer has not published a replacement. It is a
 # build-time only macro crate (no runtime effect on the sharecli binary).
+# The path is Linux-only: tray-icon gates its `libappindicator` dep behind
+# cfg(any(target_os = "linux", dragonfly, freebsd, netbsd, openbsd)), so
+# `cargo tree -i proc-macro-error --target x86_64-pc-windows-msvc` and
+# `--target aarch64-apple-darwin` both print nothing.
 # cargo-deny considers it patched; OSV does not. We list it to ensure both
 # scanners agree, mirroring the ignore in deny.toml.
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0370"
-reason = "proc-macro-error 1.0.4 unmaintained. Build-time macro transitive of sharecli-tray-windows via tray-icon's libappindicator backend. No patched release; build-time-only, no runtime impact on sharecli artifacts."
+reason = "proc-macro-error 1.0.4 unmaintained. Build-time macro transitive of sharecli-tray-windows via tray-icon's libappindicator backend; Linux-only because tray-icon gates libappindicator behind cfg(any(target_os = \"linux\", dragonfly, freebsd, netbsd, openbsd)). No patched release; build-time-only, no runtime impact on sharecli artifacts."
 
-# glib 0.18.x (RUSTSEC-2024-0429 / GHSA-wrw7-89jp-8q8g alias) — the patched
-# 0.20.0 release is a breaking change that gtk 0.18.2 (also still in the tree)
-# does not accept, so there is no non-breaking upgrade path. glib is pulled in
-# transitively by tray-icon's libappindicator backend
-# (sharecli-tray-windows -> tray-icon -> libappindicator -> gtk -> atk -> glib).
-# It is not used directly by sharecli; tray-icon's libappindicator backend is
-# enabled for Linux-compatible tray behavior on Windows where the ksni Linux
-# tray cannot run. Listed here because OSV's lockfile scan does not consider
-# 0.18.5 patched (cargo-deny does). Belt-and-suspenders; the deny.toml mirror
-# is informational.
+# glib 0.18.x (RUSTSEC-2024-0429 / GHSA-wrw7-89jp-8q8g alias) — RUSTSEC-2024-0429
+# is an "unsound" advisory for glib::VariantStrIter's Iterator/DoubleEndedIterator
+# impls (not an "unmaintained" one). The patched 0.20.0 release is a breaking
+# change gtk 0.18.2 (also still in the tree) does not accept, so there is no
+# non-breaking upgrade path. Reachable only on Linux: tray-icon's
+# `libappindicator` feature pulls libappindicator/gtk, and tray-icon gates that
+# dep behind cfg(any(target_os = "linux", dragonfly, freebsd, netbsd, openbsd)),
+# so `cargo tree -i glib --target x86_64-pc-windows-msvc` and
+# `--target aarch64-apple-darwin` both print nothing. The Rust
+# sharecli-tray-windows crate is a dev-dependency of `sharecli` and is never
+# built by any CI or release workflow (the Windows tray ships as a C#/MSBuild
+# WinUI app from windows/ShareCLITray). Listed here because OSV's lockfile
+# scan does not consider 0.18.5 patched (cargo-deny does). Belt-and-suspenders;
+# the deny.toml mirror is informational.
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0429"
-reason = "glib 0.18.5 unmaintained. Transitive of sharecli-tray-windows via tray-icon's libappindicator backend. Patched 0.20.0 is a breaking release gtk 0.18.2 cannot accept; no non-breaking upgrade."
+reason = "glib 0.18.5 unsound glib::VariantStrIter Iterator/DoubleEndedIterator impls (informational=unsound). Linux-only: reached via sharecli-tray-windows -> tray-icon(libappindicator) -> libappindicator -> gtk -> atk -> glib, and tray-icon gates libappindicator behind cfg(any(target_os = \"linux\", dragonfly, freebsd, netbsd, openbsd)). Patched 0.20.0 is a breaking release gtk 0.18.2 cannot accept; no non-breaking upgrade."
 [[IgnoredVulns]]
 id = "GHSA-wrw7-89jp-8q8g"
-reason = "GHSA alias for RUSTSEC-2024-0429 (glib 0.18.x unmaintained); transitive of sharecli-tray-windows via tray-icon's libappindicator backend. No non-breaking fix."
+reason = "GHSA alias for RUSTSEC-2024-0429 (glib 0.18.5 unsound glib::VariantStrIter Iterator/DoubleEndedIterator impls); Linux-only via sharecli-tray-windows -> tray-icon(libappindicator) -> libappindicator -> gtk -> atk -> glib. No non-breaking fix."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0449"
