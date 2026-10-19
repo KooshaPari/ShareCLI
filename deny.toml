@@ -94,9 +94,13 @@ ignore = [
   # cfg(any(target_os = "linux", dragonfly, freebsd, netbsd, openbsd)), so
   # `cargo tree -i glib --target x86_64-pc-windows-msvc` and
   # `--target aarch64-apple-darwin` both print nothing. The Rust
-  # sharecli-tray-windows crate is a dev-dependency of `sharecli` and is never
-  # built by any CI or release workflow (the Windows tray ships as a C#/MSBuild
-  # WinUI app from windows/ShareCLITray). Listed for OSV/CI parity; cargo-deny
+  # sharecli-tray-windows crate is a dev-dependency of `sharecli` and IS
+  # compiled by Linux CI (`cargo tree -i glib-sys --target
+  # x86_64-unknown-linux-gnu -e normal,dev` resolves glib-sys through it), but
+  # it is not linked into any shipped artifact: release.yml builds only
+  # `--bin sharecli`, `-p sharecli-tray-linux` and `-p sharecli-ffi`, and the
+  # Windows tray ships as a C#/MSBuild WinUI app from windows/ShareCLITray.
+  # Listed for OSV/CI parity; cargo-deny
   # considers 0.18.5 patched so the advisory-not-detected warning is expected.
   { id = "RUSTSEC-2024-0429", reason = "glib 0.18.5 unsound glib::VariantStrIter Iterator/DoubleEndedIterator impls (informational=unsound). Linux-only: reached via sharecli-tray-windows -> tray-icon(libappindicator) -> libappindicator -> gtk -> atk -> glib, and tray-icon gates libappindicator behind cfg(any(target_os = \"linux\", dragonfly, freebsd, netbsd, openbsd)). Patched 0.20.0 is a breaking release gtk 0.18.2 cannot accept; no non-breaking upgrade." },
   # unsafe-libyaml was archived 2024-03-25 by its owner and is read-only.

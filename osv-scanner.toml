@@ -54,9 +54,13 @@ reason = "proc-macro-error 1.0.4 unmaintained. Build-time macro transitive of sh
 # dep behind cfg(any(target_os = "linux", dragonfly, freebsd, netbsd, openbsd)),
 # so `cargo tree -i glib --target x86_64-pc-windows-msvc` and
 # `--target aarch64-apple-darwin` both print nothing. The Rust
-# sharecli-tray-windows crate is a dev-dependency of `sharecli` and is never
-# built by any CI or release workflow (the Windows tray ships as a C#/MSBuild
-# WinUI app from windows/ShareCLITray). Listed here because OSV's lockfile
+# sharecli-tray-windows crate is a dev-dependency of `sharecli` and IS
+# compiled by Linux CI (`cargo tree -i glib-sys --target
+# x86_64-unknown-linux-gnu -e normal,dev` resolves glib-sys through it), but
+# it is not linked into any shipped artifact: release.yml builds only
+# `--bin sharecli`, `-p sharecli-tray-linux` and `-p sharecli-ffi`, and the
+# Windows tray ships as a C#/MSBuild WinUI app from windows/ShareCLITray.
+# Listed here because OSV's lockfile
 # scan does not consider 0.18.5 patched (cargo-deny does). Belt-and-suspenders;
 # the deny.toml mirror is informational.
 [[IgnoredVulns]]
