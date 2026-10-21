@@ -184,14 +184,16 @@ jobs:
     needs: [unit-tests, e2e-tests, integration-tests, fr-annotation-check]
     if: always()
     runs-on: ubuntu-24.04
-    # The workflow-level `permissions: {}` grants this job no token scopes, so
-    # the report comment POST to the issues API was rejected with 403
-    # "Resource not accessible by integration". Grant the minimum write scope
-    # needed to post the report comment, matching the pattern used by
-    # flake-tracker.yml and pr-freshness.yml.
+    # The workflow declares a workflow-level `permissions: {}`, which grants
+    # every job an empty token scope, so the report comment was rejected with
+    # 403 "Resource not accessible by integration". The comment targets a pull
+    # request, and GitHub requires the pull-requests scope for a PR target --
+    # the issues scope alone is not enough. The repo's other commenting
+    # workflows (flake-tracker.yml, pr-freshness.yml) use the same scope.
+    # `contents: read` is needed for the checkout.
     permissions:
       contents: read
-      issues: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -242,6 +244,10 @@ jobs:
             const fs = require('fs');
             const report = fs.readFileSync('report.md', 'utf8');
 
+            // Create an issue comment on a pull request. The endpoint is the
+            // same one `gh pr comment` uses, which is what the repo's other
+            // commenting workflows (flake-tracker.yml) rely on successfully
+            // with the pull-requests scope.
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
