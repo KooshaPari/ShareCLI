@@ -902,17 +902,20 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn coalesce_pending_len_reflects_active_cycle() {
         // A 1-second window: the cycle stays pending long enough to inspect.
-        let coalescer = SpeculativeCoalescer::new(Duration::from_secs(1));
+        let coalescer = Arc::new(SpeculativeCoalescer::new(Duration::from_secs(1)));
         let key = CommandKey("long-window".into());
 
-        // Manually drive a coalesce call but DO NOT await its completion —
-        // hold the receiver so we can inspect `pending_len` while the cycle
-        // is in-flight.
+        // Spawn the coalesce call so the returned future is genuinely polled.
+        // `coalesce` is an `async fn`: it registers the pending group on its
+        // FIRST POLL, so merely constructing the future is not enough — the
+        // task has to be scheduled before the group shows up in `pending_len`.
         let counter = Arc::new(AtomicU32::new(0));
         let cnt = Arc::clone(&counter);
-        let fut = coalescer.coalesce(&key, exec_ok(cnt, "long"));
+        let k = key.clone();
+        let c = Arc::clone(&coalescer);
+        let handle = tokio::spawn(async move { c.coalesce(&k, exec_ok(cnt, "long")).await });
 
-        // Yield once so the leader registers + the spawned task is created.
+        // Yield once so the spawned task registers the pending group.
         tokio::task::yield_now().await;
 
         // The cycle is still pending (window hasn't elapsed under start_paused).
@@ -925,8 +928,8 @@ mod tests {
         // Now advance virtual time past the window so the executor runs.
         tokio::time::sleep(Duration::from_secs(2)).await;
 
-        // And consume the future so the spawned task completes.
-        let r = fut.await.expect("ok");
+        // And consume the result so the spawned task completes.
+        let r = handle.await.expect("join").expect("ok");
         assert_eq!(r.stdout, b"long");
 
         assert_eq!(
