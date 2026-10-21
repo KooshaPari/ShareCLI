@@ -184,6 +184,14 @@ jobs:
     needs: [unit-tests, e2e-tests, integration-tests, fr-annotation-check]
     if: always()
     runs-on: ubuntu-24.04
+    # The workflow-level `permissions: {}` grants this job no token scopes, so
+    # the report comment POST to the issues API was rejected with 403
+    # "Resource not accessible by integration". Grant the minimum write scope
+    # needed to post the report comment, matching the pattern used by
+    # flake-tracker.yml and pr-freshness.yml.
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
