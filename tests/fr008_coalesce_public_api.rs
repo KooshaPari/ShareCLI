@@ -1,5 +1,12 @@
 //! External (black-box) contract proof for the FR-008 in-flight coalescer.
 //!
+//! FR: FR-008
+//!
+//! AC-008.2 in-flight request coalesce — external contract proof.
+//! Covers the `SpeculativeCoalescer` protocol clauses: pending-group
+//! registration on first poll, in-window callers sharing one execution,
+//! post-window callers starting a fresh cycle, and per-key independence.
+//!
 //! This test lives OUTSIDE `crates/sharecli-core/src/speculation.rs` and
 //! exercises only the public API surface:
 //!
