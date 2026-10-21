@@ -75,11 +75,14 @@ jobs:
       # Ignore CLI/cast/runtime/orchestration/table surfaces and workspace
       # stubs that are covered by tests/ integration suites or are not
       # unit-testable — matching the --lib job scope. Do not lower the %.
+      # src/runtime/ was split out of the former src/runtime.rs (#960); the
+      # directory form must stay excluded so the executable-line count and
+      # the measured percentage remain identical to the pre-split baseline.
       - name: Enforce unit coverage threshold
         run: |
           cargo llvm-cov --lib --locked --all-features --workspace \
             --fail-under-lines "${COVERAGE_THRESHOLD}" \
-            --ignore-filename-regex '(^|/)(commands|cast)/|wasm_opcode\.rs$|coordination\.rs$|runtime\.rs$|speculative_cache\.rs$|(^|/)crates/' \
+            --ignore-filename-regex '(^|/)(commands|cast)/|wasm_opcode\.rs$|coordination\.rs$|runtime\.rs$|(^|/)runtime/|speculative_cache\.rs$|(^|/)crates/' \
             --lcov --output-path lcov.info
 
       - name: Upload coverage

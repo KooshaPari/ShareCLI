@@ -6,6 +6,22 @@
 //! - Process management via local runtime types
 //! - Multi-project orchestration
 
+// Reuse public-API contracts in the library-only quality gate as well as their
+// integration targets. No production API or coverage exclusion changes.
+#[cfg(test)]
+extern crate self as sharecli;
+#[cfg(test)]
+#[path = "../tests/agent_call_policy.rs"]
+mod admission_contract_tests;
+#[cfg(test)]
+mod error_contract_tests;
+#[cfg(test)]
+#[path = "../tests/session.rs"]
+mod session_contract_tests;
+#[cfg(test)]
+#[path = "../tests/session_cov.rs"]
+mod session_coverage_tests;
+
 // --- Tier A/B: product + ops (root pub surface) ---
 pub mod agent_call_policy;
 pub mod audit_log;
