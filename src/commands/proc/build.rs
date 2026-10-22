@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Snapshot / row builders for `sharecli proc` (FR-006).
 //!
 //! - [`AgentProcSnapshot::capture`] runs the host scan + watch + thermal poll

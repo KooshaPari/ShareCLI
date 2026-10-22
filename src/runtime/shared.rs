@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `SharedRuntime` — node / bun process pools used by web harness commands.
 //!
 //! The pool is separate from `ProcessPool`: `ProcessPool` is a generic

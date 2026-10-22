@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Inventory filter for `sharecli proc` (AC-006.17, AC-006.25, AC-006.27–31, AC-006.38).
 //!
 //! [`ProcFilter`] is the per-inventory filter carried by every `proc` row.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! JSON envelope structs for `ps` / `pool` / `status` / `health` operator commands.
 //!
 //! These types are emitted by the matching commands' `--json` and `--watch --json`

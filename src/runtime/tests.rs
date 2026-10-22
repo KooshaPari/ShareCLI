@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Unit tests for `runtime` — loaded as `crate::runtime::tests` via
 //! `#[path = "tests.rs"]` declared in `runtime/mod.rs`. The nested
 //! `mod tests` block below creates `runtime::tests::tests`; `use super::*;`

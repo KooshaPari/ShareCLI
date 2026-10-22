@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Shared static singletons for command-family runtime accessors.
 //!
 //! The `SHARED_RUNTIME` `OnceLock<SharedRuntime>` is the canonical instance

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `AppState` shared between request handlers, middleware, and the
 //! background thermal poller.
 //!
