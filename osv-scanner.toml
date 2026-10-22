@@ -9,24 +9,37 @@ reason = "rsa Marvin-attack advisory covers every released version (introduced 0
 id = "RUSTSEC-2024-0436"
 reason = "Informational 'unmaintained' advisory for the paste crate. paste 1.0.15 is a stale Cargo.lock entry: no package in the workspace dependency graph references it (cargo tree -i paste is empty), so there is nothing to replace."
 
-# zbus family (zvariant / zbus_names / zvariant_derive) — Linux-only transitive
-# deps of sharecli-tray-linux's ksni-based StatusNotifierItem client. zbus 5.x
-# still re-exports the pre-merge crate names for source compat, but RustSec has
-# flagged each of them as unmaintained now that they're folded into the
-# monolithic `zbus` 6.x. sharecli does not use these crates directly; ksni
-# pulls them in only when the Linux tray crate is built, and that crate is
-# cfg(target_os = "linux")-gated. On Windows/macOS targets (the only
-# sharecli CI matrices that gate on this scan) the entire ksni dep graph is
-# excluded from compilation.
+# zbus family (zvariant / zbus_names / zvariant_derive) - two independent
+# paths reach zbus, and neither one is compiled into a macOS or Windows
+# sharecli artifact:
+#   (a) sharecli-tray-linux -> ksni -> zbus.
+#       crates/sharecli-tray-linux/Cargo.toml declares ksni under
+#       [target.'cfg(target_os = "linux")'.dependencies], so this path is
+#       Linux-only, and it is absent on FreeBSD.
+#   (b) sharecli feature "desktop-notifications" -> notify-rust 4.18.2 ->
+#       zbus. notify-rust 4.18.2 declares zbus under
+#       [target.'cfg(all(unix, not(target_os = "macos")))'.dependencies],
+#       which covers Linux, FreeBSD and the other BSDs and excludes macOS.
+#       On FreeBSD this is the only path to zbus.
+# zbus 5.x still re-exports the pre-merge crate names for source compat, but
+# RustSec has flagged each of them as unmaintained now that they're folded into
+# the monolithic `zbus` 6.x. All three are informational=unmaintained with
+# patched = [], so there is no patched release to upgrade to. sharecli does
+# not use these crates directly.
+# The advisories still fire because neither scanner resolves per-target: both
+# osv.yml and ci.yml pass --lockfile=Cargo.lock, and deny.yml runs bare `cargo
+# deny check` with no [graph] target filter in deny.toml. Both read the
+# target-agnostic root Cargo.lock, which lists zvariant, zbus_names and
+# zvariant_derive regardless of the build target.
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0370"
-reason = "zvariant unmaintained (folded into zbus 6.0.0 as zbus::wire); Linux-only transitive of sharecli-tray-linux via ksni/zbus. cfg(target_os = \"linux\")-gated; not compiled into Windows/macOS sharecli artifacts."
+reason = "zvariant unmaintained (folded into zbus 6.0.0 as zbus::wire); Two independent zbus paths reach it: (a) sharecli-tray-linux -> ksni -> zbus, gated by cfg(target_os = \"linux\") in crates/sharecli-tray-linux/Cargo.toml (Linux only, and absent on FreeBSD); (b) sharecli feature \"desktop-notifications\" -> notify-rust 4.18.2 -> zbus, gated by notify-rust's cfg(all(unix, not(target_os = \"macos\"))) target dep table, which covers Linux, FreeBSD and the other BSDs and excludes macOS - on FreeBSD notify-rust is the only path to zbus. macOS and Windows artifacts do not link zbus (cargo tree -i zbus --target aarch64-apple-darwin prints nothing). The advisory is still reported because both scanners read only the target-agnostic root Cargo.lock (osv.yml and ci.yml pass --lockfile=Cargo.lock; deny.yml runs bare cargo deny check and deny.toml has no [graph] target filter), which lists zvariant/zbus_names/zvariant_derive regardless of build target - neither scanner does per-target resolution. It is informational=unmaintained with patched = [], so no patched release exists to upgrade to."
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0371"
-reason = "zbus_names unmaintained (folded into zbus 6.0.0 as zbus::names); Linux-only transitive of sharecli-tray-linux via ksni/zbus. cfg(target_os = \"linux\")-gated; not compiled into Windows/macOS sharecli artifacts."
+reason = "zbus_names unmaintained (folded into zbus 6.0.0 as zbus::names); Two independent zbus paths reach it: (a) sharecli-tray-linux -> ksni -> zbus, gated by cfg(target_os = \"linux\") in crates/sharecli-tray-linux/Cargo.toml (Linux only, and absent on FreeBSD); (b) sharecli feature \"desktop-notifications\" -> notify-rust 4.18.2 -> zbus, gated by notify-rust's cfg(all(unix, not(target_os = \"macos\"))) target dep table, which covers Linux, FreeBSD and the other BSDs and excludes macOS - on FreeBSD notify-rust is the only path to zbus. macOS and Windows artifacts do not link zbus (cargo tree -i zbus --target aarch64-apple-darwin prints nothing). The advisory is still reported because both scanners read only the target-agnostic root Cargo.lock (osv.yml and ci.yml pass --lockfile=Cargo.lock; deny.yml runs bare cargo deny check and deny.toml has no [graph] target filter), which lists zvariant/zbus_names/zvariant_derive regardless of build target - neither scanner does per-target resolution. It is informational=unmaintained with patched = [], so no patched release exists to upgrade to."
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0372"
-reason = "zvariant_derive unmaintained (folded into zbus 6.0.0 derive macros); Linux-only transitive of sharecli-tray-linux via ksni/zbus. cfg(target_os = \"linux\")-gated; not compiled into Windows/macOS sharecli artifacts."
+reason = "zvariant_derive unmaintained (folded into zbus 6.0.0 derive macros); Two independent zbus paths reach it: (a) sharecli-tray-linux -> ksni -> zbus, gated by cfg(target_os = \"linux\") in crates/sharecli-tray-linux/Cargo.toml (Linux only, and absent on FreeBSD); (b) sharecli feature \"desktop-notifications\" -> notify-rust 4.18.2 -> zbus, gated by notify-rust's cfg(all(unix, not(target_os = \"macos\"))) target dep table, which covers Linux, FreeBSD and the other BSDs and excludes macOS - on FreeBSD notify-rust is the only path to zbus. macOS and Windows artifacts do not link zbus (cargo tree -i zbus --target aarch64-apple-darwin prints nothing). The advisory is still reported because both scanners read only the target-agnostic root Cargo.lock (osv.yml and ci.yml pass --lockfile=Cargo.lock; deny.yml runs bare cargo deny check and deny.toml has no [graph] target filter), which lists zvariant/zbus_names/zvariant_derive regardless of build target - neither scanner does per-target resolution. It is informational=unmaintained with patched = [], so no patched release exists to upgrade to."
 
 # proc-macro-error 1.0.4 (RUSTSEC-2024-0370) is a transitive build-time macro
 # dep pulled in via tray-icon's libappindicator backend:
@@ -45,7 +58,8 @@ reason = "zvariant_derive unmaintained (folded into zbus 6.0.0 derive macros); L
 id = "RUSTSEC-2024-0370"
 reason = "proc-macro-error 1.0.4 unmaintained. Build-time macro transitive of sharecli-tray-windows via tray-icon's libappindicator backend; Linux-only because tray-icon gates libappindicator behind cfg(any(target_os = \"linux\", dragonfly, freebsd, netbsd, openbsd)). No patched release; build-time-only, no runtime impact on sharecli artifacts."
 
-# glib 0.18.x (RUSTSEC-2024-0429 / GHSA-wrw7-89jp-8q8g alias) — RUSTSEC-2024-0429
+# glib 0.18.x (RUSTSEC-2024-0429, also published as the GHSA-wrw7-89jp-8q8g
+# alias) - RUSTSEC-2024-0429
 # is an "unsound" advisory for glib::VariantStrIter's Iterator/DoubleEndedIterator
 # impls (not an "unmaintained" one). The patched 0.20.0 release is a breaking
 # change gtk 0.18.2 (also still in the tree) does not accept, so there is no
@@ -60,17 +74,20 @@ reason = "proc-macro-error 1.0.4 unmaintained. Build-time macro transitive of sh
 # it is not linked into any shipped artifact: release.yml builds only
 # `--bin sharecli`, `-p sharecli-tray-linux` and `-p sharecli-ffi`, and the
 # Windows tray ships as a C#/MSBuild WinUI app from windows/ShareCLITray.
-# Listed here because OSV's lockfile
-# scan does not consider 0.18.5 patched (cargo-deny does). Belt-and-suspenders;
-# the deny.toml mirror is informational.
+# Listed here because osv-scanner matches on the version range alone and
+# reports the advisory, while cargo-deny scopes it by [affected.functions] to
+# the glib::VariantStrIter Iterator/DoubleEndedIterator impls, cannot prove
+# they are called, and therefore does not report it at all (not even under
+# unsound = "all"). This entry is load-bearing for osv-scanner; the deny.toml
+# mirror is not, and cargo-deny emits warning[advisory-not-detected] for it.
+# Only the RUSTSEC id is listed: osv-scanner resolves the GHSA alias to the
+# same advisory, and one ignore entry suppresses the whole alias group
+# ("RUSTSEC-2024-0429 and 1 alias have been filtered out"). Listing the GHSA
+# id as well makes osv-scanner report it as an unused ignore.
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0429"
-reason = "glib 0.18.5 unsound glib::VariantStrIter Iterator/DoubleEndedIterator impls (informational=unsound). Linux-only: reached via sharecli-tray-windows -> tray-icon(libappindicator) -> libappindicator -> gtk -> atk -> glib, and tray-icon gates libappindicator behind cfg(any(target_os = \"linux\", dragonfly, freebsd, netbsd, openbsd)). Patched 0.20.0 is a breaking release gtk 0.18.2 cannot accept; no non-breaking upgrade."
-[[IgnoredVulns]]
-id = "GHSA-wrw7-89jp-8q8g"
-reason = "GHSA alias for RUSTSEC-2024-0429 (glib 0.18.5 unsound glib::VariantStrIter Iterator/DoubleEndedIterator impls); Linux-only via sharecli-tray-windows -> tray-icon(libappindicator) -> libappindicator -> gtk -> atk -> glib. No non-breaking fix."
-
+reason = "glib 0.18.5 unsound glib::VariantStrIter Iterator/DoubleEndedIterator impls (informational=unsound). Linux-only: reached via sharecli-tray-windows -> tray-icon(libappindicator) -> libappindicator -> gtk -> atk -> glib, and tray-icon gates libappindicator behind cfg(any(target_os = \"linux\", dragonfly, freebsd, netbsd, openbsd)). Patched 0.20.0 is a breaking release gtk 0.18.2 cannot accept; no non-breaking upgrade. cargo-deny scopes this advisory by [affected.functions] to the glib::VariantStrIter Iterator/DoubleEndedIterator impls and cannot prove they are called, so it does not report it (not even under unsound = \"all\"); osv-scanner matches on version range alone and does report it, which is why the osv-scanner.toml entry is load-bearing and the deny.toml mirror is not."
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0449"
 ignoreUntil = 2026-11-15
-reason = "INFO unmaintained advisory for unsafe-libyaml, the C-based YAML backend pulled in only via serde_yaml. No patched release exists (dtolnay/unsafe-libyaml archived 2024-03-25, last release 0.2.11), so there is no version to bump to. Replacing the serde_yaml dependency chain is tracked as a follow-up issue; this exception expires in 30 days to force re-triage."
+reason = "INFO unmaintained advisory for unsafe-libyaml, the C-based YAML backend pulled in only via serde_yaml. No patched release exists (dtolnay/unsafe-libyaml archived 2024-03-25, last release 0.2.11), so there is no version to bump to. Replacing the serde_yaml dependency chain is tracked as a follow-up issue; this exception expires in 30 days to force re-triage. cargo-deny 0.20.2 accepts only id and reason in its ignore schema, so the 30-day expiry is enforced on the osv-scanner side only (ignoreUntil = 2026-11-15)."
