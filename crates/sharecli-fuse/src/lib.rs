@@ -245,12 +245,12 @@ mod platform {
 
         /// Read-coalesce meters (hits / misses) without mounting.
         pub fn cache_meters(&self) -> ReadCacheMeters {
-            self.read_cache.lock().expect("read cache lock").meters()
+            lock_recover(self.read_cache.lock()).meters()
         }
 
         /// Negative-dentry meters (hits / misses) without mounting.
         pub fn neg_dentry_meters(&self) -> NegDentryMeters {
-            self.neg_dentry.lock().expect("neg dentry lock").meters()
+            lock_recover(self.neg_dentry.lock()).meters()
         }
 
         /// Probe whether relative `rel` exists under the backing root.
@@ -260,7 +260,7 @@ mod platform {
         /// stale negative entry for `rel`.
         pub fn exists_rel(&self, rel: &Path) -> std::io::Result<bool> {
             {
-                let mut neg = self.neg_dentry.lock().expect("neg dentry lock");
+                let mut neg = lock_recover(self.neg_dentry.lock());
                 if neg.is_negative(rel) {
                     crate::neg_dentry::record_global_neg_hit();
                     return Ok(false);
@@ -295,7 +295,7 @@ mod platform {
         /// Read a relative path through the in-process coalesce cache (no mount).
         pub fn read_coalesced_rel(&self, rel: &Path) -> std::io::Result<Vec<u8>> {
             let abs = abs_under(&self.backing, rel);
-            self.read_cache.lock().expect("read cache lock").read_coalesced(&abs)
+            lock_recover(self.read_cache.lock()).read_coalesced(&abs)
         }
 
         /// Stage CoW bytes for a relative path (no mount; FR-009 helpers).
@@ -462,7 +462,10 @@ mod platform {
         }
 
         fn install_created_entry(&self, rel: PathBuf, path: PathBuf, reply: ReplyCreate) {
-            let mut map = self.inodes.lock().expect("inode map");
+            let mut map = match lock_or_eio!(self.inodes.lock(), reply) {
+                Ok(g) => g,
+                Err(()) => return,
+            };
             let ino = map.alloc_or_get(rel);
             match fs::metadata(&path) {
                 Ok(meta) => {
@@ -474,7 +477,10 @@ mod platform {
         }
 
         fn install_created_entry_plain(&self, rel: PathBuf, path: PathBuf, reply: ReplyEntry) {
-            let mut map = self.inodes.lock().expect("inode map");
+            let mut map = match lock_or_eio!(self.inodes.lock(), reply) {
+                Ok(g) => g,
+                Err(()) => return,
+            };
             let ino = map.alloc_or_get(rel);
             match fs::metadata(&path) {
                 Ok(meta) => reply.entry(&TTL, &Self::metadata_to_attr(ino, &meta), Generation(0)),
@@ -522,19 +528,30 @@ mod platform {
     impl Filesystem for InterceptFs {
         fn lookup(&self, _req: &Request, parent: INodeNo, name: &OsStr, reply: ReplyEntry) {
             trace!(?parent, ?name, "lookup");
-            let mut map = self.inodes.lock().expect("inode map");
+            let mut map = match lock_or_eio!(self.inodes.lock(), reply) {
+                Ok(g) => g,
+                Err(()) => return,
+            };
             let Some(rel) = map.child_rel(parent.0, name) else {
                 reply.error(Errno::ENOENT);
                 return;
             };
+            drop(map); // release inode lock before taking neg_dentry lock
             {
-                let mut neg = self.neg_dentry.lock().expect("neg dentry lock");
+                let mut neg = match lock_or_eio!(self.neg_dentry.lock(), reply) {
+                    Ok(g) => g,
+                    Err(()) => return,
+                };
                 if neg.is_negative(&rel) {
                     crate::neg_dentry::record_global_neg_hit();
                     reply.error(Errno::ENOENT);
                     return;
                 }
             }
+            let mut map = match lock_or_eio!(self.inodes.lock(), reply) {
+                Ok(g) => g,
+                Err(()) => return,
+            };
             let Some((ino, rel)) = map.lookup_or_alloc(parent.0, name) else {
                 reply.error(Errno::ENOENT);
                 return;
@@ -542,18 +559,16 @@ mod platform {
             let path = abs_under(&self.backing, &rel);
             match fs::metadata(&path) {
                 Ok(meta) => {
-                    if let Ok(mut neg) = self.neg_dentry.lock() {
-                        neg.invalidate(&rel);
-                    }
+                    let mut neg = lock_recover(self.neg_dentry.lock());
+                    neg.invalidate(&rel);
                     let attr = Self::metadata_to_attr(ino, &meta);
                     reply.entry(&TTL, &attr, Generation(0));
                 }
                 Err(err) => {
                     if err.kind() == std::io::ErrorKind::NotFound {
-                        if let Ok(mut neg) = self.neg_dentry.lock() {
-                            neg.remember_miss(rel.clone());
-                            crate::neg_dentry::record_global_neg_miss();
-                        }
+                        let mut neg = lock_recover(self.neg_dentry.lock());
+                        neg.remember_miss(rel.clone());
+                        crate::neg_dentry::record_global_neg_miss();
                     }
                     map.remove_rel(&rel);
                     reply.error(Self::io_errno(err));
@@ -563,11 +578,15 @@ mod platform {
 
         fn getattr(&self, _req: &Request, ino: INodeNo, _fh: Option<FileHandle>, reply: ReplyAttr) {
             trace!(?ino, "getattr");
-            let map = self.inodes.lock().expect("inode map");
+            let map = match lock_or_eio!(self.inodes.lock(), reply) {
+                Ok(g) => g,
+                Err(()) => return,
+            };
             let Some(path) = map.abs_path(&self.backing, ino.0) else {
                 reply.error(Errno::ENOENT);
                 return;
             };
+            drop(map);
             match fs::metadata(&path) {
                 Ok(meta) => reply.attr(&TTL, &Self::metadata_to_attr(ino.0, &meta)),
                 Err(err) => reply.error(Self::io_errno(err)),
@@ -595,7 +614,10 @@ mod platform {
             // Required for std::fs::write (open+truncate) through the mount — default
             // fuser setattr is ENOSYS and breaks privileged mount smoke (AC-009.8).
             let path = {
-                let map = self.inodes.lock().expect("inode map");
+                let map = match lock_or_eio!(self.inodes.lock(), reply) {
+                    Ok(g) => g,
+                    Err(()) => return,
+                };
                 match map.abs_path(&self.backing, ino.0) {
                     Some(p) => p,
                     None => {
@@ -621,9 +643,8 @@ mod platform {
             }
             match fs::metadata(&path) {
                 Ok(meta) => {
-                    if let Ok(mut cache) = self.read_cache.lock() {
-                        cache.invalidate(&path);
-                    }
+                    let mut cache = lock_recover(self.read_cache.lock());
+                    cache.invalidate(&path);
                     reply.attr(&TTL, &Self::metadata_to_attr(ino.0, &meta));
                 }
                 Err(err) => reply.error(Self::io_errno(err)),
@@ -631,11 +652,15 @@ mod platform {
         }
 
         fn open(&self, _req: &Request, ino: INodeNo, _flags: OpenFlags, reply: ReplyOpen) {
-            let map = self.inodes.lock().expect("inode map");
+            let map = match lock_or_eio!(self.inodes.lock(), reply) {
+                Ok(g) => g,
+                Err(()) => return,
+            };
             let Some(path) = map.abs_path(&self.backing, ino.0) else {
                 reply.error(Errno::ENOENT);
                 return;
             };
+            drop(map);
             match fs::metadata(&path) {
                 Ok(meta) if meta.is_file() => {
                     reply.opened(FileHandle(ino.0), FopenFlags::empty());
@@ -658,7 +683,10 @@ mod platform {
         ) {
             debug!(?ino, offset, size, "read");
             let path = {
-                let map = self.inodes.lock().expect("inode map");
+                let map = match lock_or_eio!(self.inodes.lock(), reply) {
+                    Ok(g) => g,
+                    Err(()) => return,
+                };
                 match map.abs_path(&self.backing, ino.0) {
                     Some(p) => p,
                     None => {
@@ -667,7 +695,11 @@ mod platform {
                     }
                 }
             };
-            match self.read_cache.lock().expect("read cache").read_slice(&path, offset, size) {
+            let cache = match lock_or_eio!(self.read_cache.lock(), reply) {
+                Ok(g) => g,
+                Err(()) => return,
+            };
+            match cache.read_slice(&path, offset, size) {
                 Ok(buf) => reply.data(&buf),
                 Err(err) => reply.error(Self::io_errno(err)),
             }
@@ -687,7 +719,10 @@ mod platform {
         ) {
             debug!(?ino, offset, len = data.len(), "write");
             let path = {
-                let map = self.inodes.lock().expect("inode map");
+                let map = match lock_or_eio!(self.inodes.lock(), reply) {
+                    Ok(g) => g,
+                    Err(()) => return,
+                };
                 match map.abs_path(&self.backing, ino.0) {
                     Some(p) => p,
                     None => {
@@ -708,9 +743,10 @@ mod platform {
             match result {
                 Ok(Ok(n)) => {
                     record_passthrough_write();
-                    if let Ok(mut cache) = self.read_cache.lock() {
-                        cache.invalidate(&path);
-                    }
+                    // Best-effort cache invalidation; a poisoned read-cache
+                    // lock must not abort an otherwise-successful write.
+                    let mut cache = lock_recover(self.read_cache.lock());
+                    cache.invalidate(&path);
                     reply.written(n);
                 }
                 Ok(Err(err)) => reply.error(Self::io_errno(err)),
@@ -728,7 +764,10 @@ mod platform {
         ) {
             debug!(?ino, offset, "readdir");
             let entries = {
-                let mut map = self.inodes.lock().expect("inode map");
+                let mut map = match lock_or_eio!(self.inodes.lock(), reply) {
+                    Ok(g) => g,
+                    Err(()) => return,
+                };
                 let Some(rel) = map.resolve(ino.0).map(Path::to_path_buf) else {
                     reply.error(Errno::ENOENT);
                     return;
@@ -785,7 +824,10 @@ mod platform {
             _umask: u32,
             reply: ReplyEntry,
         ) {
-            let mut map = self.inodes.lock().expect("inode map");
+            let mut map = match lock_or_eio!(self.inodes.lock(), reply) {
+                Ok(g) => g,
+                Err(()) => return,
+            };
             let Some(rel) = map.child_rel(parent.0, name) else {
                 reply.error(Errno::ENOENT);
                 return;
@@ -794,9 +836,8 @@ mod platform {
             match fs::create_dir(&path) {
                 Ok(()) => {
                     let _ = fs::set_permissions(&path, fs::Permissions::from_mode(mode));
-                    if let Ok(mut neg) = self.neg_dentry.lock() {
-                        neg.invalidate(&rel);
-                    }
+                    let mut neg = lock_recover(self.neg_dentry.lock());
+                    neg.invalidate(&rel);
                     let ino = map.alloc_or_get(rel.clone());
                     match fs::metadata(&path) {
                         Ok(meta) => {
@@ -821,7 +862,10 @@ mod platform {
         ) {
             debug!(?parent, ?name, mode, "create");
             let rel = {
-                let map = self.inodes.lock().expect("inode map");
+                let map = match lock_or_eio!(self.inodes.lock(), reply) {
+                    Ok(g) => g,
+                    Err(()) => return,
+                };
                 let Some(rel) = map.child_rel(parent.0, name) else {
                     reply.error(Errno::ENOENT);
                     return;
@@ -865,7 +909,10 @@ mod platform {
                 return;
             }
             let rel = {
-                let map = self.inodes.lock().expect("inode map");
+                let map = match lock_or_eio!(self.inodes.lock(), reply) {
+                    Ok(g) => g,
+                    Err(()) => return,
+                };
                 let Some(rel) = map.child_rel(parent.0, name) else {
                     reply.error(Errno::ENOENT);
                     return;
@@ -894,7 +941,10 @@ mod platform {
         }
 
         fn unlink(&self, _req: &Request, parent: INodeNo, name: &OsStr, reply: ReplyEmpty) {
-            let mut map = self.inodes.lock().expect("inode map");
+            let mut map = match lock_or_eio!(self.inodes.lock(), reply) {
+                Ok(g) => g,
+                Err(()) => return,
+            };
             let Some(rel) = map.child_rel(parent.0, name) else {
                 reply.error(Errno::ENOENT);
                 return;
@@ -902,13 +952,11 @@ mod platform {
             let path = abs_under(&self.backing, &rel);
             match fs::remove_file(&path) {
                 Ok(()) => {
-                    if let Ok(mut cache) = self.read_cache.lock() {
-                        cache.invalidate(&path);
-                    }
-                    if let Ok(mut neg) = self.neg_dentry.lock() {
-                        neg.remember_miss(rel.clone());
-                        crate::neg_dentry::record_global_neg_miss();
-                    }
+                    let mut cache = lock_recover(self.read_cache.lock());
+                    cache.invalidate(&path);
+                    let mut neg = lock_recover(self.neg_dentry.lock());
+                    neg.remember_miss(rel.clone());
+                    crate::neg_dentry::record_global_neg_miss();
                     map.remove_rel(&rel);
                     reply.ok();
                 }
@@ -917,7 +965,10 @@ mod platform {
         }
 
         fn rmdir(&self, _req: &Request, parent: INodeNo, name: &OsStr, reply: ReplyEmpty) {
-            let mut map = self.inodes.lock().expect("inode map");
+            let mut map = match lock_or_eio!(self.inodes.lock(), reply) {
+                Ok(g) => g,
+                Err(()) => return,
+            };
             let Some(rel) = map.child_rel(parent.0, name) else {
                 reply.error(Errno::ENOENT);
                 return;
@@ -925,10 +976,9 @@ mod platform {
             let path = abs_under(&self.backing, &rel);
             match fs::remove_dir(&path) {
                 Ok(()) => {
-                    if let Ok(mut neg) = self.neg_dentry.lock() {
-                        neg.remember_miss(rel.clone());
-                        crate::neg_dentry::record_global_neg_miss();
-                    }
+                    let mut neg = lock_recover(self.neg_dentry.lock());
+                    neg.remember_miss(rel.clone());
+                    crate::neg_dentry::record_global_neg_miss();
                     map.remove_rel(&rel);
                     reply.ok();
                 }
@@ -946,7 +996,10 @@ mod platform {
             _flags: RenameFlags,
             reply: ReplyEmpty,
         ) {
-            let mut map = self.inodes.lock().expect("inode map");
+            let mut map = match lock_or_eio!(self.inodes.lock(), reply) {
+                Ok(g) => g,
+                Err(()) => return,
+            };
             let Some(old_rel) = map.child_rel(parent.0, name) else {
                 reply.error(Errno::ENOENT);
                 return;
@@ -959,15 +1012,13 @@ mod platform {
             let new_path = abs_under(&self.backing, &new_rel);
             match fs::rename(&old_path, &new_path) {
                 Ok(()) => {
-                    if let Ok(mut cache) = self.read_cache.lock() {
-                        cache.invalidate(&old_path);
-                        cache.invalidate(&new_path);
-                    }
-                    if let Ok(mut neg) = self.neg_dentry.lock() {
-                        neg.remember_miss(old_rel.clone());
-                        crate::neg_dentry::record_global_neg_miss();
-                        neg.invalidate(&new_rel);
-                    }
+                    let mut cache = lock_recover(self.read_cache.lock());
+                    cache.invalidate(&old_path);
+                    cache.invalidate(&new_path);
+                    let mut neg = lock_recover(self.neg_dentry.lock());
+                    neg.remember_miss(old_rel.clone());
+                    crate::neg_dentry::record_global_neg_miss();
+                    neg.invalidate(&new_rel);
                     map.rename_rel(&old_rel, new_rel);
                     reply.ok();
                 }
