@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! NDJSON watch helpers and CSV/stderr companion emission for `sharecli proc` (FR-006 / FR-007).
 //!
 //! - [`unix_ts_secs`] / [`emit_ndjson_line`] are the per-tick timestamp and

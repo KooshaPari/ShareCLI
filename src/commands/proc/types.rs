@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! JSON envelope structs for `sharecli proc` (FR-006).
 //!
 //! Every snapshot/row/NDJSON line is declared here. Renderers

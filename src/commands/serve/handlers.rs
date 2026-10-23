@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Plain HTTP request handlers for the `serve` listener.
 //!
 //! WebSocket handling lives in `super::ws`; Prometheus rendering lives

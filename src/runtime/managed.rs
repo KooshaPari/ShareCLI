@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `ManagedProcess` — process info + substrate handle pair, one entry in the
 //! `ProcessPool`'s `processes` map.
 

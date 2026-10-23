@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Public types — `HypervisorConfig`, `SpawnRequest`, `SpawnOutcome`,
 //! and the `CachedResult` ↔ `SpawnOutcome` conversions required by
 //! `CoalesceCache::with_lock`.

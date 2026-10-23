@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `sharecli pool` operator command (FR-007 / AC-007.44, 007.65, 007.77).
 //!
 //! Reports the shared runtime's node/bun pool counts, health status, and

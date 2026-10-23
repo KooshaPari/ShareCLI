@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Health / pool-status value types for `SharedRuntime::health_check` /
 //! `SharedRuntime::status`. Kept separate from `shared.rs` so the IPC
 //! payload types are discoverable without dragging in the pool impl.

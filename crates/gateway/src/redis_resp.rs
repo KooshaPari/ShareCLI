@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Redis RESP2 encoder + parser. Single-value encode + parse, used by
 //! `gateway-tools redis`.
 

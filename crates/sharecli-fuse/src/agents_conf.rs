@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Feb `agents.conf` parser — agent process-name substring patterns.
 //!
 //! Matching is substring-based and case-sensitive (parity with Downloads

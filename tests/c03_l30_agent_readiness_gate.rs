@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C03 L30.1 / L30.3 / L30.9 — agent-readiness evidence gates (FR-003).
 //!
 //! FR: FR-003

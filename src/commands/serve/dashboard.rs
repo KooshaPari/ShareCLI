@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! WebSocket dashboard snapshot types and builder.
 //!
 //! `DashboardWsSnapshot` is the operator envelope streamed over `/ws`.

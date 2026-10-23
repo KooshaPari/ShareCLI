@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR coverage lift — Wave18 gap remediation (ADR-007 Phase 2)
 //! FR: FR-001, FR-002, FR-004, FR-006, FR-008, FR-011, FR-012
 

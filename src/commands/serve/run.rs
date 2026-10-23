@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Entry point for `sharecli serve`.
 //!
 //! Builds the axum router, acquires the serve lock, starts the thermal

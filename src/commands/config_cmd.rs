@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `sharecli config` and `sharecli project` operator commands.
 //!
 //! `config` covers init / validate / show / get / set against the global TOML

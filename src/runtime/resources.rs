@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Per-project resource limits (`ProjectLimits`), the manager that tracks
 //! them across projects (`ProjectResources`), and the value type returned
 //! by `check_limits` (`ResourceCheck`).

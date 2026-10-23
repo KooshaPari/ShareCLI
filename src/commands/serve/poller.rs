@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Background thermal pressure poller.
 //!
 //! Reads the platform pressure integer (macOS / Linux) on a fixed interval

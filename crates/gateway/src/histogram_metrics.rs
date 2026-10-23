@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! In-memory histogram with a fixed bucket boundary list. Records a stream of
 //! observations and produces `(bucket_boundary, count_of_obs_le_boundary)`
 //! snapshots for the Prometheus exposition layer.

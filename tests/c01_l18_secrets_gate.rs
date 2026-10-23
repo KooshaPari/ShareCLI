@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C01 L18 — runtime secret contract for serve bearer + JWT (FR-003).
 //!
 //! FR: FR-003

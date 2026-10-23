@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! harness-is-agent binary: detect if the parent (or any ancestor) is an agent.
 //!
 //! Detection contract: the orchestrator writes a sentinel file at

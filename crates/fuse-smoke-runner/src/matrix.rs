@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FUSE mount-smoke matrix types and loud fail reasons (AC-009.22+).
 //!
 //! Every selected cell either runs privileged smoke or fails with a structured

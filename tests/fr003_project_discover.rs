@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-003 — Project Registry (discover)
 //! FR: FR-003
 //!

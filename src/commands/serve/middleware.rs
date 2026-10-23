@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Axum middleware for the `serve` HTTP listener.
 //!
 //! Three middlewares are wired onto the router (outermost first):

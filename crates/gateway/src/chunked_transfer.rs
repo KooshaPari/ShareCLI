@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! HTTP/1.1 chunked transfer-encoding helpers, surfaced as plain bytes (not
 //! the wire CRLF-prefixed text). The `gateway-tools chunked` subcommand wraps
 //! `encode_chunks` with hex chunk-size headers and appends the `0\r\n\r\n`

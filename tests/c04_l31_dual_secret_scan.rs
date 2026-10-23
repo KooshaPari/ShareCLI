@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C04 L31 — dual secret scanners (gitleaks + trufflehog) + pre-commit hook (FR-003).
 //!
 //! FR: FR-003

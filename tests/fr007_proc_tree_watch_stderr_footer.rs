@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — `sharecli proc --tree --watch --json` stderr gate/host_watch companion ordering
 //! FR: FR-007
 //!

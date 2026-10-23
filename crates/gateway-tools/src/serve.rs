@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! # serve
 //!
 //! `gateway-tools serve --port <PORT>` starts a small axum 0.8 HTTP server that

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — one-shot `sharecli proc` JSON stderr silence (inverse of AC-007.28/29)
 //! FR: FR-007
 //!
