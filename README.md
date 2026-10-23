@@ -212,6 +212,25 @@ cargo build --release
 ./target/release/sharecli --version
 ```
 
+### Building on Windows
+
+PhenoShared is a Git dependency whose archive directories contain long paths.
+Before the first Cargo build, enable long paths in Git for Windows from an
+administrator PowerShell (this also covers Cargo's separate dependency checkouts):
+
+```powershell
+git config --system core.longpaths true
+$env:CARGO_NET_GIT_FETCH_WITH_CLI = "true"
+$env:CARGO_BUILD_JOBS = "2"
+cargo build --locked --release -p sharecli
+```
+
+The repository's Cargo configuration also selects Git CLI fetching. A local
+`git config core.longpaths true` in ShareCLI alone does not configure Cargo's
+separate Git dependency repositories. CI applies the system setting on its
+Windows runner before building. Windows binaries remain experimental until the
+Windows spawn stub work (W5.2) lands.
+
 ## Quick Start
 
 1. Drop a config file at `./sharecli.toml`:
