@@ -403,14 +403,14 @@ These were captured during data gathering but not surfaced in the main numbered 
 Two separate ADR namespaces exist in the same repo:
 
 - `docs/adr/0001-no-mobile-app.md` … `docs/adr/0009-global-nested-ledger-local-admission.md` — 9 ADRs, last touched 2026-10-13.
-- `docs/ops/governance/adrs/ADR-007-coverage-ratchet-recovery.md` … `ADR-010-packaging-pipeline-hardening.md` — 4 ADRs, last touched 2026-09-01.
+- `docs/adr/ADR-007-coverage-ratchet-recovery.md` … `ADR-010-packaging-pipeline-hardening.md` — 4 ADRs, last touched 2026-09-01.
 
 Both directories use overlapping numeric IDs (007–010). They are not cross-referenced.
 
-- `docs/adr/0007-ports-adapters-hexagonal.md` (architecture) coexists with `docs/ops/governance/adrs/ADR-007-coverage-ratchet-recovery.md` (governance) — readers cannot tell whether to follow one or the other.
-- `docs/adr/0008-airlock-convergence-contract-capture.md` coexists with `docs/ops/governance/adrs/ADR-008-code-signing-hardening.md` — same issue.
-- `docs/adr/0009-global-nested-ledger-local-admission.md` coexists with `docs/ops/governance/adrs/ADR-009-harbor-soak-alternative.md` — same issue.
-- `docs/ops/governance/adrs/ADR-010-packaging-pipeline-hardening.md` has no peer in `docs/adr/`.
+- `docs/adr/0007-ports-adapters-hexagonal.md` (architecture) coexists with `docs/adr/ADR-007-coverage-ratchet-recovery.md` (governance) — readers cannot tell whether to follow one or the other.
+- `docs/adr/0008-airlock-convergence-contract-capture.md` coexists with `docs/adr/ADR-008-code-signing-hardening.md` — same issue.
+- `docs/adr/0009-global-nested-ledger-local-admission.md` coexists with `docs/adr/ADR-009-harbor-soak-alternative.md` — same issue.
+- `docs/adr/ADR-010-packaging-pipeline-hardening.md` has no peer in `docs/adr/`.
 
 Total: 13 ADRs across two directories with overlapping numbering. Coverage of major decisions is partial — no ADR exists for: async-runtime choice (tokio), IPC transport (NDJSON-RPC over Unix socket / named pipe), FUSE backend matrix (fuse3/feedbackfs/Stub), Cargo workspace shape (16 crates), release/versioning policy, signpath/SLSA pipeline, mesh gossip protocol.
 

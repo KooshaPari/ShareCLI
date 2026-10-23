@@ -99,7 +99,12 @@ async fn capture_pprof_protobuf(seconds: u64) -> Result<Vec<u8>, String> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+
     use super::*;
+
+    /// Serialize env mutations across tests that touch `SHARECLI_PPROF`.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn pprof_parse_disabled_cases() {
@@ -113,5 +118,52 @@ mod tests {
         assert!(pprof_enabled_from(Some("1")));
         assert!(pprof_enabled_from(Some("true")));
         assert!(pprof_enabled_from(Some("yes")));
+    }
+
+    #[test]
+    fn pprof_enabled_from_recognizes_arbitrary_non_zero_strings() {
+        // Any non-empty value that isn't literally "0" is treated as enabled.
+        // This is the same semantics as `SHARECLI_PPROF=anything`.
+        assert!(pprof_enabled_from(Some("100")));
+        assert!(pprof_enabled_from(Some("enable")));
+        assert!(pprof_enabled_from(Some(" 1 ")));
+        assert!(pprof_enabled_from(Some("01")));
+    }
+
+    #[test]
+    fn default_seconds_function_returns_ten() {
+        // The serde default helper for `ProfileQuery.seconds` must be 10.
+        assert_eq!(default_seconds(), 10);
+    }
+
+    #[test]
+    fn profile_query_deserializes_with_explicit_seconds() {
+        // Round-trip: explicit value is preserved.
+        let q: ProfileQuery = serde_json::from_str(r#"{"seconds":30}"#).expect("parse");
+        assert_eq!(q.seconds, 30);
+    }
+
+    #[test]
+    fn profile_query_deserializes_missing_seconds_as_default_ten() {
+        // Missing field falls back to default_seconds() = 10.
+        let q: ProfileQuery = serde_json::from_str("{}").expect("parse");
+        assert_eq!(q.seconds, 10);
+    }
+
+    #[tokio::test]
+    async fn profile_handler_returns_not_found_when_pprof_disabled() {
+        // Force the disabled state regardless of any ambient env override.
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let prev = std::env::var_os("SHARECLI_PPROF");
+        unsafe {
+            std::env::set_var("SHARECLI_PPROF", "0");
+        }
+        let resp = profile_handler(Query(ProfileQuery { seconds: 5 })).await;
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        // Restore env so subsequent tests see the original state.
+        match prev {
+            Some(v) => unsafe { std::env::set_var("SHARECLI_PPROF", v) },
+            None => unsafe { std::env::remove_var("SHARECLI_PPROF") },
+        }
     }
 }

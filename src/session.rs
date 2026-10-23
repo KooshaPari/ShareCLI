@@ -365,3 +365,142 @@ impl GhosttyAdapter {
             .or_else(|| (!caps.control_socket).then_some("native RPC unavailable"))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn zmx_command_new_collects_program_and_args() {
+        let cmd = ZmxCommand::new("zmx", ["attach", "session-1"]);
+        assert_eq!(cmd.program, "zmx");
+        assert_eq!(cmd.args, vec!["attach", "session-1"]);
+    }
+
+    #[test]
+    fn zmx_session_adapter_attach_emits_program_then_attach() {
+        let adapter = ZmxSessionAdapter::new("zmx");
+        let cmd = adapter.attach("pane-42", &["bash", "-c", "echo hi"]);
+        assert_eq!(cmd.program, "zmx");
+        assert_eq!(
+            cmd.args,
+            vec!["attach", "pane-42", "bash", "-c", "echo hi"]
+        );
+    }
+
+    #[test]
+    fn zmx_session_adapter_tail_omits_or_includes_lines_flag() {
+        let adapter = ZmxSessionAdapter::new("zmx");
+        // No lines -> no --lines flag, just trailing session name.
+        let none_cmd = adapter.tail("pane-1", None);
+        assert_eq!(none_cmd.program, "zmx");
+        assert_eq!(none_cmd.args, vec!["tail".to_owned(), "pane-1".to_owned()]);
+        // Some(lines) -> inserts --lines <N> before the session name.
+        let some_cmd = adapter.tail("pane-2", Some(250));
+        assert_eq!(
+            some_cmd.args,
+            vec![
+                "tail".to_owned(),
+                "--lines".to_owned(),
+                "250".to_owned(),
+                "pane-2".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn zmx_session_adapter_history_omits_or_includes_vt_flag() {
+        let adapter = ZmxSessionAdapter::new("zmx");
+        let plain = adapter.history("pane-3", false);
+        assert_eq!(plain.args, vec!["history".to_owned(), "pane-3".to_owned()]);
+        let vt = adapter.history("pane-3", true);
+        assert_eq!(
+            vt.args,
+            vec!["history".to_owned(), "--vt".to_owned(), "pane-3".to_owned()]
+        );
+    }
+
+    #[test]
+    fn ghostty_capabilities_from_probe_starts_without_control_socket() {
+        let caps = GhosttyCapabilities::from_probe(true, false, false);
+        assert!(caps.apple_events);
+        assert!(!caps.app_intents);
+        assert!(!caps.accessibility_readback);
+        assert!(!caps.control_socket, "control socket must default to false");
+    }
+
+    #[test]
+    fn ghostty_capabilities_with_control_socket_toggles_flag() {
+        let caps = GhosttyCapabilities::from_probe(false, false, false)
+            .with_control_socket(true);
+        assert!(caps.control_socket);
+        let caps = GhosttyCapabilities::from_probe(false, false, false)
+            .with_control_socket(false);
+        assert!(!caps.control_socket);
+    }
+
+    #[test]
+    fn ghostty_adapter_degraded_reason_for_each_missing_surface_capability() {
+        // All three RPC channels disabled -> top reason applies.
+        let none = GhosttyCapabilities::from_probe(false, false, false);
+        assert_eq!(
+            GhosttyAdapter::degraded_reason(&none),
+            Some("native surface API unavailable")
+        );
+        // Only RPC channel missing -> second reason applies.
+        let some_surface = GhosttyCapabilities::from_probe(true, true, true);
+        assert_eq!(
+            GhosttyAdapter::degraded_reason(&some_surface),
+            Some("native RPC unavailable")
+        );
+        // All channels present -> no degraded reason.
+        let full =
+            GhosttyCapabilities::from_probe(true, true, true).with_control_socket(true);
+        assert_eq!(GhosttyAdapter::degraded_reason(&full), None);
+    }
+
+    #[test]
+    fn surface_event_envelope_serde_roundtrip_with_optional_fields() {
+        let original = SurfaceEventEnvelope {
+            subscription_id: 7,
+            surface_id: "surface-9".to_owned(),
+            seq: 42,
+            kind: SurfaceEventKind::Output,
+            timestamp: Some("2026-10-17T22:00:00Z".to_owned()),
+            event_bytes_base64: None,
+            dropped: None,
+            resync_required: None,
+        };
+        let serialized = serde_json::to_string(&original).expect("serialize");
+        // Optional fields with `#[serde(default)]` (no skip_serializing_if) are
+        // emitted as `null` on the wire — confirms downstream readers see
+        // explicit `null` rather than missing keys.
+        assert!(serialized.contains("\"event_bytes_base64\":null"));
+        assert!(serialized.contains("\"dropped\":null"));
+        let parsed: SurfaceEventEnvelope =
+            serde_json::from_str(&serialized).expect("deserialize");
+        assert_eq!(parsed.subscription_id, 7);
+        assert_eq!(parsed.surface_id, "surface-9");
+        assert_eq!(parsed.seq, 42);
+        assert_eq!(parsed.kind, SurfaceEventKind::Output);
+        assert_eq!(parsed.timestamp.as_deref(), Some("2026-10-17T22:00:00Z"));
+        assert!(parsed.event_bytes_base64.is_none());
+        // JSON-shape round trip: serialize again and confirm byte-equivalence.
+        let reserialized = serde_json::to_string(&parsed).expect("reserialize");
+        assert_eq!(serialized, reserialized);
+
+        // Lowercase enum rename_all: verify "kind": "dropped" parses back to Dropped.
+        let raw = json!({
+            "subscription_id": 1,
+            "surface_id": "s",
+            "seq": 0,
+            "kind": "dropped",
+            "timestamp": null,
+        });
+        let from_lower: SurfaceEventEnvelope =
+            serde_json::from_value(raw).expect("lowercase kind");
+        assert_eq!(from_lower.kind, SurfaceEventKind::Dropped);
+    }
+}
