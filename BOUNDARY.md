@@ -1,6 +1,6 @@
-# Boundary Lock: ShareCLI process orchestration
+# Boundary Lock: ShareCLI agent runtime / hypervisor
 
-**Status:** ACTIVE — shared CLI process manager for multi-project agent orchestration.
+**Status:** ACTIVE — OS/kernel-adjacent agent runtime / hypervisor for multi-agent hosts.
 
 ## Owns
 - Cross-project CLI process lifecycle (spawn, supervise, teardown)
