@@ -33,7 +33,7 @@
 |---|--------|-------------|-------|----------|
 | 1 | **L0: Architecture Overview** | Architecture diagram in SPEC.md | 3 | SPEC.md has ASCII arch diagram + component table |
 | 2 | **L1: Module Boundaries** | Clear crate boundaries enforced | 3 | 14 workspace crates with explicit path deps; no circular deps |
-| 3 | **L2: Dependency Direction** | Core -> IPC -> Fleet -> Fuse layering | 3 | sharecli-core depends on sharecli-ipc, sharecli-fleet, sharecli-fuse |
+| 3 | **L2: Dependency Direction** | Core -> IPC -> Fleet -> Fuse layering | 3 | sharecli-core depends on sharecli-ipc, sharecli-fleet, sharecli-fuse; HYBRID via [sharecli-core-pure](../crates/sharecli-core-pure) (re-exports 11 items of `sharecli_core::transaction_contract`); see [ADR 0010](../docs/adr/0010-core-pure-hybrid.md) + [0007-pure-classification.md](../docs/adr/0007-pure-classification.md) |
 | 4 | **L3: Library Facade** | src/lib.rs exports public API | 3 | src/lib.rs exists; library tests in tests/ |
 | 5 | **L4: Async Runtime** | Tokio async shutdown correctness | 3 | tests/c00_l4_async_shutdown_gate.rs |
 | 6 | **L5: Config Hot-Reload** | notify crate for TOML watch | 3 | src/config_watcher.rs + config_loader.rs + config_merger.rs |
