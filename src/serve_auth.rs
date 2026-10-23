@@ -511,4 +511,90 @@ mod tests {
         assert_eq!(json["error"]["message"], "missing or invalid bearer token");
         assert!(json["error"]["request_id"].is_null());
     }
+
+    #[test]
+    fn jwt_bad_signature_rejected() {
+        // Flip a single trailing byte of the valid signature to invalidate it.
+        // Same header/payload, only the signature segment is mutated.
+        let auth = jwt_auth();
+        let parts = fixture().tokens.valid.clone();
+        let mut sig = parts[2].clone();
+        // The signature is base64url; flip the last char to a different valid
+        // base64url alphabet member so re-encoding still parses but the bytes differ.
+        let last = sig.pop().unwrap();
+        let replacement = if last == 'A' { 'B' } else { 'A' };
+        sig.push(replacement);
+        let token = format!("{}.{}.{}", parts[0], parts[1], sig);
+        let err = auth
+            .check_authorization(Some(&format!("Bearer {token}")))
+            .unwrap_err();
+        assert!(
+            err == "jwt_invalid_sig" || err.starts_with("jwt_invalid:"),
+            "expected signature-mapped error, got {err}"
+        );
+    }
+
+    #[test]
+    fn jwt_garbage_token_rejected() {
+        let auth = jwt_auth();
+        // A string with two dots looks structurally like a JWT but the payload
+        // is not valid base64/JSON for our claims; header decode must fail.
+        let err = auth
+            .check_authorization(Some("Bearer this-is-not-a-jwt"))
+            .unwrap_err();
+        assert!(
+            err.starts_with("jwt_header:") || err.starts_with("jwt_invalid"),
+            "expected header-decode error, got {err}"
+        );
+    }
+
+    #[test]
+    fn jwt_empty_token_rejected() {
+        let auth = jwt_auth();
+        let err = auth
+            .check_authorization(Some("Bearer "))
+            .unwrap_err();
+        assert!(
+            err.starts_with("jwt_header:") || err.starts_with("jwt_invalid"),
+            "expected header-decode error for empty token, got {err}"
+        );
+    }
+
+    #[test]
+    fn jwt_malformed_header_segment_rejected() {
+        let auth = jwt_auth();
+        // Header segment is not valid base64url -> decode_header fails.
+        let payload = fixture().tokens.valid[1].clone();
+        let sig = fixture().tokens.valid[2].clone();
+        let bad_header = "***not_base64***";
+        let token = format!("{bad_header}.{payload}.{sig}");
+        let err = auth
+            .check_authorization(Some(&format!("Bearer {token}")))
+            .unwrap_err();
+        assert!(
+            err.starts_with("jwt_header:") || err.starts_with("jwt_invalid"),
+            "expected malformed-header error, got {err}"
+        );
+    }
+
+    #[test]
+    fn serve_auth_unknown_mode_hint_returns_error() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // Ensure no overrides are set.
+        unsafe {
+            std::env::remove_var("SHARECLI_SERVE_TOKEN");
+            std::env::remove_var("SHARECLI_SERVE_AUTH_MODE");
+        }
+        let cfg = ServeConfig {
+            auth_mode: Some("bogus".into()),
+            bearer_token: None,
+            jwt: None,
+            ..ServeConfig::default()
+        };
+        let err = ServeAuth::from_env_or_config(&cfg).unwrap_err();
+        assert_eq!(
+            err,
+            "unknown serve.auth_mode `bogus` (expected open|bearer|jwt)"
+        );
+    }
 }
