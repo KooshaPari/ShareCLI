@@ -7,8 +7,8 @@ use std::process::ExitCode;
 use axum::body::to_bytes;
 use axum::http::StatusCode;
 
-use crate::error::{ErrorCode, SharecliError, EXIT_INTERNAL, EXIT_IO};
-use crate::error_envelope::{auth_failure_message, ErrorEnvelope};
+use sharecli::error::{ErrorCode, SharecliError, EXIT_INTERNAL, EXIT_IO};
+use sharecli::error_envelope::{auth_failure_message, ErrorEnvelope};
 
 #[test]
 fn operator_codes_remain_compatible_with_runbook_identifiers() {
