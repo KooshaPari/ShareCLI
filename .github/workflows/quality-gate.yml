@@ -55,10 +55,11 @@ jobs:
       # targets, so glib-sys's build script needs the system glib development
       # package. Without it the build fails with "Package glib-2.0 was not
       # found in the pkg-config search path". Matches ci.yml.
+      # libappindicator-sys also needs libayatana-appindicator3-dev at build time.
       - name: Install system dependencies (Linux)
         run: |
           sudo apt-get update
-          sudo apt-get install -y libglib2.0-dev libgtk-3-dev libxdo-dev pkg-config
+          sudo apt-get install -y libglib2.0-dev libgtk-3-dev libxdo-dev pkg-config libayatana-appindicator3-dev
 
       - name: Cache dependencies
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
@@ -75,14 +76,23 @@ jobs:
       # Ignore CLI/cast/runtime/orchestration/table surfaces and workspace
       # stubs that are covered by tests/ integration suites or are not
       # unit-testable — matching the --lib job scope. Do not lower the %.
-      # src/runtime/ was split out of the former src/runtime.rs (#960); the
-      # directory form must stay excluded so the executable-line count and
-      # the measured percentage remain identical to the pre-split baseline.
+      # src/runtime.rs was split into src/runtime/ by #960, so the former
+      # `runtime\.rs$` alternative is dead and has been dropped. The
+      # replacement `(^|/)src/runtime/` is scoped to the root crate's
+      # src/runtime/ tree: unlike the previous unanchored `(^|/)runtime/` it no
+      # longer swallows a same-named directory at any depth (e.g. a future
+      # src/<mod>/runtime/). Files under crates/ stay excluded wholesale by the
+      # `(^|/)crates/` alternative, so crate paths are unaffected. This
+      # alternative only restores the pre-split DENOMINATOR for src/runtime/;
+      # it does not by itself imply any particular resulting percentage.
+      # llvm-cov matches this regex against ABSOLUTE paths, so the `(^|/)`
+      # alternation is kept rather than a bare `^src/runtime/`, which would
+      # never match and would re-add the 1537 excluded lines to the gate.
       - name: Enforce unit coverage threshold
         run: |
           cargo llvm-cov --lib --locked --all-features --workspace \
             --fail-under-lines "${COVERAGE_THRESHOLD}" \
-            --ignore-filename-regex '(^|/)(commands|cast)/|wasm_opcode\.rs$|coordination\.rs$|runtime\.rs$|(^|/)runtime/|speculative_cache\.rs$|(^|/)crates/' \
+            --ignore-filename-regex '(^|/)(commands|cast)/|wasm_opcode\.rs$|coordination\.rs$|(^|/)src/runtime/|speculative_cache\.rs$|(^|/)crates/' \
             --lcov --output-path lcov.info
 
       - name: Upload coverage
@@ -106,10 +116,11 @@ jobs:
 
       # See unit-tests: the Linux dependency graph reaches glib-sys through
       # tray-icon's libappindicator backend.
+      # libappindicator-sys also needs libayatana-appindicator3-dev at build time.
       - name: Install system dependencies (Linux)
         run: |
           sudo apt-get update
-          sudo apt-get install -y libglib2.0-dev libgtk-3-dev libxdo-dev pkg-config
+          sudo apt-get install -y libglib2.0-dev libgtk-3-dev libxdo-dev pkg-config libayatana-appindicator3-dev
 
       - name: Cache dependencies
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
@@ -132,10 +143,11 @@ jobs:
 
       # See unit-tests: the Linux dependency graph reaches glib-sys through
       # tray-icon's libappindicator backend.
+      # libappindicator-sys also needs libayatana-appindicator3-dev at build time.
       - name: Install system dependencies (Linux)
         run: |
           sudo apt-get update
-          sudo apt-get install -y libglib2.0-dev libgtk-3-dev libxdo-dev pkg-config
+          sudo apt-get install -y libglib2.0-dev libgtk-3-dev libxdo-dev pkg-config libayatana-appindicator3-dev
 
       - name: Cache dependencies
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
