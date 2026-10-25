@@ -29,6 +29,7 @@
 //!
 //! Each assertion below maps to one numbered protocol clause.
 
+use std::future::Future;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -72,6 +73,54 @@ fn exec_ok(
     }
 }
 
+/// Assert `pending_len()` reaches `expected`, polling until it does.
+///
+/// `coalesce` is an `async fn` and registers its pending group on the FIRST
+/// POLL of the returned future, so a freshly spawned task has to actually be
+/// scheduled before the group is observable. A bare `yield_now().await`
+/// assumes one scheduler hand-off always suffices; this helper instead polls
+/// until the expected state is observed and gives up with a descriptive panic
+/// after a fixed number of scheduler yields.
+///
+/// The bound is an ITERATION budget, not an elapsed-time deadline. These tests
+/// run under `#[tokio::test(start_paused = true)]`, where the virtual clock
+/// only advances while the runtime is idle, so a wall-clock deadline would
+/// never expire (the wait would hang forever) and a `sleep`-driven loop could
+/// silently push virtual time past the coalescing window. The loop therefore
+/// yields (the only clock-independent way to hand the task queue back to the
+/// runtime) and never sleeps.
+///
+/// `context` is the contract the assertion encodes; it is reported verbatim
+/// when the bounded wait is exhausted so a timeout is as diagnosable as a plain
+/// `assert_eq!` failure.
+///
+/// Deliberately duplicated in `crates/sharecli-core/src/speculation.rs`: this
+/// is an integration test of the root `sharecli` package, which cannot reach
+/// into `sharecli-core`'s `#[cfg(test)]` module without creating a circular
+/// dev-dependency, and a new `src/` module would inflate the coverage
+/// denominator for test-only code.
+async fn assert_pending_len<F, Fut>(expected: usize, context: &str, read: F)
+where
+    F: Fn() -> Fut,
+    Fut: Future<Output = usize>,
+{
+    const ATTEMPTS: usize = 1_024;
+    let mut observed = 0usize;
+    for _ in 0..ATTEMPTS {
+        observed = read().await;
+        if observed == expected {
+            return;
+        }
+        // Hand the task queue back to the runtime so the spawned `coalesce`
+        // task gets polled and can register its group.
+        tokio::task::yield_now().await;
+    }
+    panic!(
+        "bounded wait exhausted after {ATTEMPTS} scheduler yields: {context} \
+         (expected pending_len {expected}, last observed {observed})"
+    );
+}
+
 /// Protocol clause 1 (registration) + `pending_len` observability.
 ///
 /// From OUTSIDE the crate: a coalesce cycle that is genuinely being driven
@@ -94,14 +143,14 @@ async fn external_pending_len_reflects_active_cycle() {
     let c = Arc::clone(&coalescer);
     let handle = tokio::spawn(async move { c.coalesce(&k, exec_ok(cnt, "external")).await });
 
-    // Let the spawned task register the pending group.
-    tokio::task::yield_now().await;
-
-    assert_eq!(
-        coalescer.pending_len().await,
+    // Wait (bounded) for the spawned task to register the pending group
+    // rather than assuming a single scheduler yield is enough.
+    assert_pending_len(
         1,
-        "pending_len MUST show 1 active group while the window is still running"
-    );
+        "pending_len MUST show 1 active group while the window is still running",
+        || async { coalescer.pending_len().await },
+    )
+    .await;
 
     // Advance virtual time past the window so the executor runs.
     tokio::time::sleep(Duration::from_secs(2)).await;
@@ -139,12 +188,12 @@ async fn external_window_join_shares_one_execution_and_post_window_starts_fresh_
         handles.push(tokio::spawn(async move { c.coalesce(&k, exec_ok(cnt, "shared")).await }));
     }
 
-    tokio::task::yield_now().await;
-    assert_eq!(
-        coalescer.pending_len().await,
+    assert_pending_len(
         1,
-        "three in-window callers MUST share ONE pending group, not three"
-    );
+        "three in-window callers MUST share ONE pending group, not three",
+        || async { coalescer.pending_len().await },
+    )
+    .await;
 
     tokio::time::sleep(Duration::from_secs(2)).await;
 
@@ -166,12 +215,10 @@ async fn external_window_join_shares_one_execution_and_post_window_starts_fresh_
     let c = Arc::clone(&coalescer);
     let handle = tokio::spawn(async move { c.coalesce(&k, exec_ok(cnt, "fresh")).await });
 
-    tokio::task::yield_now().await;
-    assert_eq!(
-        coalescer.pending_len().await,
-        1,
-        "post-window caller MUST register a FRESH pending group"
-    );
+    assert_pending_len(1, "post-window caller MUST register a FRESH pending group", || async {
+        coalescer.pending_len().await
+    })
+    .await;
 
     tokio::time::sleep(Duration::from_secs(2)).await;
     let r = handle.await.expect("join").expect("ok");
@@ -199,12 +246,12 @@ async fn external_distinct_keys_are_independent_groups() {
         handles.push(tokio::spawn(async move { c.coalesce(&k, exec_ok(cnt, "distinct")).await }));
     }
 
-    tokio::task::yield_now().await;
-    assert_eq!(
-        coalescer.pending_len().await,
+    assert_pending_len(
         3,
-        "three distinct keys MUST register three independent pending groups"
-    );
+        "three distinct keys MUST register three independent pending groups",
+        || async { coalescer.pending_len().await },
+    )
+    .await;
 
     tokio::time::sleep(Duration::from_secs(2)).await;
     for h in handles {
