@@ -2,11 +2,57 @@
 # Transitive yanked crates (e.g. spin via pprof) surface as informational
 # warnings; CI runs `cargo audit` without `--deny warnings` so only
 # real vulnerabilities fail the job.
+#
+# The ignore list mirrors the advisory set documented in deny.toml and
+# osv-scanner.toml. cargo-audit's config schema accepts only bare advisory
+# ids (no per-entry expiry), so the time bounds recorded in those two files
+# are not enforceable here; the reasons are duplicated as comments so the
+# rationale stays in one place per file.
 [advisories]
 ignore = [
   # Marvin attack advisory covers every released version of rsa (introduced 0.0.0-0, no patch).
-  # sharecli only decodes/verifies JWTs with RSA public keys for local sidecar auth (src/serve_auth.rs).
+  # sharecli only decodes/verifies JWTs with RSA public keys for local sidecar auth (src/serve_auth.rs);
+  # it never performs network-exposed RSA private-key operations.
   "RUSTSEC-2023-0071",
   # Informational 'unmaintained' advisory for paste - stale Cargo.lock entry.
   "RUSTSEC-2024-0436",
+  # proc-macro-error 1.0.4 unmaintained. Build-time macro transitive of
+  # sharecli-tray-windows via tray-icon's libappindicator backend; Linux-only
+  # because tray-icon gates libappindicator behind
+  # cfg(any(target_os = "linux", dragonfly, freebsd, netbsd, openbsd)). No
+  # patched release; build-time-only, no runtime impact on sharecli artifacts.
+  "RUSTSEC-2024-0370",
+  # glib 0.18.5 unsound glib::VariantStrIter Iterator/DoubleEndedIterator impls
+  # (informational=unsound). Linux-only: reached via sharecli-tray-windows ->
+  # tray-icon(libappindicator) -> libappindicator -> gtk -> atk -> glib.
+  # Patched 0.20.0 is a breaking release gtk 0.18.2 cannot accept; no
+  # non-breaking upgrade.
+  "RUSTSEC-2024-0429",
+  # INFO unmaintained advisory for unsafe-libyaml, the C-based YAML backend
+  # pulled in only via serde_yaml. No patched release exists
+  # (dtolnay/unsafe-libyaml archived 2024-03-25, last release 0.2.11), so there
+  # is no version to bump to. sharecli uses serde_yaml only for parsing local
+  # config/auth files, never on untrusted network input.
+  "RUSTSEC-2024-0449",
+  # zbus family (zvariant / zbus_names / zvariant_derive) unmaintained - the
+  # standalone crates were folded into zbus 6.x and RustSec reports "No safe
+  # upgrade is available!". Two independent paths reach zbus, and neither is
+  # compiled into a macOS or Windows artifact: sharecli-tray-linux -> ksni ->
+  # zbus (Linux-only, absent on FreeBSD), and the "desktop-notifications"
+  # feature -> notify-rust 4.18.2 -> zbus (covers Linux and the BSDs, excludes
+  # macOS). Both scanners read only the target-agnostic root Cargo.lock, so
+  # neither does per-target resolution.
+  "RUSTSEC-2026-0370",
+  "RUSTSEC-2026-0371",
+  "RUSTSEC-2026-0372",
+  # crypto-bigint 0.5.5 constant-time timing-variability advisory (published
+  # 2026-10-23). No fix is reachable: the fix needs elliptic-curve 0.14 /
+  # ecdsa 0.17 / p256 0.14, and jsonwebtoken 11.1.0 (the newest release) pins
+  # p256 ^0.13.2. The upstream coordinated RustCrypto bump
+  # (Keats/jsonwebtoken#536) is open and unmerged. sharecli reaches
+  # crypto-bigint only for ES256/ES384 ECDSA public-key decoding and signature
+  # verification in local sidecar auth (src/serve_auth.rs); the advisory names
+  # secret-dependent branches over secret integers, and the secret here is the
+  # issuer's private key, which never enters this process.
+  "RUSTSEC-2026-0387",
 ]
