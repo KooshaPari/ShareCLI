@@ -1,8 +1,8 @@
 # Test Coverage Matrix
 
 **Project**: sharecli  
-**Document Version**: 1.9
-**Last Updated**: 2026-09-03 (Wave18 T-910 workspace-broad remeasure @ `d152eda` — **82.38%** lines / **84.34%** funcs / **83.39%** regions; supersedes prior workspace pin **80.51%** @ `5d8dc08`; lib pin **77.34%** @ `fa887e9` retained as the `--lib` hard-gate scope value)
+**Document Version**: 2.0
+**Last Updated**: 2026-10-25 (PR #977 — **unit coverage GATE scope pinned at 85.88% lines** @ `9918ed4`; this is the scope the 85% floor is defined against and the scope `quality-gate.yml` enforces. Prior pins retained as historical evidence: workspace-broad **82.38%** @ `d152eda`, prior workspace **80.51%** @ `5d8dc08`, unexcluded `--lib` **77.34%** @ `fa887e9`)
 
 ---
 
@@ -16,12 +16,37 @@
 | Test functions in `tests/` | 72 (`#[test]` / `#[tokio::test]`) + #399 lift suites + T-810 6 tests @ `e298e0f` |
 | Unit-ish tests in `src/` + `crates/` | ~1500+ (includes generated/large suites) |
 | Coverage Target | 85% (see `.github/workflows/quality-gate.yml` `COVERAGE_THRESHOLD`) |
-| Current Coverage (--lib, Wave17 T-810) | **77.34% lines** (`fa887e9`; local llvm-cov run `local-lib-20260827`) |
+| **Current Coverage (GATE scope, PR #977)** | **85.88% lines** (`9918ed4`; local Linux llvm-cov run `local-linux-gate-scope-20261025`) — **this is the scope the 85% floor is defined against** |
+| Unexcluded `--lib` pin (superseded, retained) | **77.34% lines** (`fa887e9`; local llvm-cov run `local-lib-20260827`) — measures a broader surface, NOT the gate |
 | Retained Workspace Pin | **82.38% lines** (`d152eda` / local WSL workspace-broad run 2026-09-03; supersedes prior **80.51%** @ `5d8dc08`) |
 
 ---
 
-## Measured coverage pin
+## Unit coverage GATE scope (current pin — PR #977)
+
+**The 85% floor is defined against this scope.** It is exactly the command in
+`.github/workflows/quality-gate.yml`:
+
+```bash
+cargo llvm-cov --lib --locked --all-features --workspace \
+  --fail-under-lines 85 \
+  --ignore-filename-regex '(^|/)(commands|cast)/|wasm_opcode\.rs$|coordination\.rs$|(^|/)src/runtime/|speculative_cache\.rs$|(^|/)crates/'
+```
+
+| Field | Evidence |
+|-------|----------|
+| Source revision | `9918ed4d72646cea9759d214363cee475416e3a0` (PR #977 head) |
+| Scope | `--lib --locked --all-features --workspace` + the filename exclusions above (cargo llvm-cov 0.9.1; local Linux run `local-linux-gate-scope-20261025` 2026-10-25) |
+| Retained snapshot | `audit/coverage-snapshots/9918ed4.coverage-snapshot.json` |
+| Measured line percentage | **85.88%** (8,606 lines; 1,215 covered) |
+| Functions / regions | 84.98% functions (126 / 839); 85.57% regions (760 / 5,268) |
+| Meets 85% unit gate? | **Yes** (`meets_lines_target: true`); the `--fail-under-lines 85` run exits 0 |
+| Scope note | `--workspace` plus the `--ignore-filename-regex` exclusions are part of the definition, not incidental flags. The exclusions select the unit-testable surface: CLI/cast/runtime/orchestration/table surfaces and workspace stubs that are covered by `tests/` integration suites or are not unit-testable. |
+| Superseded-scope note | The bare `--lib --all-features --locked` scope (no `--workspace`, no `--ignore-filename-regex`) measures a **different, broader** surface and reports **65.60% lines** (19,180 lines; 6,598 covered) on this same tree. That is a valid measurement of a different scope and must not be quoted as the gate result. |
+
+---
+
+## Measured coverage pin (superseded scope — retained as historical evidence)
 
 | Field | Evidence |
 |-------|----------|
@@ -76,9 +101,22 @@ from retained llvm-cov snapshots.
 The 85% line target is a hard PR gate in
 `.github/workflows/quality-gate.yml`: `COVERAGE_THRESHOLD=85` is passed to
 `cargo llvm-cov --fail-under-lines` for the documented unit-test scope. A result
-below 85% makes the `unit-tests` job fail. The lib pin (`fa887e9` 77.34%) and the
-retained workspace pin (`5d8dc08` 80.51%) are both below 85%; the
-`meets_lines_target: false` flag in each snapshot makes target drift machine-readable.
+below 85% makes the `unit-tests` job fail.
+
+**The scope the floor is defined against is the gate scope** documented above:
+`--lib --locked --all-features --workspace` plus the filename exclusions. On
+this tree that scope measures **85.88% lines** @ `9918ed4`, so the gate holds
+(`meets_lines_target: true`).
+
+The unexcluded `--lib` pin (`fa887e9` 77.34%) and the retained workspace pin
+(`5d8dc08` 80.51%) are both below 85%. They measure **broader scopes** than the
+gate — they include the CLI/cast/runtime surfaces and workspace stubs that the
+gate deliberately excludes — and are retained as historical evidence and for
+prioritization. They must not be quoted as the gate result, and their
+`meets_lines_target: false` flags make that scope difference machine-readable.
+
+`just coverage` now mirrors the gate scope (so a local run reproduces it) and
+`just coverage-gate` additionally enforces the 85% floor locally.
 
 ### Codecov supplementary policy
 
@@ -86,14 +124,16 @@ retained workspace pin (`5d8dc08` 80.51%) are both below 85%; the
 
 | Layer | Target | Scope |
 |-------|--------|-------|
-| `quality-gate.yml` | **85% lines** (hard) | `--lib` unit scope with documented filename ignores |
-| `coverage.yml` snapshot (current) | **77.34% lines** @ `fa887e9` (lib pin) | `--lib --all-features --locked --ignore-run-fail` |
+| `quality-gate.yml` | **85% lines** (hard) | gate scope: `--lib --locked --all-features --workspace` + documented filename ignores |
+| GATE-scope snapshot (current) | **85.88% lines** @ `9918ed4` | gate scope (see above); `meets_lines_target: true` |
+| `coverage.yml` snapshot (retained) | **77.34% lines** @ `fa887e9` | `--lib --all-features --locked --ignore-run-fail` (broader than the gate; historical) |
 | `coverage.yml` snapshot (retained) | **80.51% lines** @ `5d8dc08` | `--workspace --all-features` broad measurement (historical) |
 | Codecov `project` | 70% + 1% threshold | `src/**/*.rs` upload from quality-gate LCOV |
 | Codecov `patch` | 80% + 1% threshold | PR diff only |
 
-The pinned lib percentage does not lower the 85% unit gate; it documents the
-current state of `--lib` measurement for prioritization. The retained 80.51%
+The pinned percentages do not lower the 85% unit gate; they document the
+current state of their respective scopes for prioritization. The gate-scope
+pin is the one that the 85% floor is defined against. The retained 80.51%
 workspace pin documents the most recent broad measurement pre-T-810 lifts.
 
 ---

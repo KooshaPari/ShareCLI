@@ -131,6 +131,25 @@ handoff in `.agileplus/worklog.md`.
 - **For BUG FIXES**: failing test MUST be written before the fix
 - **For REFACTORS**: existing tests must pass before AND after
 
+### Contract suites wired into the lib target
+
+`src/lib.rs` re-uses four `tests/` suites inside the library test target via
+`extern crate self as sharecli;` plus `#[path = "../tests/..."]`:
+`agent_call_policy.rs`, `error_contract.rs`, `session.rs`, `session_cov.rs`.
+
+Rules for any file wired in that way:
+
+- It is compiled **twice** — once as its own `tests/` integration target and once
+  inside the lib target — so it must be valid as ordinary library code.
+- **Never** use `env!("CARGO_BIN_EXE_<name>")`, the `CARGO_BIN_EXE_<name>` env
+  var, or `assert_cmd::Command::cargo_bin`. Cargo defines those only for
+  integration-test and bench targets; referencing one fails `cargo test --lib`
+  with `environment variable not found` and reds the `unit-tests` job plus the
+  coverage gate in `quality-gate.yml`.
+- Do not spawn the `sharecli` binary from these suites; call library APIs directly.
+- Keep suite-local helpers inside the `tests/` file (or a `tests/common/` helper),
+  never in `src/` — anything under `src/` lands in the coverage denominator.
+
 ### Quality Gates
 
 All PRs must pass:

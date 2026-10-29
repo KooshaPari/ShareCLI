@@ -52,6 +52,7 @@ flowchart TD
 | T-300 | Unhappy-path friction tests (`_invalid_` / `_missing_`) | L30.12 | T-230 | M | DONE | ≥1 unhappy-path test per FR-001..005 |
 | T-310 | Re-score C03 in `audit/.lane-c03/C03.md` | audit | T-150,T-230 | S | DONE | Cluster ≥ C (≥60% with L30.1–.5 at ≥2) |
 | T-311 | Final C03 L30.1/L30.3/L30.9 re-score | L30.1/L30.3/L30.9 | T-310,T-260 | S | DONE | C03 36/36 (100% A); `tests/c03_l30_agent_readiness_gate.rs` |
+| T-320 | Pin the unit coverage GATE scope in `TEST_COVERAGE_MATRIX.md` (PR #977) | FR-003 / L30.3 | T-311 | S | CLAIMED (jcode, PR #977) | Matrix states the 85% floor is defined against the quality-gate scope; `audit/coverage-snapshots/9918ed4.coverage-snapshot.json` ships with `meets_lines_target: true` |
 
 ## Completed
 

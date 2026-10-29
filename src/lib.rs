@@ -6,6 +6,41 @@
 //! - Process management via local runtime types
 //! - Multi-project orchestration
 
+// Reuse public-API contracts in the library-only quality gate as well as their
+// integration targets. No production API or coverage exclusion changes.
+//
+// CONSTRAINT for every file wired in below (documented per PR #977 review):
+// each one is compiled TWICE -- once as its own `tests/` integration target
+// and once inside the library test target through `extern crate self as
+// sharecli;`. A wired-in file must therefore stay valid as ordinary library
+// code, not just as an integration test:
+//   * Do NOT use `env!("CARGO_BIN_EXE_<name>")` / `assert_cmd::Command::cargo_bin`.
+//     Cargo defines `CARGO_BIN_EXE_<name>` ONLY for integration-test and bench
+//     targets, so referencing one here fails `cargo test --lib` with
+//     "environment variable not found", taking down the `unit-tests` job and
+//     the coverage gate in quality-gate.yml.
+//   * Do NOT spawn the `sharecli` binary; exercise library APIs directly.
+//   * Keep suite-local helpers inside the wired-in `tests/` file (or a
+//     `tests/common/` helper) rather than in `src/`, so they stay out of the
+//     production coverage denominator.
+// Consequences accepted by design: these suites execute twice under
+// `cargo test --workspace`, and `cargo clippy --all-targets` lints them in two
+// crate contexts.
+#[cfg(test)]
+extern crate self as sharecli;
+#[cfg(test)]
+#[path = "../tests/agent_call_policy.rs"]
+mod admission_contract_tests;
+#[cfg(test)]
+#[path = "../tests/error_contract.rs"]
+mod error_contract_tests;
+#[cfg(test)]
+#[path = "../tests/session.rs"]
+mod session_contract_tests;
+#[cfg(test)]
+#[path = "../tests/session_cov.rs"]
+mod session_coverage_tests;
+
 // --- Tier A/B: product + ops (root pub surface) ---
 pub mod agent_call_policy;
 pub mod audit_log;
