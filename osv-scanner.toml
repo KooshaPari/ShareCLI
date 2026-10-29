@@ -48,7 +48,7 @@ reason = "zvariant_derive unmaintained (folded into zbus 6.0.0 derive macros); T
 # RustSec flagged proc-macro-error as unmaintained; 1.0.4 is the last released
 # version and the maintainer has not published a replacement. It is a
 # build-time only macro crate (no runtime effect on the sharecli binary).
-# The path is Linux-only: tray-icon gates its `libappindicator` dep behind
+# The path is Linux/BSD: tray-icon gates its `libappindicator` dep behind
 # cfg(any(target_os = "linux", dragonfly, freebsd, netbsd, openbsd)), so
 # `cargo tree -i proc-macro-error --target x86_64-pc-windows-msvc` and
 # `--target aarch64-apple-darwin` both print nothing.
@@ -56,7 +56,7 @@ reason = "zvariant_derive unmaintained (folded into zbus 6.0.0 derive macros); T
 # scanners agree, mirroring the ignore in deny.toml.
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0370"
-reason = "proc-macro-error 1.0.4 unmaintained. Build-time macro transitive of sharecli-tray-windows via tray-icon's libappindicator backend; Linux-only because tray-icon gates libappindicator behind cfg(any(target_os = \"linux\", dragonfly, freebsd, netbsd, openbsd)). No patched release; build-time-only, no runtime impact on sharecli artifacts."
+reason = "proc-macro-error 1.0.4 unmaintained. Build-time macro transitive of sharecli-tray-windows via tray-icon's libappindicator backend; Linux/BSD because tray-icon gates libappindicator behind cfg(any(target_os = \"linux\", dragonfly, freebsd, netbsd, openbsd)). No patched release; build-time-only, no runtime impact on sharecli artifacts."
 
 # glib 0.18.x (RUSTSEC-2024-0429, also published as the GHSA-wrw7-89jp-8q8g
 # alias) - RUSTSEC-2024-0429
@@ -86,7 +86,7 @@ reason = "proc-macro-error 1.0.4 unmaintained. Build-time macro transitive of sh
 # id as well makes osv-scanner report it as an unused ignore.
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0429"
-reason = "glib 0.18.5 unsound glib::VariantStrIter Iterator/DoubleEndedIterator impls (informational=unsound). Linux-only: reached via sharecli-tray-windows -> tray-icon(libappindicator) -> libappindicator -> gtk -> atk -> glib, and tray-icon gates libappindicator behind cfg(any(target_os = \"linux\", dragonfly, freebsd, netbsd, openbsd)). Patched 0.20.0 is a breaking release gtk 0.18.2 cannot accept; no non-breaking upgrade. cargo-deny scopes this advisory by [affected.functions] to the glib::VariantStrIter Iterator/DoubleEndedIterator impls and cannot prove they are called, so it does not report it (not even under unsound = \"all\"); osv-scanner matches on version range alone and does report it, which is why the osv-scanner.toml entry is load-bearing and the deny.toml mirror is not."
+reason = "glib 0.18.5 unsound glib::VariantStrIter Iterator/DoubleEndedIterator impls (informational=unsound). Linux/BSD: reached via sharecli-tray-windows -> tray-icon(libappindicator) -> libappindicator -> gtk -> atk -> glib, and tray-icon gates libappindicator behind cfg(any(target_os = \"linux\", dragonfly, freebsd, netbsd, openbsd)). Patched 0.20.0 is a breaking release gtk 0.18.2 cannot accept; no non-breaking upgrade. cargo-deny scopes this advisory by [affected.functions] to the glib::VariantStrIter Iterator/DoubleEndedIterator impls and cannot prove they are called, so it does not report it (not even under unsound = \"all\"); osv-scanner matches on version range alone and does report it, which is why the osv-scanner.toml entry is load-bearing and the deny.toml mirror is not."
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0449"
 ignoreUntil = 2026-11-15

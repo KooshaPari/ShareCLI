@@ -17,13 +17,13 @@ ignore = [
   # Informational 'unmaintained' advisory for paste - stale Cargo.lock entry.
   "RUSTSEC-2024-0436",
   # proc-macro-error 1.0.4 unmaintained. Build-time macro transitive of
-  # sharecli-tray-windows via tray-icon's libappindicator backend; Linux-only
+  # sharecli-tray-windows via tray-icon's libappindicator backend; Linux/BSD
   # because tray-icon gates libappindicator behind
   # cfg(any(target_os = "linux", dragonfly, freebsd, netbsd, openbsd)). No
   # patched release; build-time-only, no runtime impact on sharecli artifacts.
   "RUSTSEC-2024-0370",
   # glib 0.18.5 unsound glib::VariantStrIter Iterator/DoubleEndedIterator impls
-  # (informational=unsound). Linux-only: reached via sharecli-tray-windows ->
+  # (informational=unsound). Linux/BSD: reached via sharecli-tray-windows ->
   # tray-icon(libappindicator) -> libappindicator -> gtk -> atk -> glib.
   # Patched 0.20.0 is a breaking release gtk 0.18.2 cannot accept; no
   # non-breaking upgrade.
