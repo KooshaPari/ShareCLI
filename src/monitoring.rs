@@ -328,40 +328,53 @@ mod tests {
 
     #[test]
     fn test_host_resource_watch_csv_companion_header_and_row() {
+        // Exact output, not a prefix/substring probe: the contract is the whole
+        // header plus one row, with load rendered to two decimals.
         let csv = sample_json().format_csv_companion();
-        assert!(csv.starts_with(
-            "\nrecord,fd_count,net_rx_bytes,net_tx_bytes,mem_rss_bytes,load_1m\n"
-        ));
-        assert!(csv.contains("host,42,1024,2048,4096,1.50"));
-        // Exactly one header plus one data row.
-        assert_eq!(csv.lines().filter(|l| !l.is_empty()).count(), 2);
+        assert_eq!(
+            csv,
+            "\nrecord,fd_count,net_rx_bytes,net_tx_bytes,mem_rss_bytes,load_1m\n\
+             host,42,1024,2048,4096,1.50\n"
+        );
     }
 
     #[test]
     fn test_host_resource_watch_csv_companion_rounds_load_to_two_dp() {
-        // 0.126 is unambiguous: {:.2} yields 0.13. (0.125 would exercise
-        // round-half-to-even and land on 0.12, which is a formatting detail
-        // rather than the contract we care about here.)
+        // Three exact cases pin the two-decimal contract: a rounding value, a
+        // value that lands on .13, and a whole number that must keep .00.
+        // (0.125 is avoided: round-half-to-even makes it 0.12, which is a
+        // formatting detail rather than the contract under test.)
         let mut w = sample_json();
+
         w.load_1m = 0.126;
-        assert!(w.format_csv_companion().contains(",0.13"));
-        // Always exactly two decimal places, even for whole numbers.
+        assert_eq!(
+            w.format_csv_companion(),
+            "\nrecord,fd_count,net_rx_bytes,net_tx_bytes,mem_rss_bytes,load_1m\n\
+             host,42,1024,2048,4096,0.13\n"
+        );
+
         w.load_1m = 2.0;
-        assert!(w.format_csv_companion().contains(",2.00"));
+        assert_eq!(
+            w.format_csv_companion(),
+            "\nrecord,fd_count,net_rx_bytes,net_tx_bytes,mem_rss_bytes,load_1m\n\
+             host,42,1024,2048,4096,2.00\n"
+        );
     }
 
     #[test]
     fn test_host_resource_watch_text_section_is_rendered() {
-        // Delegates to ResourceWatchSample::format_status_section; assert it
-        // produced something non-empty and carries the discriminant it always
-        // emits for the host block.
+        // Exact block, so all five fixture fields are pinned: open FDs, RSS,
+        // load, net RX and net TX. Delegates to
+        // ResourceWatchSample::format_status_section.
         let text = sample_json().format_text_section();
-        assert!(!text.is_empty(), "text section must not be empty");
-        assert!(
-            text.to_ascii_lowercase().contains("host")
-                || text.contains("fd")
-                || text.contains("load"),
-            "text section should mention host/fd/load, got: {text:?}"
+        assert_eq!(
+            text,
+            "\n=== Host Resource Watch ===\n\n\
+             Open FDs:     42\n\
+             RSS:          4096 bytes\n\
+             Load (1m):    1.50\n\
+             Net RX:       1024 bytes\n\
+             Net TX:       2048 bytes\n"
         );
     }
 
