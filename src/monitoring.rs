@@ -313,4 +313,104 @@ mod tests {
         assert!(report.by_harness.is_empty());
         assert!(report.recommendations.is_empty());
     }
+
+    // --- coverage-gap tests: formatters and idle logic were unexercised ---
+
+    fn sample_json() -> HostResourceWatchJson {
+        HostResourceWatchJson {
+            fd_count: 42,
+            net_rx_bytes: 1024,
+            net_tx_bytes: 2048,
+            mem_rss_bytes: 4096,
+            load_1m: 1.5,
+        }
+    }
+
+    #[test]
+    fn test_host_resource_watch_csv_companion_header_and_row() {
+        // Exact output, not a prefix/substring probe: the contract is the whole
+        // header plus one row, with load rendered to two decimals.
+        let csv = sample_json().format_csv_companion();
+        assert_eq!(
+            csv,
+            "\nrecord,fd_count,net_rx_bytes,net_tx_bytes,mem_rss_bytes,load_1m\n\
+             host,42,1024,2048,4096,1.50\n"
+        );
+    }
+
+    #[test]
+    fn test_host_resource_watch_csv_companion_rounds_load_to_two_dp() {
+        // Three exact cases pin the two-decimal contract: a rounding value, a
+        // value that lands on .13, and a whole number that must keep .00.
+        // (0.125 is avoided: round-half-to-even makes it 0.12, which is a
+        // formatting detail rather than the contract under test.)
+        let mut w = sample_json();
+
+        w.load_1m = 0.126;
+        assert_eq!(
+            w.format_csv_companion(),
+            "\nrecord,fd_count,net_rx_bytes,net_tx_bytes,mem_rss_bytes,load_1m\n\
+             host,42,1024,2048,4096,0.13\n"
+        );
+
+        w.load_1m = 2.0;
+        assert_eq!(
+            w.format_csv_companion(),
+            "\nrecord,fd_count,net_rx_bytes,net_tx_bytes,mem_rss_bytes,load_1m\n\
+             host,42,1024,2048,4096,2.00\n"
+        );
+    }
+
+    #[test]
+    fn test_host_resource_watch_text_section_is_rendered() {
+        // Exact block, so all five fixture fields are pinned: open FDs, RSS,
+        // load, net RX and net TX. Delegates to
+        // ResourceWatchSample::format_status_section.
+        let text = sample_json().format_text_section();
+        assert_eq!(
+            text,
+            "\n=== Host Resource Watch ===\n\n\
+             Open FDs:     42\n\
+             RSS:          4096 bytes\n\
+             Load (1m):    1.50\n\
+             Net RX:       1024 bytes\n\
+             Net TX:       2048 bytes\n"
+        );
+    }
+
+    #[test]
+    fn test_process_stats_new_zeroes_resource_watch_fields() {
+        let p = ProcessStats::new(7, "node", 128, 2.5, 1_700_000_000, 3_600);
+        assert_eq!(p.pid, 7);
+        assert_eq!(p.name, "node");
+        assert_eq!(p.memory_mb, 128);
+        assert!((p.cpu_percent - 2.5).abs() < f32::EPSILON);
+        assert_eq!(p.start_time, 1_700_000_000);
+        assert_eq!(p.uptime_seconds, 3_600);
+        // Resource watch fields are documented to default to zero.
+        assert_eq!(p.fd_count, 0);
+        assert_eq!(p.net_rx_bytes, 0);
+        assert_eq!(p.net_tx_bytes, 0);
+        assert_eq!(p.mem_rss_bytes, 0);
+        assert_eq!(p.load_1m, 0.0);
+    }
+
+    #[test]
+    fn test_is_idle_boundaries() {
+        let mut p = ProcessStats::new(1, "a", 1, 0.0, 0, 100);
+
+        // uptime strictly greater than threshold, cpu below 1.0
+        assert!(p.is_idle(50));
+        // threshold equal to uptime is NOT strictly greater
+        assert!(!p.is_idle(100));
+        // cpu exactly 1.0 is not below 1.0
+        p.cpu_percent = 1.0;
+        assert!(!p.is_idle(50));
+        // just under the cpu bound is idle again
+        p.cpu_percent = 0.99;
+        assert!(p.is_idle(50));
+        // zero threshold with zero uptime is still not idle
+        let fresh = ProcessStats::new(2, "b", 1, 0.0, 0, 0);
+        assert!(!fresh.is_idle(0));
+    }
 }
