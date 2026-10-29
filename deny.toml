@@ -44,31 +44,72 @@ allow-git = [
 
 [advisories]
 ignore = [
-  # No safe upgrade available - rustls-pemfile deprecated, migration requires async-nats update
-  { id = "RUSTSEC-2025-0134", reason = "No safe upgrade available. rustls-pemfile deprecated, migration requires async-nats update." },
-  # No safe upgrade available - gix = "0.71" pinned in Cargo.toml, requires major version bump
-  { id = "RUSTSEC-2025-0140", reason = "No safe upgrade available. gix = 0.71 pinned in Cargo.toml, requires breaking API change." },
   # Marvin attack advisory covers every released version of rsa (introduced 0.0.0-0, no patch).
   # sharecli only decodes/verifies JWTs with RSA public keys for local sidecar auth (src/serve_auth.rs);
   # it never performs network-exposed RSA private-key operations.
-  { id = "RUSTSEC-2023-0071", reason = "No patched rsa release exists (advisory covers all versions); JWT use is local public-key verification only." },
+  { id = "RUSTSEC-2023-0071", reason = "rsa Marvin-attack advisory covers every released version (introduced 0.0.0-0, no patched release). sharecli only decodes/verifies JWTs with RSA public keys for local sidecar auth (src/serve_auth.rs); it never performs network-exposed RSA private-key operations, which the advisory names as the unsafe setting." },
   # Informational 'unmaintained' advisory for paste - stale Cargo.lock entry, not in the workspace dep graph.
-  { id = "RUSTSEC-2024-0436", reason = "paste is a stale Cargo.lock entry; cargo tree -i paste is empty, nothing to replace." },
-  # gtk-rs 0.18 GTK3 bindings are Linux-only transitive deps of tray-icon's gtk
-  # backend. They never compile or ship into the Windows tray artifact
-  # (sharecli ships a separate native Linux tray via ksni). Unmaintained per
-  # RUSTSEC-2024-0412/0413/0415/0416/0418/0419/0420.
-  { id = "RUSTSEC-2024-0412", reason = "gtk-rs GTK3 unmaintained - Linux-only dep of tray-icon gtk backend for Windows tray; dead code on our target." },
-  { id = "RUSTSEC-2024-0413", reason = "gtk-rs GTK3 unmaintained - Linux-only dep of tray-icon gtk backend; not compiled for Windows tray." },
-  { id = "RUSTSEC-2024-0415", reason = "gtk-rs GTK3 unmaintained - Linux-only dep of tray-icon gtk backend; not compiled for Windows tray." },
-  { id = "RUSTSEC-2024-0416", reason = "gtk-rs GTK3 unmaintained - Linux-only dep of tray-icon gtk backend; not compiled for Windows tray." },
-  { id = "RUSTSEC-2024-0418", reason = "gtk-rs GTK3 unmaintained - Linux-only dep of tray-icon gtk backend; not compiled for Windows tray." },
-  { id = "RUSTSEC-2024-0419", reason = "gtk-rs GTK3 unmaintained - Linux-only dep of tray-icon gtk backend; not compiled for Windows tray." },
-  { id = "RUSTSEC-2024-0420", reason = "gtk-rs GTK3 unmaintained - Linux-only dep of tray-icon gtk backend; not compiled for Windows tray." },
-  # proc-macro-error pulled in by tray-icon's Linux gtk backend (via tao/muda
-  # gtk deps). Linux-only, not compiled for the Windows tray artifact; no safe
-  # upgrade in the 1.x line.
-  { id = "RUSTSEC-2024-0370", reason = "proc-macro-error unmaintained - transitive via tray-icon Linux gtk backend only; not compiled for Windows tray." },
+  { id = "RUSTSEC-2024-0436", reason = "Informational 'unmaintained' advisory for the paste crate. paste 1.0.15 is a stale Cargo.lock entry: no package in the workspace dependency graph references it (cargo tree -i paste is empty), so there is nothing to replace." },
+  # proc-macro-error pulled in by tray-icon's libappindicator backend:
+  # sharecli-tray-windows -> tray-icon -> libappindicator -> gtk -> atk -> glib
+  # -> glib-macros -> proc-macro-error. Build-time only macro crate; no
+  # runtime impact. 1.0.4 is the last released version; no patched release
+  # exists in the proc-macro-error 1.x line. The path is Linux/BSD: tray-icon
+  # gates its `libappindicator` dep behind
+  # cfg(any(target_os = "linux", dragonfly, freebsd, netbsd, openbsd)), so
+  # `cargo tree -i proc-macro-error --target x86_64-pc-windows-msvc` and
+  # `--target aarch64-apple-darwin` both print nothing.
+  { id = "RUSTSEC-2024-0370", reason = "proc-macro-error 1.0.4 unmaintained. Build-time macro transitive of sharecli-tray-windows via tray-icon's libappindicator backend; Linux/BSD because tray-icon gates libappindicator behind cfg(any(target_os = \"linux\", dragonfly, freebsd, netbsd, openbsd)). No patched release; build-time-only, no runtime impact on sharecli artifacts." },
+  # zbus family (zvariant / zbus_names / zvariant_derive) - two independent
+  # paths reach zbus, and neither one is compiled into a macOS or Windows
+  # sharecli artifact:
+  #   (a) sharecli-tray-linux -> ksni -> zbus.
+  #       crates/sharecli-tray-linux/Cargo.toml declares ksni under
+  #       [target.'cfg(target_os = "linux")'.dependencies], so this path is
+  #       Linux-only, and it is absent on FreeBSD.
+  #   (b) sharecli feature "desktop-notifications" -> notify-rust 4.18.2 ->
+  #       zbus. notify-rust 4.18.2 declares zbus under
+  #       [target.'cfg(all(unix, not(target_os = "macos")))'.dependencies],
+  #       which covers Linux, FreeBSD and the other BSDs and excludes macOS.
+  #       On FreeBSD this is the only path to zbus.
+  # zbus 5.x still re-exports the pre-merge crate names for source compat, but
+  # RustSec has flagged each as unmaintained now that they are folded into the
+  # monolithic `zbus` 6.x. All three are informational=unmaintained with
+  # patched = [], so there is no patched release to upgrade to. sharecli does
+  # not use these crates directly.
+  # The advisories still fire because neither scanner resolves per-target:
+  # osv.yml and ci.yml both pass --lockfile=Cargo.lock, and deny.yml runs bare
+  # `cargo deny check` with no [graph] target filter in deny.toml. Both read
+  # the target-agnostic root Cargo.lock, which lists zvariant, zbus_names and
+  # zvariant_derive regardless of the build target.
+  { id = "RUSTSEC-2026-0370", reason = "zvariant unmaintained (folded into zbus 6.0.0 as zbus::wire); Two independent zbus paths reach it: (a) sharecli-tray-linux -> ksni -> zbus, gated by cfg(target_os = \"linux\") in crates/sharecli-tray-linux/Cargo.toml (Linux only, and absent on FreeBSD); (b) sharecli feature \"desktop-notifications\" -> notify-rust 4.18.2 -> zbus, gated by notify-rust's cfg(all(unix, not(target_os = \"macos\"))) target dep table, which covers Linux, FreeBSD and the other BSDs and excludes macOS - on FreeBSD notify-rust is the only path to zbus. macOS and Windows artifacts do not link zbus (cargo tree -i zbus --target aarch64-apple-darwin prints nothing). The advisory is still reported because both scanners read only the target-agnostic root Cargo.lock (osv.yml and ci.yml pass --lockfile=Cargo.lock; deny.yml runs bare cargo deny check and deny.toml has no [graph] target filter), which lists zvariant/zbus_names/zvariant_derive regardless of build target - neither scanner does per-target resolution. It is informational=unmaintained with patched = [], so no patched release exists to upgrade to." },
+  { id = "RUSTSEC-2026-0371", reason = "zbus_names unmaintained (folded into zbus 6.0.0 as zbus::names); Two independent zbus paths reach it: (a) sharecli-tray-linux -> ksni -> zbus, gated by cfg(target_os = \"linux\") in crates/sharecli-tray-linux/Cargo.toml (Linux only, and absent on FreeBSD); (b) sharecli feature \"desktop-notifications\" -> notify-rust 4.18.2 -> zbus, gated by notify-rust's cfg(all(unix, not(target_os = \"macos\"))) target dep table, which covers Linux, FreeBSD and the other BSDs and excludes macOS - on FreeBSD notify-rust is the only path to zbus. macOS and Windows artifacts do not link zbus (cargo tree -i zbus --target aarch64-apple-darwin prints nothing). The advisory is still reported because both scanners read only the target-agnostic root Cargo.lock (osv.yml and ci.yml pass --lockfile=Cargo.lock; deny.yml runs bare cargo deny check and deny.toml has no [graph] target filter), which lists zvariant/zbus_names/zvariant_derive regardless of build target - neither scanner does per-target resolution. It is informational=unmaintained with patched = [], so no patched release exists to upgrade to." },
+  { id = "RUSTSEC-2026-0372", reason = "zvariant_derive unmaintained (folded into zbus 6.0.0 derive macros); Two independent zbus paths reach it: (a) sharecli-tray-linux -> ksni -> zbus, gated by cfg(target_os = \"linux\") in crates/sharecli-tray-linux/Cargo.toml (Linux only, and absent on FreeBSD); (b) sharecli feature \"desktop-notifications\" -> notify-rust 4.18.2 -> zbus, gated by notify-rust's cfg(all(unix, not(target_os = \"macos\"))) target dep table, which covers Linux, FreeBSD and the other BSDs and excludes macOS - on FreeBSD notify-rust is the only path to zbus. macOS and Windows artifacts do not link zbus (cargo tree -i zbus --target aarch64-apple-darwin prints nothing). The advisory is still reported because both scanners read only the target-agnostic root Cargo.lock (osv.yml and ci.yml pass --lockfile=Cargo.lock; deny.yml runs bare cargo deny check and deny.toml has no [graph] target filter), which lists zvariant/zbus_names/zvariant_derive regardless of build target - neither scanner does per-target resolution. It is informational=unmaintained with patched = [], so no patched release exists to upgrade to." },
+  # glib 0.18.x (RUSTSEC-2024-0429, also published as the GHSA-wrw7-89jp-8q8g
+  # alias) - RUSTSEC-2024-0429
+  # is an "unsound" advisory for glib::VariantStrIter's Iterator/DoubleEndedIterator
+  # impls (not an "unmaintained" one). The patched 0.20.0 release is a breaking
+  # change gtk 0.18.2 does not accept, so there is no non-breaking upgrade path.
+  # Reachable only on Linux: tray-icon's `libappindicator` feature pulls
+  # libappindicator/gtk, and tray-icon gates that dep behind
+  # cfg(any(target_os = "linux", dragonfly, freebsd, netbsd, openbsd)), so
+  # `cargo tree -i glib --target x86_64-pc-windows-msvc` and
+  # `--target aarch64-apple-darwin` both print nothing. The Rust
+  # sharecli-tray-windows crate is a dev-dependency of `sharecli` and IS
+  # compiled by Linux CI (`cargo tree -i glib-sys --target
+  # x86_64-unknown-linux-gnu -e normal,dev` resolves glib-sys through it), but
+  # it is not linked into any shipped artifact: release.yml builds only
+  # `--bin sharecli`, `-p sharecli-tray-linux` and `-p sharecli-ffi`, and the
+  # Windows tray ships as a C#/MSBuild WinUI app from windows/ShareCLITray.
+  # Listed for OSV/CI parity. cargo-deny does NOT report this advisory even
+  # though glib 0.18.5 is unpatched (the advisory's [versions] patched range is
+  # ">=0.20.0"): the advisory is scoped by [affected.functions] to the
+  # glib::VariantStrIter Iterator/DoubleEndedIterator impls, and cargo-deny
+  # cannot prove those specific functions are called, so it emits
+  # warning[advisory-not-detected] for this entry. osv-scanner matches on the
+  # version range alone and does report it, which is why the osv-scanner.toml
+  # mirror is load-bearing and this one is not.
+  { id = "RUSTSEC-2024-0429", reason = "glib 0.18.5 unsound glib::VariantStrIter Iterator/DoubleEndedIterator impls (informational=unsound). Linux/BSD: reached via sharecli-tray-windows -> tray-icon(libappindicator) -> libappindicator -> gtk -> atk -> glib, and tray-icon gates libappindicator behind cfg(any(target_os = \"linux\", dragonfly, freebsd, netbsd, openbsd)). Patched 0.20.0 is a breaking release gtk 0.18.2 cannot accept; no non-breaking upgrade. cargo-deny scopes this advisory by [affected.functions] to the glib::VariantStrIter Iterator/DoubleEndedIterator impls and cannot prove they are called, so it does not report it (not even under unsound = \"all\"); osv-scanner matches on version range alone and does report it, which is why the osv-scanner.toml entry is load-bearing and the deny.toml mirror is not." },
   # unsafe-libyaml was archived 2024-03-25 by its owner and is read-only.
   # The last release is 0.2.11; no safe upgrade exists. It is transitively
   # pulled in by serde_yaml 0.9.34+deprecated (itself deprecated). sharecli
@@ -76,5 +117,10 @@ ignore = [
   # untrusted network input - so a frozen C-to-Rust translation does not
   # materially raise risk for our usage. A future migration to
   # serde_yaml_ng or toml/yaml alternatives is tracked separately.
-  { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml archived 2024-03-25; no safe upgrade. Transitive via serde_yaml 0.9.34+deprecated; sharecli only parses local config files - never untrusted network input." },
+  { id = "RUSTSEC-2024-0449", reason = "INFO unmaintained advisory for unsafe-libyaml, the C-based YAML backend pulled in only via serde_yaml. No patched release exists (dtolnay/unsafe-libyaml archived 2024-03-25, last release 0.2.11), so there is no version to bump to. Replacing the serde_yaml dependency chain is tracked as a follow-up issue; this exception expires in 30 days to force re-triage. cargo-deny 0.20.2 accepts only id and reason in its ignore schema, so the 30-day expiry is enforced on the osv-scanner side only (ignoreUntil = 2026-11-15)." },
+  # crypto-bigint 0.5.5 - constant-time timing variability. No fix is
+  # reachable: the fix needs elliptic-curve 0.14 / ecdsa 0.17 / p256 0.14,
+  # and jsonwebtoken 11.1.0 (newest release) pins p256 ^0.13.2. The upstream
+  # coordinated RustCrypto bump (Keats/jsonwebtoken#536) is open and unmerged.
+  { id = "RUSTSEC-2026-0387", reason = "crypto-bigint 0.5.5 constant-time timing-variability advisory (RUSTSEC-2026-0387, published 2026-10-23). Several operations intended to be constant-time could execute secret-dependent branches (subtraction, zero counting, division, Montgomery multiplication, UintRef equality, BoxedMontyForm::invert). No fix is reachable: crypto-bigint 0.7.6+ requires elliptic-curve 0.14, which requires ecdsa 0.17, which requires p256/p384 0.14, and jsonwebtoken 11.1.0 (the newest release) pins p256 ^0.13.2 and p384 ^0.13.0. The upstream coordinated RustCrypto bump (Keats/jsonwebtoken#536, open and unmerged as of 2026-10-27) is what would move jsonwebtoken to the p256 0.14 / ed25519-dalek 3 generation, so no fixed jsonwebtoken release exists yet. sharecli reaches crypto-bigint only through that chain: jsonwebtoken 11.1.0 -> ecdsa 0.16.9 -> elliptic-curve 0.13.8 -> crypto-bigint 0.5.5, and uses it for ES256/ES384 ECDSA public-key decoding and signature verification in local sidecar auth (src/serve_auth.rs). The advisory names secret-dependent branches in arithmetic on secret integers; sharecli verifies ECDSA signatures over attacker-supplied tokens with a public key, so the secret-dependent values are the issuer's private key, which never enters this process, and the operations involved are signature verification rather than signing. This exception is time-bounded and expires in 30 days to force re-triage when the upstream jsonwebtoken release lands." },
 ]
