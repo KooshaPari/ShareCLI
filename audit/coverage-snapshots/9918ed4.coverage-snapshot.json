@@ -7,17 +7,17 @@
     },
     "functions": {
       "count": 839,
-      "covered": 126,
+      "covered": 713,
       "percent": 84.98
     },
     "lines": {
       "count": 8606,
-      "covered": 1215,
+      "covered": 7391,
       "percent": 85.88
     },
     "regions": {
       "count": 5268,
-      "covered": 760,
+      "covered": 4508,
       "percent": 85.57
     }
   },
