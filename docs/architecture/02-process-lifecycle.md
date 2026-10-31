@@ -47,9 +47,8 @@ sequenceDiagram
     Shell->>CLI: execve("sharecli", ["ps","--all","--json"])
     CLI->>Core: ProcessPool::list(Filter::all())
     Core->>Core: read managed map (empty in a fresh CLI invocation)
-    Core->>Fleet: GET /operator_pool_status (over IPC)
-    Fleet-->>Core: PoolOperatorPanel { panels: [...] }
-    Core->>Core: merge host proc-agent scan + fleet pool/status panels
+    Core->>Core: build_pool_json / build_status_json (in-process, shared runtime)
+    Core->>Core: merge host proc-agent scan + in-process pool/status panels
     Core-->>CLI: Vec<ProcessInfo>
     CLI->>CLI: serde_json::to_string_pretty
     CLI-->>Shell: JSON to stdout
@@ -98,8 +97,11 @@ sequenceDiagram
    processes, so a fresh `ps` reports zero *managed* rows; host-wide
    inventory comes from the independent host proc scan
    (`proc::AgentProcSnapshot::capture()`, the `sharecli proc` command),
-   and the pool/status panels in `ps --all --json` are fetched over IPC
-   from sharecli-fleet. The CLI process is just a parser + formatter.
+   and the pool/status panels in `ps --all --json` are computed in-process
+   by the same invocation (`build_pool_json` / `build_status_json` over the
+   process-global shared runtime plus a live host sample), not read back
+   from a fleet daemon or a persisted table. The CLI process is just a
+   parser + formatter.
 2. **`spawn-core-sys` is the only crate that talks to the kernel
    for process spawn.** All fork/exec/waitpid/kill calls flow
    through it. The Rust stub on Windows returns
