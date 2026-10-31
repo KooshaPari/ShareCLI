@@ -7,5 +7,5 @@ rust-version = "1.89"
 description = "Utility/protocol modules exposed to gateway-tools (JWT/DNS/RESP/TLS/PKCS#7/PEM/M3U/JSON-Patch/Prometheus/Chunked)."
 
 [dependencies]
-base64 = "0.22"
+base64 = "0.23"
 sha2 = "0.11"

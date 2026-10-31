@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! WebSocket client for consuming the sharecli `/ws` streaming endpoint.
 //!
 //! # Usage

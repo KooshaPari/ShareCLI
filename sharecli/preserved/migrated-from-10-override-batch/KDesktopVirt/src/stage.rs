@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `Stage` — the public enumeration of execution-environment kinds that
 //! KDesktopVirt (a.k.a. `kvdesktop`) can drive a virtual desktop on.
 //!

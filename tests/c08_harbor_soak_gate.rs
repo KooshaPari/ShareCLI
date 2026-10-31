@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C08 L76 — Harbor soak nightly gate (T-980)
 //! FR: FR-008
 //! Scope: soak config existence, duration threshold assertions, and

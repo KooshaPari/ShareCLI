@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-006 — `sharecli proc --state <letter>` process-state filter
 //! FR: FR-006
 //!

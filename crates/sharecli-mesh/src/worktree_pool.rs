@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Lightweight git worktree pool for parallel agent checkouts (FR-010).
 //!
 //! Allocates and releases worktrees under a pool root via

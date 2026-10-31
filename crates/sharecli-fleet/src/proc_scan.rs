@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Live process-tree agent detection (FR-006).
 //!
 //! Walks parent chains (`/proc` on Linux; `sysinfo` elsewhere) and matches

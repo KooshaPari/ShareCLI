@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-004 NFR — C09 L81.13 help & documentation accessibility (FAQ + man page).
 //! FR: FR-004
 

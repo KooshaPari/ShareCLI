@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Compact gate / host_watch strings + thermal gate visuals for Windows tray operator UI
 //! (FR-007 / AC-007.56 text, AC-007.57 icon/badge/color).
 //!

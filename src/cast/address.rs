@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Pane address schema for `cast`.
 //!
 //! Format: `machine:host?[:window][:pane]`

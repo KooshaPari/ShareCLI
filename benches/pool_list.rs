@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Criterion microbench: ProcessPool construction + empty list.
 //!
 //! Target (draft SLO): `pool_list` p95 < 50 ms on CI ubuntu-latest (empty pool).

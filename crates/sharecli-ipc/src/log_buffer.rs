@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `log_buffer` — fixed-size ring buffer of recent log events for `log.tail` IPC.
 //!
 //! The buffer is a thread-safe `VecDeque<LogEntry>` guarded by a `Mutex`. New

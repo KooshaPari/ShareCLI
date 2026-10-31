@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `sharecli upgrade --check` — soft upgrade probe (FR-003 / C11 L111).
 //!
 //! **Soft:** does NOT actually download, install, or replace the running

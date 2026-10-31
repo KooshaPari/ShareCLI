@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! # gateway
 //!
 //! Protocol/utility modules surfaced by `gateway-tools`. Each module is a

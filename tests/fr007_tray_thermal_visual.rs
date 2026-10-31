@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — tray thermal gate visual indicator parity (AC-007.57)
 //! FR: FR-007
 //!

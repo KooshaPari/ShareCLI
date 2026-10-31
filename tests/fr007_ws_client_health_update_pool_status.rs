@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — WebSocket `health_update` wire decodes expanded HealthSnapshot pool/status (AC-007.80)
 //! FR: FR-007
 //!

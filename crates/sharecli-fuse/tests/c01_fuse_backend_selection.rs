@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR: FR-009
 //!
 //! C01 — FUSE backend selection / fallback depth tests.
