@@ -21,20 +21,20 @@ functional-requirement ID the command is part of.
 | Start a harness                                   | `sharecli start myproject --harness claude`                   | FR-001                |
 | Stop a single process by PID                      | `sharecli stop --pid 4242`                                    | FR-001                |
 | Stop all processes for a project (force)          | `sharecli stop --project myproject --all --force --yes`       | FR-001                |
-| Inspect durable agent sessions                    | `sharecli session list`                                       | —                     |
-| Show one session                                  | `sharecli session show <session-id>`                          | —                     |
-| Send text to a Ghostty surface                    | `sharecli surface send <surface-id> 'echo hi'`                | —                     |
-| Read bounded output from a surface                | `sharecli surface read <surface-id> --max-bytes 4096`         | —                     |
-| Set project resource limits                       | `sharecli limits set myproject --cpu 2.0 --memory 4096`       | FR-005                |
-| Get project resource limits                       | `sharecli limits get myproject`                               | FR-005                |
+| Inspect durable agent sessions                    | `sharecli session list`                                        | —                     |
+| Inspect one session                               | `sharecli session inspect <session-id>`                       | —                     |
+| Send text to a Ghostty surface                    | `sharecli surface send --surface-id <surface-id> --text 'echo hi'` | —                |
+| Read bounded output from a surface                | `sharecli surface read --surface-id <surface-id> --max-bytes 4096` | —                |
+| Set project resource limits                       | `sharecli limits myproject --memory 4096 --processes 4`        | FR-005                |
+| Read project resource limits                      | `sharecli check myproject`                                    | FR-005                |
 | Live thermal-gate TUI                             | `sharecli thermal`                                            | FR-011                |
 | Dashboard server (HTTP + WebSocket)               | `sharecli serve --bind 127.0.0.1:3939`                        | —                     |
-| FUSE mount intercept layer                        | `sharecli fuse mount --src ~/work --mountpoint ~/mnt/agent`   | FR-009                |
+| FUSE mount intercept layer                        | `sharecli fuse mount ~/work ~/mnt/agent`                      | FR-009                |
 | FUSE commit staged CoW                            | `sharecli fuse commit --agent myagent`                        | FR-009                |
 | FUSE unmount                                      | `sharecli fuse unmount ~/mnt/agent`                           | FR-009                |
 | Cast pane register                                | `sharecli cast register alpha 127.0.0.1:7100`                 | —                     |
-| Cast pane send                                    | `sharecli cast send alpha 'hello'`                            | —                     |
-| List process-compose services                     | `sharecli service list`                                       | —                     |
+| Cast pane send (stdin)                            | `echo 'hello' \| sharecli cast send alpha`                    | —                     |
+| List process-compose services                     | `sharecli proc-compose list`                                  | —                     |
 
 > Rows marked `—` are operational commands that pre-date the
 > FR-001..FR-011 set (see `FUNCTIONAL_REQUIREMENTS.md`); they
@@ -43,9 +43,23 @@ functional-requirement ID the command is part of.
 
 ## Argument-shape conventions
 
-- **Project names** are free-form strings passed as the first positional
-  argument to project-scoped commands (`start`, `stop`, `limits`,
-  etc.). They are case-sensitive.
+- **Project names** are free-form, case-sensitive strings. `start` and
+  `limits` take the project as a required positional argument
+  (`sharecli limits myproject`). `stop` instead takes it as a named
+  flag: `sharecli stop --project myproject`, and can equally select by
+  `--pid`, `--harness`, or `--all`. Limits are *set* with `limits`;
+  they are *read* with the separate `sharecli check <project>` command.
+- **`--surface-id <id>`** is a required named flag on every `surface`
+  subcommand (`send`, `read`, `resize`), never a positional. `surface
+  send` additionally needs exactly one of `--text <utf8>` or
+  `--bytes <comma-separated u8 list>` (e.g. `--bytes 104,105`).
+- **FUSE mount paths are positional**, in order: backing directory
+  then mountpoint (`sharecli fuse mount ~/work ~/mnt/agent`); there are
+  no `--src` / `--mountpoint` flags. Optional extras: `--cow`,
+  `--cow-dir`, `--agent`, `--session`, `--foreground`.
+- **`cast send <name> [file]`** sends the contents of `file`, or of
+  stdin when `file` is omitted or `-`. There is no literal-text
+  argument.
 - **Harness types** for `start` and `stop` are: `claude`, `forge`, `node`, `bun`.
   The default for `start` is `claude` if `--harness` is omitted.
 - **`--all`** expands the visible set beyond processes that sharecli

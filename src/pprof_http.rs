@@ -151,7 +151,7 @@ mod tests {
         assert_eq!(q.seconds, 10);
     }
 
-    #[test]
+    #[tokio::test]
     async fn profile_handler_returns_not_found_when_pprof_disabled() {
         // Force the disabled state regardless of any ambient env override.
         let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());

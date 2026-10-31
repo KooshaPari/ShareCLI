@@ -37,12 +37,22 @@ assert_eq!(rows[0].id, session.id);
 ## Recovery plan
 
 ```rust
-use sharecli_session::SessionService;
+use sharecli_session::SessionStore;
 
-let svc = SessionService::new(store);
-let plan = svc.recovery_plan(chrono::Duration::hours(1))?;
-// -> Vec<RecoveryAction>: nothing to do if no sessions older than 1h
+let store = SessionStore::open("/var/lib/sharecli/sessions.db")?;
+let plan = store.recovery_plan(chrono::Duration::hours(1))?;
+// -> Vec<AgentSession>: the newest FRESH observation per surface, i.e. one
+//    observed within the last hour. Observations older than `max_age` are
+//    discarded (as are future-dated ones and ones with malformed timestamps).
+//    Pass `Duration::zero()` or a negative duration and the call errors.
 ```
+
+`max_age` bounds how stale an observation may be to still count as
+recoverable. It is **not** a "sessions older than N" selector: raising
+it widens the window of sessions considered live/recoverable, and
+lowering it narrows it. The CLI exposes the same knob as
+`sharecli session recovery-plan --max-age-seconds <N>` (default four
+hours).
 
 ## Build
 
@@ -52,4 +62,5 @@ cargo build -p sharecli-session --release
 
 ## License
 
-Apache-2.0 OR MIT (dual).
+MIT — matches `license = "MIT"` in this crate's `Cargo.toml` and the
+repository `LICENSE` file.

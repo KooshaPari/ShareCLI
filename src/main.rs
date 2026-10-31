@@ -65,9 +65,8 @@ use runtime::ProcessPool;
     version = env!("CARGO_PKG_VERSION"),
     after_long_help = "Accessibility (C09): docs/a11y/README.md — NO_COLOR/TERM=dumb degrade ANSI color; \
 FR-004 status via `sharecli status` and GET /health. Degraded-mode notes: docs/a11y/status-and-recovery.md\n\
-Help & FAQ (C09 L81.13): docs/faq.md — top troubleshooting answers; `man sharecli` after `just man`.",
-    long_about = None,
-    examples = "\
+Help & FAQ (C09 L81.13): docs/faq.md — top troubleshooting answers; `man sharecli` after `just man`.\n\
+\n\
 EXAMPLES
   # Show top-level command inventory
   $ sharecli --help
@@ -95,15 +94,15 @@ EXAMPLES
 
   # Inspect durable agent sessions (FR-005)
   $ sharecli session list
-  $ sharecli session show <session-id>
+  $ sharecli session inspect <session-id>
 
   # Surface I/O against a ShareCLI-enabled Ghostty surface
-  $ sharecli surface send <surface-id> 'echo hello'
-  $ sharecli surface read <surface-id> --max-bytes 4096
+  $ sharecli surface send --surface-id <surface-id> --text 'echo hello'
+  $ sharecli surface read --surface-id <surface-id> --max-bytes 4096
 
-  # Resource limits (FR-002)
-  $ sharecli limits set myproject --cpu 2.0 --memory 4096
-  $ sharecli limits get myproject
+  # Resource limits (FR-002): set with `limits`, read back with `check`
+  $ sharecli limits myproject --memory 4096 --processes 4
+  $ sharecli check myproject
 
   # Live thermal-gate / hypervisor state (TUI)
   $ sharecli thermal
@@ -111,18 +110,18 @@ EXAMPLES
   # Dashboard server (HTTP + WebSocket)
   $ sharecli serve --bind 127.0.0.1:3939
 
-  # Mount intercept layer (FUSE)
-  $ sharecli fuse mount --src ~/work --mountpoint ~/mnt/agent
+  # Mount intercept layer (FUSE): backing dir, then mountpoint (both positional)
+  $ sharecli fuse mount ~/work ~/mnt/agent
   $ sharecli fuse status
   $ sharecli fuse commit --agent myagent
   $ sharecli fuse unmount ~/mnt/agent
 
-  # Cast panes (legacy remote-pane surface)
+  # Cast panes (legacy remote-pane surface); `cast send` reads stdin unless a file is given
   $ sharecli cast register alpha 127.0.0.1:7100
-  $ sharecli cast send alpha 'hello'
+  $ echo 'hello' | sharecli cast send alpha
 
   # Service registry (process-compose)
-  $ sharecli service list
+  $ sharecli proc-compose list
 "
 )]
 struct Cli {

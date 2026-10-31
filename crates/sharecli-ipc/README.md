@@ -42,7 +42,7 @@ Mutating argv (`--fix`, `--force`, `--write`, ...) MUST NOT hit
 use sharecli_ipc::{CoalesceCache, command_key, CachedResult};
 
 let key = command_key(&argv, cwd, &env_subset);
-let cache = CoalesceCache::open("/var/cache/sharecli")?;
+let cache = CoalesceCache::new("/var/cache/sharecli");
 match cache.lookup(&key)? {
     Some(hit) => println!("cache hit, exit={}", hit.exit_code),
     None => {
@@ -60,11 +60,21 @@ cargo build -p sharecli-ipc --release
 
 ## Configuration
 
-- `SHARECLI_COALESCE_TTL_SECS` — TTL override (default 300).
-- `SHARECLI_COALESCE_DEBOUNCE_MS` — debounce window (default 0 = off).
-- `SHARECLI_COALESCE_ROOT` — cache root (default
-  `$XDG_CACHE_HOME/sharecli/coalesce`).
+There are **no environment variables** for TTL, debounce, or the cache
+root — all three are set per instance at construction time:
+
+| Setting | Default | How to change it |
+|---------|---------|------------------|
+| Cache root | none (caller supplies it) | first argument to `CoalesceCache::new` / `with_ttl` / `with_options` |
+| TTL | `CoalesceCache::DEFAULT_TTL` = 300s | `CoalesceCache::with_ttl(root, ttl)` or `with_options` |
+| Debounce | `Duration::ZERO` (off) | `CoalesceCache::with_options(root, ttl, debounce)` |
+
+Environment variables this crate *does* read (unrelated to coalesce
+config): `SHARECLI_QUEUE_PRIORITY` (queue tier), `SHARECLI_IPC_SOCK` /
+`SHARECLI_IPC_ADDR` (daemon transport), `SHARECLI_SESSION_DB` (durable
+session store path), `XDG_RUNTIME_DIR` (serve-lock directory).
 
 ## License
 
-Apache-2.0 OR MIT (dual).
+MIT — matches `license = "MIT"` in this crate's `Cargo.toml` and the
+repository `LICENSE` file.

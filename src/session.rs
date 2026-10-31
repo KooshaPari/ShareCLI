@@ -132,11 +132,11 @@ pub struct SurfaceEventEnvelope {
     pub seq: u64,
     pub kind: SurfaceEventKind,
     pub timestamp: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub event_bytes_base64: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dropped: Option<u64>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resync_required: Option<bool>,
 }
 
@@ -385,10 +385,7 @@ mod tests {
         let adapter = ZmxSessionAdapter::new("zmx");
         let cmd = adapter.attach("pane-42", &["bash", "-c", "echo hi"]);
         assert_eq!(cmd.program, "zmx");
-        assert_eq!(
-            cmd.args,
-            vec!["attach", "pane-42", "bash", "-c", "echo hi"]
-        );
+        assert_eq!(cmd.args, vec!["attach", "pane-42", "bash", "-c", "echo hi"]);
     }
 
     #[test]
@@ -402,12 +399,7 @@ mod tests {
         let some_cmd = adapter.tail("pane-2", Some(250));
         assert_eq!(
             some_cmd.args,
-            vec![
-                "tail".to_owned(),
-                "--lines".to_owned(),
-                "250".to_owned(),
-                "pane-2".to_owned(),
-            ]
+            vec!["tail".to_owned(), "--lines".to_owned(), "250".to_owned(), "pane-2".to_owned(),]
         );
     }
 
@@ -417,10 +409,7 @@ mod tests {
         let plain = adapter.history("pane-3", false);
         assert_eq!(plain.args, vec!["history".to_owned(), "pane-3".to_owned()]);
         let vt = adapter.history("pane-3", true);
-        assert_eq!(
-            vt.args,
-            vec!["history".to_owned(), "--vt".to_owned(), "pane-3".to_owned()]
-        );
+        assert_eq!(vt.args, vec!["history".to_owned(), "--vt".to_owned(), "pane-3".to_owned()]);
     }
 
     #[test]
@@ -434,11 +423,9 @@ mod tests {
 
     #[test]
     fn ghostty_capabilities_with_control_socket_toggles_flag() {
-        let caps = GhosttyCapabilities::from_probe(false, false, false)
-            .with_control_socket(true);
+        let caps = GhosttyCapabilities::from_probe(false, false, false).with_control_socket(true);
         assert!(caps.control_socket);
-        let caps = GhosttyCapabilities::from_probe(false, false, false)
-            .with_control_socket(false);
+        let caps = GhosttyCapabilities::from_probe(false, false, false).with_control_socket(false);
         assert!(!caps.control_socket);
     }
 
@@ -446,19 +433,12 @@ mod tests {
     fn ghostty_adapter_degraded_reason_for_each_missing_surface_capability() {
         // All three RPC channels disabled -> top reason applies.
         let none = GhosttyCapabilities::from_probe(false, false, false);
-        assert_eq!(
-            GhosttyAdapter::degraded_reason(&none),
-            Some("native surface API unavailable")
-        );
+        assert_eq!(GhosttyAdapter::degraded_reason(&none), Some("native surface API unavailable"));
         // Only RPC channel missing -> second reason applies.
         let some_surface = GhosttyCapabilities::from_probe(true, true, true);
-        assert_eq!(
-            GhosttyAdapter::degraded_reason(&some_surface),
-            Some("native RPC unavailable")
-        );
+        assert_eq!(GhosttyAdapter::degraded_reason(&some_surface), Some("native RPC unavailable"));
         // All channels present -> no degraded reason.
-        let full =
-            GhosttyCapabilities::from_probe(true, true, true).with_control_socket(true);
+        let full = GhosttyCapabilities::from_probe(true, true, true).with_control_socket(true);
         assert_eq!(GhosttyAdapter::degraded_reason(&full), None);
     }
 
@@ -475,12 +455,13 @@ mod tests {
             resync_required: None,
         };
         let serialized = serde_json::to_string(&original).expect("serialize");
-        // Optional fields with #[serde(default)] must be omitted from the wire form
-        // when None — confirms serde(default) behaviour for downstream readers.
+        // Optional fields are skipped on the wire when None
+        // (`skip_serializing_if = "Option::is_none"`); `#[serde(default)]` covers
+        // the read path so absent keys still deserialize. Mirrors the canonical
+        // wire type in crates/sharecli-session/src/events.rs.
         assert!(!serialized.contains("event_bytes_base64"));
         assert!(!serialized.contains("dropped"));
-        let parsed: SurfaceEventEnvelope =
-            serde_json::from_str(&serialized).expect("deserialize");
+        let parsed: SurfaceEventEnvelope = serde_json::from_str(&serialized).expect("deserialize");
         assert_eq!(parsed.subscription_id, 7);
         assert_eq!(parsed.surface_id, "surface-9");
         assert_eq!(parsed.seq, 42);
@@ -498,8 +479,7 @@ mod tests {
             "kind": "dropped",
             "timestamp": null,
         });
-        let from_lower: SurfaceEventEnvelope =
-            serde_json::from_value(raw).expect("lowercase kind");
+        let from_lower: SurfaceEventEnvelope = serde_json::from_value(raw).expect("lowercase kind");
         assert_eq!(from_lower.kind, SurfaceEventKind::Dropped);
     }
 }

@@ -46,10 +46,10 @@ sequenceDiagram
     User->>Shell: $ sharecli ps --all --json
     Shell->>CLI: execve("sharecli", ["ps","--all","--json"])
     CLI->>Core: ProcessPool::list(Filter::all())
-    Core->>Core: read process table
+    Core->>Core: read managed map (empty in a fresh CLI invocation)
     Core->>Fleet: GET /operator_pool_status (over IPC)
     Fleet-->>Core: PoolOperatorPanel { panels: [...] }
-    Core->>Core: merge local table + fleet panels
+    Core->>Core: merge host proc-agent scan + fleet pool/status panels
     Core-->>CLI: Vec<ProcessInfo>
     CLI->>CLI: serde_json::to_string_pretty
     CLI-->>Shell: JSON to stdout
@@ -92,9 +92,14 @@ sequenceDiagram
 ## Key invariants
 
 1. **The CLI binary never holds process state across invocations.**
-   Every `start`/`ps`/`stop`/`status` call goes through
-   `sharecli-core::ProcessPool`, which re-reads the process table
-   each time. The CLI process is just a parser + formatter.
+   `sharecli-core::ProcessPool` is purely in-memory: `ProcessPool::new()`
+   starts with an empty managed-process map, and `list()` / `find()` read
+   only that map. Nothing reloads a previous invocation's managed
+   processes, so a fresh `ps` reports zero *managed* rows; host-wide
+   inventory comes from the independent host proc scan
+   (`proc::AgentProcSnapshot::capture()`, the `sharecli proc` command),
+   and the pool/status panels in `ps --all --json` are fetched over IPC
+   from sharecli-fleet. The CLI process is just a parser + formatter.
 2. **`spawn-core-sys` is the only crate that talks to the kernel
    for process spawn.** All fork/exec/waitpid/kill calls flow
    through it. The Rust stub on Windows returns
@@ -109,9 +114,10 @@ sequenceDiagram
    over WebSocket and never calls into the CLI binary. A user
    can run `sharecli thermal` in one terminal while starting
    and stopping harnesses from another.
-5. **Every write is journaled through `sharecli-session`** —
-   see [03-fuse-write-provenance.md](03-fuse-write-provenance.md)
-   for the FUSE-side flow.
+5. **FUSE writes carry provenance on the backing file, not in a
+   ledger** — `sharecli-fuse` stamps `user.sharecli.*` xattrs (or NTFS
+   ADS on Windows) and never appends to `sharecli-session`; see
+   [03-fuse-write-provenance.md](03-fuse-write-provenance.md).
 
 ## Failure-mode annotations
 

@@ -50,4 +50,5 @@ cargo build -p harness-native --release
 
 ## License
 
-Apache-2.0 OR MIT (dual).
+MIT — matches `license = "MIT"` in this crate's `Cargo.toml` and the
+repository `LICENSE` file.
