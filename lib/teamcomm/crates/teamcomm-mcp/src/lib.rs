@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `teamcomm-mcp` — MCP (Model Context Protocol) stdio server that bridges
 //! MCP tool calls to the teamcomm daemon via the `teamcomm-client` crate.
 //!

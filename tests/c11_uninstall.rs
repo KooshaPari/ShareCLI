@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C11 L121 — `sharecli uninstall` subcommand (FR-003).
 //!
 //! FR: FR-003

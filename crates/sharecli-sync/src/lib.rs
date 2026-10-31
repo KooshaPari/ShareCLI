@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Synchronous PID → name index modeled after sharecli `ProcessPool`'s
 //! `processes: RwLock<HashMap<u32, …>>` map (C00 L7).
 
@@ -16,6 +17,7 @@ pub struct PoolIndex {
 }
 
 impl PoolIndex {
+    /// Construct an empty registry.
     pub fn new() -> Self {
         Self::default()
     }
@@ -55,14 +57,17 @@ pub struct RelaxedCounter {
 }
 
 impl RelaxedCounter {
+    /// Construct a counter starting at zero.
     pub fn new() -> Self {
         Self { v: AtomicU64::new(0) }
     }
 
+    /// Increment the counter by one (relaxed ordering).
     pub fn inc(&self) {
         self.v.fetch_add(1, Ordering::Relaxed);
     }
 
+    /// Return the current counter value (relaxed load).
     pub fn get(&self) -> u64 {
         self.v.load(Ordering::Relaxed)
     }

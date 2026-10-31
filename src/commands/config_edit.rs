@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Dotted-path get/set for `sharecli config`.
 //!
 //! The CLI speaks dotted TOML paths (`runtime.max_memory_mb`). Values are

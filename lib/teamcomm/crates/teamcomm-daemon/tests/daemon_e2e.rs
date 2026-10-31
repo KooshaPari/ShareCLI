@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! E2E integration tests for the teamcomm daemon wire protocol.
 //!
 //! Exercises all 14 wire methods via direct handler invocation (same

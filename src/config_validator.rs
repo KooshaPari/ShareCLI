@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Configuration validation for sharecli.
 //!
 //! After deserializing a [`Config`] from TOML, call [`validate_config`] to

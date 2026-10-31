@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-004 NFR — C09 L81.6 error prevention: `stop --force` requires `--yes`.
 //! FR: FR-004
 

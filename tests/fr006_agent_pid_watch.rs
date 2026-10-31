@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-006 × FR-007 — per-agent ResourceWatchSample for detected PIDs
 //! FR: FR-006, FR-007
 //!

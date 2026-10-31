@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-011 — thermal gate + host agent contention (FR-006 × FR-011)
 //! FR: FR-011
 //!

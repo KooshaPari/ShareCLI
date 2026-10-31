@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 // FR:003 — Agent session discovery test suite
 use std::{collections::HashMap, path::PathBuf};
 

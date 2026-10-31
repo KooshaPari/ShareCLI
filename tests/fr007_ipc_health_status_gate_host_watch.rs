@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — IPC `health.status` gate + host_watch siblings
 //! FR: FR-007
 //!

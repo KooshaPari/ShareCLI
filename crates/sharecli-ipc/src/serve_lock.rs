@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `serve_lock` — lock-based single-instance guard for product-CLI `serve` commands.
 //!
 //! # Why

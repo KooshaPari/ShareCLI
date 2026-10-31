@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C10 L101 — designed error / failure states with recovery actions + tier-1 illustration.
 //! FR: FR-003
 

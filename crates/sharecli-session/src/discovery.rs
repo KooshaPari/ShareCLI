@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Capability-aware surface discovery and durable observation recording.
 
 use std::collections::HashMap;

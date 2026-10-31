@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C07 L70 — reproducible local dev seed fixture + verify gate (FR-003).
 //!
 //! FR: FR-003

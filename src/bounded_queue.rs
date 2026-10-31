@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Backpressure-aware bounded queue.
 //!
 //! NOTE: Named `bounded_queue` (not `queue`) to avoid collision with the
