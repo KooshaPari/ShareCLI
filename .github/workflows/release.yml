@@ -73,6 +73,11 @@ jobs:
           git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
           echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> "$GITHUB_ENV"
 
+      - name: Enable long paths for Windows git dependencies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: git config --system core.longpaths true
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -112,6 +117,7 @@ jobs:
         env:
           # Reproducibility seed for release binaries (C06 L52).
           SOURCE_DATE_EPOCH: "0"
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: |
           set -euo pipefail
           cargo build --release --locked --bin sharecli --target ${{ matrix.target }}

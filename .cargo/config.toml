@@ -1,0 +1,3 @@
+# Use Git for Windows long-path support when fetching Git dependencies.
+[net]
+git-fetch-with-cli = true
