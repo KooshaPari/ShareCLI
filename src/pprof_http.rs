@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Opt-in CPU profiling HTTP surface for `sharecli serve` (audit-v38 L45).
 //!
 //! Enable with `SHARECLI_PPROF=1`. Profile capture is Unix-only (`pprof` crate);

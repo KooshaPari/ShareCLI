@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Blocking Unix-socket NDJSON-RPC client for the sharecli IPC server.
 //!
 //! Mirrors the wire contract in `crates/sharecli-ipc/src/handler.rs` and the
@@ -38,54 +39,89 @@ struct Response<T> {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+/// One process row returned by `process.list`.
 pub struct ProcessSummary {
+    /// Process id.
     pub pid: u32,
+    /// Display name (harness/project-derived when available).
     pub name: String,
+    /// Full argv (deserialized for completeness; not rendered in tray).
     #[allow(dead_code)]
     pub cmd: Vec<String>,
+    /// Resident memory in megabytes.
     pub memory_mb: u64,
+    /// Project label when known.
     pub project: Option<String>,
+    /// Harness label when known.
     pub harness: Option<String>,
+    /// Epoch milliseconds at which the process started.
     #[allow(dead_code)]
     pub start_time: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
+/// Snapshot of the thermal/agent gate as projected by `health.status`.
 pub struct GateStatusSnapshot {
+    /// Pressure label (e.g. `"nominal"`, `"warning"`, `"critical"`).
     pub thermal_pressure: String,
+    /// Count of detected agent processes.
     pub detected_agents: usize,
+    /// Sum of agent RSS in bytes.
     pub agent_total_rss_bytes: u64,
+    /// Contention label (e.g. `"idle"`, `"busy"`, `"saturated"`).
     pub agent_contention: String,
+    /// Decision label (e.g. `"allow"`, `"throttle"`, `"block"`).
     pub gate_decision: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
+/// Host-level resource counters (subset of `/proc`/`vm_stat`).
 pub struct HostResourceWatchJson {
+    /// Open file-descriptor count.
     pub fd_count: u64,
+    /// Cumulative network RX bytes.
     pub net_rx_bytes: u64,
+    /// Cumulative network TX bytes.
     pub net_tx_bytes: u64,
+    /// Process RSS in bytes (host scope).
     pub mem_rss_bytes: u64,
+    /// 1-minute load average.
     pub load_1m: f64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
+/// Aggregate health snapshot returned by `health.status`.
 pub struct HealthSnapshot {
+    /// Count of managed processes.
     pub managed_processes: usize,
+    /// Used memory across managed processes (MB).
     pub used_memory_mb: u64,
+    /// Total host memory (MB).
     pub total_memory_mb: u64,
+    /// True when all subsystems report nominal.
     pub healthy: bool,
+    /// Embedded gate snapshot.
     pub gate: GateStatusSnapshot,
+    /// Embedded host resource counters.
     pub host_watch: HostResourceWatchJson,
 }
 
 #[derive(Debug, Clone, Deserialize)]
+/// One row in the agent-process table.
 pub struct AgentProcRow {
+    /// Process id.
     pub pid: u32,
+    /// Agent family (e.g. `"codex"`, `"claude"`).
     pub family: String,
+    /// Command name.
     pub comm: String,
+    /// Process state label.
     pub state: String,
+    /// Resident memory in bytes.
     pub mem_rss_bytes: u64,
+    /// Pretty-formatted RSS string (e.g. `"128 MiB"`).
     pub mem_rss: String,
+    /// Optional file-descriptor count.
     pub fd_count: Option<u64>,
 }
 
@@ -115,6 +151,7 @@ pub struct StatusSnapshot {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+/// One row in the monitoring report's process list.
 pub struct MonitoringProcessEntry {
     pub pid: u32,
     pub name: String,
@@ -124,6 +161,7 @@ pub struct MonitoringProcessEntry {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+/// Aggregate report returned by `monitoring.report` (gate + host + pool + status).
 pub struct MonitoringReportSnapshot {
     pub timestamp: u64,
     pub total_processes: usize,
@@ -184,22 +222,27 @@ fn call<T: for<'de> Deserialize<'de>>(_method: &str, _params: serde_json::Value)
     Err(anyhow!("IPC not supported on this platform"))
 }
 
+/// Fetch the fleet process table via `process.list`.
 pub fn list_processes() -> Result<Vec<ProcessSummary>> {
     call("process.list", serde_json::json!({}))
 }
 
+/// Fetch aggregate health via `health.status`.
 pub fn health() -> Result<HealthSnapshot> {
     call("health.status", serde_json::json!({}))
 }
 
+/// Fetch the monitoring report (gate + host + pool + status) via `monitoring.report`.
 pub fn monitoring_report() -> Result<MonitoringReportSnapshot> {
     call("monitoring.report", serde_json::json!({}))
 }
 
+/// Fetch the IPC pool status via `pool.status`.
 pub fn pool_status() -> Result<PoolSnapshot> {
     call("pool.status", serde_json::json!({}))
 }
 
+/// Fetch the top-level status snapshot via `status.snapshot`.
 pub fn status_snapshot() -> Result<StatusSnapshot> {
     call("status.snapshot", serde_json::json!({}))
 }
@@ -234,10 +277,12 @@ impl MonitoringReportSnapshot {
     }
 }
 
+/// Send `process.kill` for the given pid.
 pub fn kill(pid: u32) -> Result<bool> {
     call("process.kill", serde_json::json!({ "pid": pid }))
 }
 
+/// Send `process.kill_all` (terminate every managed process).
 pub fn kill_all() -> Result<bool> {
     call("process.kill_all", serde_json::json!({}))
 }

@@ -163,7 +163,7 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0, pinned 2026-09-02 629b131b (feat(release): sign + notarize sharecli (v2 — supersedes #820))
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.0.0, pinned 2026-09-02 629b131b (feat(release): sign + notarize sharecli (v2 — supersedes #820))
         with:
           python-version: '3.11'
       - name: Install ruff
@@ -199,7 +199,7 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: '20'
           cache: 'npm'
@@ -255,7 +255,7 @@ jobs:
       - name: Scan Cargo.lock with OSV-Scanner
         # Severity gate intent: --severity=HIGH,CRITICAL (documented; osv-scanner
         # v2.3.8 has no CLI severity flag — findings gate via code-scanning alerts).
-        uses: google/osv-scanner-action/osv-scanner-action@6e4298ebc4db23e847df9b2e2de2939d6f066c67 # v2.5.1
+        uses: google/osv-scanner-action/osv-scanner-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
         with:
           scan-args: |-
             --lockfile=Cargo.lock

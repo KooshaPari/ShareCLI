@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Well-known config/state/runtime paths for install/uninstall QOL (C11 L121).
 
 use std::path::{Path, PathBuf};

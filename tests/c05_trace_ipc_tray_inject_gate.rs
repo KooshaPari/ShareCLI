@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-005 / FR-007 — OTel multi-hop trace context propagation (T-1060)
 //! FR: FR-005, FR-007
 //!

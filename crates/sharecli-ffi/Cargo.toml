@@ -4,7 +4,7 @@ version = "0.8.0"
 edition = "2021"
 description = "C-ABI FFI surface for sharecli — consumed by Swift macOS tray"
 
-# Produces libsharecli_ffi.dylib (macOS) used by the Swift app via the C header
+# Produces libsharecli_ffi.dylib (macOS) used by the Swift app via the C header.
 [lib]
 crate-type = ["cdylib", "staticlib"]
 name = "sharecli_ffi"
@@ -15,6 +15,17 @@ tokio = { version = "1", features = ["full"] }
 serde_json = "1"
 anyhow = "1"
 dirs = "5"
+
+[dev-dependencies]
+tempfile = "3"
+serial_test = "4"
+libloading = "0.9"
+
+# The integration tests load `libsharecli_ffi.{dylib,so}` at runtime via
+# `libloading`, so the test target never needs to link the cdylib's symbols
+# at link time. This is the most accurate end-to-end ABI test because the
+# dylib is what Swift actually consumes. A tiny `build.rs` records the
+# dylib's absolute path so the test can dlopen it deterministically.
 
 # FFI choice: plain C ABI (no uniffi / cxx overhead).
 # The Swift side imports via a bridging header (sharecli_ffi.h).

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Criterion microbench: Prometheus text exposition render.
 //!
 //! Target (draft SLO): `prometheus_render` p95 < 500 µs for 32 synthetic processes.

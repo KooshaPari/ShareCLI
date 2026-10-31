@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Criterion microbench: JWT AuthN validate (FR-012 hot path).
 //!
 //! Target (draft SLO): `jwt_validate_rs256` p95 < 5 ms per request.

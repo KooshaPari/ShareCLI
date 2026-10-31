@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — thermal gate on `sharecli proc --pid` detail surfaces
 //! FR: FR-007
 //!

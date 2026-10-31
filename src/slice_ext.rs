@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 pub trait SplitAtInclusive<T> {
     fn split_at_inclusive(&self, mid: usize) -> (&[T], &[T]);
 }

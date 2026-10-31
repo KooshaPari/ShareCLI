@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Tray periodic poll interval (FR-007 / AC-007.53).
 //!
 //! WinUI `TrayWindow` and Swift `AppState` poll every 3 s; the Linux tray loop MUST use the

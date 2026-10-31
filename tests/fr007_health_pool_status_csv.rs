@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — `sharecli health|pool|status --csv` operator companion rows (AC-007.82)
 //! FR: FR-007
 //!

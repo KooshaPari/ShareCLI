@@ -1,9 +1,17 @@
-//! FR-008 / TODO(hypervisor): speculative — pre-execute high-probability commands.
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+//! FR-008 — speculative execution & speculative coalesce.
 //!
-//! The [`SpeculationTracker`] records command-frequency histograms in-process.
-//! When a command crosses the speculation threshold the background task
-//! pre-executes it during idle periods and stores the result in the
-//! [`CoalesceCache`], so the next real `Hypervisor::run` call is a cache hit.
+//! This module hosts two related, complementary mechanisms:
+//!
+//! - [`SpeculationTracker`] (long-running): records command-frequency
+//!   histograms in-process. When a command crosses the speculation
+//!   threshold the background task pre-executes it during idle periods
+//!   and stores the result in the [`CoalesceCache`], so the next real
+//!   `Hypervisor::run` call is a cache hit.
+//! - [`SpeculativeCoalescer`] (per-call): a thread-safe in-flight
+//!   request deduplicator. Concurrent identical calls within
+//!   [`SPECULATIVE_COALESCE_WINDOW`] are merged into a single execution
+//!   that broadcasts the same `Result<CachedResult>` to all callers.
 //!
 //! # Design constraints
 //!
@@ -15,12 +23,13 @@
 //!   speculated on indefinitely.
 
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use sharecli_ipc::{CachedResult, CoalesceCache, CommandKey};
-use tokio::sync::Mutex;
+use tokio::sync::{oneshot, Mutex};
 use tracing::{debug, error, info, warn};
 
 // ---------------------------------------------------------------------------
@@ -39,6 +48,14 @@ pub const SPECULATION_MAX_CANDIDATES: usize = 5;
 
 /// Interval between background speculation cycles.
 pub const SPECULATION_INTERVAL: Duration = Duration::from_secs(30);
+
+/// Default in-flight coalesce window for [`SpeculativeCoalescer`].
+///
+/// Concurrent identical calls arriving within this window are merged
+/// into a single execution. Tuned to be long enough to absorb a typical
+/// fan-out burst (a few hundred µs of I/O scheduling jitter) but short
+/// enough to avoid holding the executor hostage for a noticeable period.
+pub const SPECULATIVE_COALESCE_WINDOW: Duration = Duration::from_millis(100);
 
 // ---------------------------------------------------------------------------
 // SpeculationTracker
@@ -149,6 +166,148 @@ impl SpeculationTracker {
     /// Whether the tracker is empty.
     pub async fn is_empty(&self) -> bool {
         self.inner.lock().await.hits.is_empty()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SpeculativeCoalescer (FR-008 in-flight request coalesce)
+// ---------------------------------------------------------------------------
+
+/// In-flight group of callers waiting on one executor invocation.
+struct PendingCoalesce {
+    waiters: Vec<oneshot::Sender<Result<CachedResult>>>,
+}
+
+/// Inner state for [`SpeculativeCoalescer`]: a key → pending-group map.
+#[derive(Default)]
+struct CoalesceInner {
+    pending: HashMap<String, PendingCoalesce>,
+}
+
+/// Thread-safe in-flight speculative coalescer.
+///
+/// Multiple [`coalesce`][SpeculativeCoalescer::coalesce] calls for the same
+/// [`CommandKey`] arriving within [`window`][SpeculativeCoalescer::window]
+/// are merged into a single execution. All callers in the window receive the
+/// same [`Result<CachedResult>`] from the first-registered executor.
+///
+/// # Protocol
+///
+/// 1. The first caller registers a pending group and schedules a Tokio task
+///    that sleeps for `window`, then runs `exec()` once and broadcasts the
+///    result to every waiter.
+/// 2. Callers arriving during the window join the pending group as waiters
+///    and receive the broadcast result.
+/// 3. Callers arriving after the window expiry find no pending group and
+///    start a fresh coalesce cycle.
+///
+/// # Thread safety
+///
+/// The pending map is guarded by a [`tokio::sync::Mutex`]. The mutex is held
+/// only briefly during registration / drainage — never across the `await`
+/// of the executor. `Arc<SpeculativeCoalescer>` may be shared freely across
+/// tasks and threads.
+pub struct SpeculativeCoalescer {
+    window: Duration,
+    inner: Arc<Mutex<CoalesceInner>>,
+}
+
+impl Default for SpeculativeCoalescer {
+    fn default() -> Self {
+        Self::new(SPECULATIVE_COALESCE_WINDOW)
+    }
+}
+
+impl SpeculativeCoalescer {
+    /// Create a coalescer with the given window.
+    pub fn new(window: Duration) -> Self {
+        Self { window, inner: Arc::new(Mutex::new(CoalesceInner::default())) }
+    }
+
+    /// Create a coalescer with [`SPECULATIVE_COALESCE_WINDOW`].
+    pub fn with_default_window() -> Self {
+        Self::default()
+    }
+
+    /// The configured coalesce window.
+    pub fn window(&self) -> Duration {
+        self.window
+    }
+
+    /// Number of currently-pending coalesce groups (for tests/diagnostics).
+    pub async fn pending_len(&self) -> usize {
+        self.inner.lock().await.pending.len()
+    }
+
+    /// Run or join an in-flight speculative coalesce for `key`.
+    ///
+    /// `exec` is invoked at most once per coalesce window. All callers
+    /// within the window receive the same `Result<CachedResult>` from the
+    /// first-registered executor.
+    ///
+    /// Callers other than the leader still receive a `Result<CachedResult>`
+    /// even though their `exec` closure is dropped on the floor.
+    pub async fn coalesce<F, Fut>(&self, key: &CommandKey, exec: F) -> Result<CachedResult>
+    where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: Future<Output = Result<CachedResult>> + Send + 'static,
+    {
+        let (tx, rx) = oneshot::channel::<Result<CachedResult>>();
+        let mut is_leader = false;
+
+        // Register as a waiter (or first caller / leader) under the lock.
+        {
+            let mut guard = self.inner.lock().await;
+            match guard.pending.entry(key.0.clone()) {
+                std::collections::hash_map::Entry::Occupied(mut occ) => {
+                    occ.get_mut().waiters.push(tx);
+                }
+                std::collections::hash_map::Entry::Vacant(vac) => {
+                    vac.insert(PendingCoalesce { waiters: vec![tx] });
+                    is_leader = true;
+                }
+            }
+        }
+
+        if is_leader {
+            let key_owned = key.0.clone();
+            let inner = Arc::clone(&self.inner);
+            let window = self.window;
+            tokio::spawn(async move {
+                // Wait out the window so other callers can join the group.
+                tokio::time::sleep(window).await;
+
+                // Drain the pending group; everyone who arrived during the
+                // window is in `waiters`. Anyone arriving AFTER this drain
+                // will start a fresh coalesce cycle — correct, by design.
+                let waiters = {
+                    let mut guard = inner.lock().await;
+                    guard.pending.remove(&key_owned).map(|g| g.waiters).unwrap_or_default()
+                };
+
+                // Run the executor once and broadcast the result.
+                let result = exec().await;
+                for waiter in waiters {
+                    // Receiver may have been dropped — that's fine, the
+                    // caller moved on. Ignore the send error.
+                    let _ = waiter.send(clone_result(&result));
+                }
+            });
+        }
+
+        rx.await.map_err(|_| {
+            anyhow!("speculative coalesce: executor task dropped before delivering result")
+        })?
+    }
+}
+
+/// Clone an [`anyhow::Error`] by formatting it into a new one.
+///
+/// We can't `Clone` `anyhow::Error` directly, so we re-format the chain.
+fn clone_result(result: &Result<CachedResult>) -> Result<CachedResult> {
+    match result {
+        Ok(v) => Ok(v.clone()),
+        Err(e) => Err(anyhow!("{e}")),
     }
 }
 
@@ -284,6 +443,7 @@ fn speculate_execute(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU32, Ordering};
 
     #[tokio::test]
     async fn tracker_records_hits_and_drains() {
@@ -559,5 +719,304 @@ mod tests {
         // After drain, counter is reset — next drain should be empty
         let second = tracker.drain_candidates().await;
         assert!(second.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // SpeculativeCoalescer (FR-008 in-flight request coalesce)
+    // -----------------------------------------------------------------------
+
+    /// Helper: a fresh `SpeculativeCoalescer` with a 50ms test window.
+    fn test_coalescer() -> SpeculativeCoalescer {
+        SpeculativeCoalescer::new(Duration::from_millis(50))
+    }
+
+    /// Helper: a successful `exec` closure that returns a fixed `CachedResult`
+    /// after a short sleep, incrementing a shared counter so tests can verify
+    /// the executor ran exactly N times.
+    fn exec_ok(
+        counter: Arc<AtomicU32>,
+        payload: &'static str,
+    ) -> impl FnOnce() -> std::pin::Pin<Box<dyn Future<Output = Result<CachedResult>> + Send + 'static>>
+    {
+        move || {
+            let counter = Arc::clone(&counter);
+            Box::pin(async move {
+                counter.fetch_add(1, Ordering::SeqCst);
+                // Tiny sleep so concurrent callers actually coalesce rather
+                // than each finishing before the next registers.
+                tokio::time::sleep(Duration::from_millis(5)).await;
+                Ok(CachedResult {
+                    exit_code: 0,
+                    stdout: payload.as_bytes().to_vec(),
+                    stderr: Vec::new(),
+                })
+            })
+        }
+    }
+
+    /// Helper: an `exec` closure that returns `Err`.
+    fn exec_err(
+    ) -> impl FnOnce() -> std::pin::Pin<Box<dyn Future<Output = Result<CachedResult>> + Send + 'static>>
+    {
+        || Box::pin(async move { Err(anyhow!("intentional exec failure")) })
+    }
+
+    /// Helper: assert `pending_len()` reaches `expected`, polling until it does.
+    ///
+    /// `coalesce` is an `async fn` and registers its pending group on the FIRST
+    /// POLL of the returned future, so a freshly spawned task has to actually be
+    /// scheduled before the group is observable. A bare `yield_now().await`
+    /// assumes one scheduler hand-off always suffices; this helper instead polls
+    /// until the expected state is observed and gives up with a descriptive
+    /// panic after a fixed number of scheduler yields.
+    ///
+    /// The bound is an ITERATION budget, not an elapsed-time deadline. These
+    /// tests run under `#[tokio::test(start_paused = true)]`, where the virtual
+    /// clock only advances while the runtime is idle, so a wall-clock deadline
+    /// would never expire (the wait would hang forever) and a `sleep`-driven
+    /// loop could silently push virtual time past the coalescing window. The
+    /// loop therefore yields (the only clock-independent way to hand the task
+    /// queue back to the runtime) and never sleeps.
+    ///
+    /// `context` is the contract the assertion encodes; it is reported verbatim
+    /// when the bounded wait is exhausted so a timeout is as diagnosable as a
+    /// plain `assert_eq!` failure.
+    ///
+    /// Deliberately duplicated in `tests/fr008_coalesce_public_api.rs`: that is
+    /// an integration test of the root `sharecli` package, which cannot reach
+    /// into `sharecli-core`'s `#[cfg(test)]` module without creating a circular
+    /// dev-dependency, and a new `src/` module would inflate the coverage
+    /// denominator for test-only code.
+    async fn assert_pending_len<F, Fut>(expected: usize, context: &str, read: F)
+    where
+        F: Fn() -> Fut,
+        Fut: Future<Output = usize>,
+    {
+        const ATTEMPTS: usize = 1_024;
+        let mut observed = 0usize;
+        for _ in 0..ATTEMPTS {
+            observed = read().await;
+            if observed == expected {
+                return;
+            }
+            // Hand the task queue back to the runtime so the spawned
+            // `coalesce` task gets polled and can register its group.
+            tokio::task::yield_now().await;
+        }
+        panic!(
+            "bounded wait exhausted after {ATTEMPTS} scheduler yields: {context} \
+             (expected pending_len {expected}, last observed {observed})"
+        );
+    }
+
+    #[test]
+    fn coalescer_default_window_is_one_hundred_ms() {
+        let c = SpeculativeCoalescer::default();
+        assert_eq!(c.window(), SPECULATIVE_COALESCE_WINDOW);
+        assert_eq!(c.window(), Duration::from_millis(100));
+    }
+
+    #[test]
+    fn coalescer_new_uses_configured_window() {
+        let c = SpeculativeCoalescer::new(Duration::from_millis(250));
+        assert_eq!(c.window(), Duration::from_millis(250));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn coalesce_within_window_runs_executor_once_and_shares_result() {
+        let coalescer = test_coalescer();
+        let key = CommandKey("within-window".into());
+        let counter = Arc::new(AtomicU32::new(0));
+
+        // All three callers reference the same `SpeculativeCoalescer` via
+        // `&self` — `coalesce` does NOT consume the receiver.
+        let (r1, r2, r3) = tokio::join!(
+            coalescer.coalesce(&key, exec_ok(Arc::clone(&counter), "shared-payload"),),
+            coalescer.coalesce(&key, exec_ok(Arc::clone(&counter), "different-payload"),),
+            coalescer.coalesce(&key, exec_ok(Arc::clone(&counter), "another-payload"),),
+        );
+
+        let r1 = r1.expect("r1 ok");
+        let r2 = r2.expect("r2 ok");
+        let r3 = r3.expect("r3 ok");
+
+        // All three receive the leader's result (the first caller's payload).
+        assert_eq!(r1.stdout, b"shared-payload");
+        assert_eq!(r2.stdout, b"shared-payload");
+        assert_eq!(r3.stdout, b"shared-payload");
+
+        // Executor ran exactly once (the leader's closure).
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            1,
+            "executor MUST run exactly once for a coalesced cycle"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn coalesce_after_window_starts_fresh_cycle() {
+        // Use a window shorter than the test sleep so the second call lands
+        // after the first cycle has drained.
+        let coalescer = SpeculativeCoalescer::new(Duration::from_millis(10));
+        let key = CommandKey("fresh-cycle".into());
+        let counter = Arc::new(AtomicU32::new(0));
+
+        // First cycle — runs once.
+        let cnt1 = Arc::clone(&counter);
+        let r1 =
+            coalescer.coalesce(&key, exec_ok(Arc::clone(&cnt1), "cycle-1")).await.expect("r1 ok");
+
+        // Yield to give the spawned executor task a chance to drain.
+        tokio::time::sleep(Duration::from_millis(20)).await;
+
+        // Second cycle — must run a fresh executor.
+        let cnt2 = Arc::clone(&counter);
+        let r2 =
+            coalescer.coalesce(&key, exec_ok(Arc::clone(&cnt2), "cycle-2")).await.expect("r2 ok");
+
+        assert_eq!(r1.stdout, b"cycle-1");
+        assert_eq!(r2.stdout, b"cycle-2");
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            2,
+            "executions separated by more than the window MUST run twice"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn coalesce_different_keys_are_independent() {
+        let coalescer = test_coalescer();
+        let counter = Arc::new(AtomicU32::new(0));
+
+        let key_a = CommandKey("key-a".into());
+        let key_b = CommandKey("key-b".into());
+
+        let cnt = Arc::clone(&counter);
+        let r_a =
+            coalescer.coalesce(&key_a, exec_ok(Arc::clone(&cnt), "payload-a")).await.expect("r_a");
+        let cnt = Arc::clone(&counter);
+        let r_b =
+            coalescer.coalesce(&key_b, exec_ok(Arc::clone(&cnt), "payload-b")).await.expect("r_b");
+
+        assert_eq!(r_a.stdout, b"payload-a");
+        assert_eq!(r_b.stdout, b"payload-b");
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            2,
+            "different keys MUST run separate executions"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn coalesce_propagates_executor_error_to_all_callers() {
+        let coalescer = test_coalescer();
+        let key = CommandKey("err-shared".into());
+
+        let (r1, r2) = tokio::join!(
+            coalescer.coalesce(&key, exec_err()),
+            coalescer.coalesce(&key, exec_err()),
+        );
+
+        let e1 = r1.expect_err("r1 must be Err");
+        let e2 = r2.expect_err("r2 must be Err");
+        assert!(
+            e1.to_string().contains("intentional exec failure"),
+            "r1 MUST surface exec error: {e1}"
+        );
+        assert!(
+            e2.to_string().contains("intentional exec failure"),
+            "r2 MUST surface exec error: {e2}"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn coalesce_pending_len_zero_after_cycle() {
+        let coalescer = test_coalescer();
+        let key = CommandKey("lifecycle".into());
+
+        assert_eq!(coalescer.pending_len().await, 0, "fresh coalescer MUST have no pending");
+
+        let cnt = Arc::new(AtomicU32::new(0));
+        let r = coalescer.coalesce(&key, exec_ok(cnt, "lifecycle")).await.expect("ok");
+        assert_eq!(r.stdout, b"lifecycle");
+
+        // After the cycle completes, the pending group MUST be drained.
+        assert_eq!(
+            coalescer.pending_len().await,
+            0,
+            "pending_len MUST return to zero once the coalesce cycle resolves"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn coalesce_pending_len_reflects_active_cycle() {
+        // A 1-second window: the cycle stays pending long enough to inspect.
+        let coalescer = Arc::new(SpeculativeCoalescer::new(Duration::from_secs(1)));
+        let key = CommandKey("long-window".into());
+
+        // Spawn the coalesce call so the returned future is genuinely polled.
+        // `coalesce` is an `async fn`: it registers the pending group on its
+        // FIRST POLL, so merely constructing the future is not enough — the
+        // task has to be scheduled before the group shows up in `pending_len`.
+        let counter = Arc::new(AtomicU32::new(0));
+        let cnt = Arc::clone(&counter);
+        let k = key.clone();
+        let c = Arc::clone(&coalescer);
+        let handle = tokio::spawn(async move { c.coalesce(&k, exec_ok(cnt, "long")).await });
+
+        // Wait (bounded) for the spawned task to register the pending group
+        // rather than assuming a single scheduler yield is enough.
+        assert_pending_len(
+            1,
+            "pending_len MUST show 1 active group while the window is still running",
+            || async { coalescer.pending_len().await },
+        )
+        .await;
+
+        // Now advance virtual time past the window so the executor runs.
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        // And consume the result so the spawned task completes.
+        let r = handle.await.expect("join").expect("ok");
+        assert_eq!(r.stdout, b"long");
+
+        assert_eq!(
+            coalescer.pending_len().await,
+            0,
+            "pending_len MUST drop to zero after the cycle resolves"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn coalesce_concurrent_stress_thread_safety() {
+        // Hammer the coalescer from many concurrent tasks sharing the same
+        // Arc'd coalescer. Verifies Arc<Mutex<…>> + oneshot broadcasting
+        // remains correct under contention.
+        let coalescer = Arc::new(test_coalescer());
+        let key = CommandKey("stress".into());
+        let counter = Arc::new(AtomicU32::new(0));
+
+        const N: usize = 32;
+        let mut handles = Vec::with_capacity(N);
+        for _ in 0..N {
+            let c = Arc::clone(&coalescer);
+            let k = key.clone();
+            let cnt = Arc::clone(&counter);
+            handles.push(tokio::spawn(async move { c.coalesce(&k, exec_ok(cnt, "stress")).await }));
+        }
+
+        for handle in handles {
+            let r = handle.await.expect("join").expect("ok");
+            assert_eq!(r.stdout, b"stress", "every caller MUST see the same payload");
+        }
+
+        // With `start_paused` all 32 calls register before the window elapses,
+        // so the executor runs exactly once.
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            1,
+            "executor MUST run once across {} concurrent callers",
+            N
+        );
     }
 }
