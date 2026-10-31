@@ -12,6 +12,23 @@ use sysinfo::Pid;
 mod tests {
     use super::*;
 
+    // FR: FR-001 - unavailable execution must not acknowledge success or acquire a worker.
+    #[tokio::test]
+    async fn pooled_execution_is_unsupported_without_side_effects() {
+        let runtime = SharedRuntime::new(1);
+        for harness in ["node", "bun", "missing-backend"] {
+            for script in ["", "console.log('must not execute'); process.exit(7)"] {
+                let error = runtime.run_with_pool(harness, "fixture", script).await.unwrap_err();
+                let io_error = error.downcast_ref::<std::io::Error>().expect("typed failure");
+                assert_eq!(io_error.kind(), std::io::ErrorKind::Unsupported);
+                assert!(error.to_string().contains("no command execution backend"));
+                let status = runtime.status().await;
+                assert_eq!(status.node_total, 0, "no worker may be acquired");
+                assert_eq!(status.bun_total, 0, "no worker may be acquired");
+            }
+        }
+    }
+
     async fn insert_unowned_handle(pool: &ProcessPool) -> u32 {
         let pid = std::process::id();
         let system = pool.system.read().await;
