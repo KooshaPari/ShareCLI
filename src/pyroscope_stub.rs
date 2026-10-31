@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C05 L45+ soft Pyroscope push stub (Wave16 T-710)
 //!
 //! Scope: stub only, no live push, no secrets, no network.

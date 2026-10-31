@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Configuration management for sharecli
 //!
 //! All configurable parameters are consolidated here. Hardcoded defaults

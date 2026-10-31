@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `VirtualStage` adapter — bridges KDesktopVirt's existing desktop-automation
 //! surface to Eidolon's unified trait.
 //!

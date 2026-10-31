@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Filter + sort implementation for `sharecli proc` inventory (AC-006.17–AC-006.41).
 //!
 //! [`filter_watched_agents`] / [`filter_agent_forests`] apply a [`ProcFilter`]

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Live gate / host-watch / pool-status sections printed by operator commands.
 //!
 //! Each `print_live_*` helper is invoked from one or more of the `ps` / `pool` /

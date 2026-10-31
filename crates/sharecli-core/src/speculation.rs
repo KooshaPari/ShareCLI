@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-008 — speculative execution & speculative coalesce.
 //!
 //! This module hosts two related, complementary mechanisms:

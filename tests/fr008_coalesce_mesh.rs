@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-008 — Speculative Coalesce / Debounce / Queue
 //! FR: FR-008
 //!

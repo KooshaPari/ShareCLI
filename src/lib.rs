@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! sharecli - Shared CLI process manager
 //!
 //! Thin CLI wrapper around local process runtime.

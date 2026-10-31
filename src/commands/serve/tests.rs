@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Unit tests for `commands::serve` — loaded as `crate::commands::serve::tests`
 //! via `#[path = "tests.rs"]` declared in `commands/serve/mod.rs`. The nested
 //! `mod tests` block below creates `commands::serve::tests::tests`; `use super::*;`

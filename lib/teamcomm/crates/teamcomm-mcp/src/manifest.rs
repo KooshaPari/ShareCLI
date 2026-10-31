@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! MCP manifest loader. Reads `mcp/manifest.json` relative to the crate root
 //! (or `$TEAMCOMM_MCP_MANIFEST`) and parses it into a typed structure.
 

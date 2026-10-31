@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C11 L115 — traditional server packaged unit in release artifacts (FR-003).
 //!
 //! FR: FR-003

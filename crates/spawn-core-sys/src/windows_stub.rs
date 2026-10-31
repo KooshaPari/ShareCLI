@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Windows stub for spawn-core — no Zig / POSIX.
 //!
 //! Provides the same public surface as the Unix Zig FFI path so

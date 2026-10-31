@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! JWT HS256 sign / verify + b64url helpers used by gateway-tools.
 //!
 //! HS256 is implemented in terms of `sha2::Sha256` only (no `hmac` crate, to

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-006 — `sharecli proc --tree` process-state on text nodes and tree JSON
 //! FR: FR-006
 //!

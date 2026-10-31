@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Sort keys for `sharecli proc` inventory rows (AC-006.19, AC-006.36, AC-006.41).
 //!
 //! [`ProcSort`] is the per-inventory sort key parsed from `--sort` and applied

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FUSE IO interception data structures (no actual mount).
 //!
 //! Provides a minimal wire-format abstraction over FUSE-style requests

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C05 L44 — traceparent inject on tray dashboard HTTP paths (T-610 / W14).
 //! FR: FR-003
 

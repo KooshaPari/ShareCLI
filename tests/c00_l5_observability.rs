@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C00 L5 / FR-003 — Observability (logs / metrics / traces) FR-003 acceptance gates.
 //!
 //! Evidence: `src/metrics.rs`, `src/log_sink.rs`, `src/otel.rs`, `src/commands/serve.rs`,

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Unit tests for the `commands` module decomposition.
 //!
 //! Tests cover the project-group filter (`filter_by_project`, originally

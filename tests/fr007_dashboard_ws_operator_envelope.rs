@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — dashboard WebSocket operator envelope (gate + host_watch + pool + status parity)
 //! FR: FR-007
 //!

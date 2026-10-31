@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-004 NFR — C09 L81.7 system status visibility: indicatif ETA on batch CLI ops.
 //! FR: FR-004
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `start` / `stop` / `run_pool` / `set_limits` / `check_limits` operator commands.
 //!
 //! These are the per-process CRUD-style operations exposed under

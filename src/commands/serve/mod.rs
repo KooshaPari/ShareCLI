@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `sharecli serve` -- lock-guarded HTTP + WebSocket dashboard server.
 //!
 //! GET  /healthz  -- liveness probe (JSON)

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! PKCS#7 padding for AES/block ciphers (RFC 5652 §6.3).
 //!
 //! `pad(data, block)` always appends at least one byte. `unpad` validates

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Build script for sharecli-ffi.
 //!
 //! Emits the absolute path of the freshly-built `libsharecli_ffi.{dylib,so}`
