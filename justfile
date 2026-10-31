@@ -165,7 +165,22 @@ test-doc:
 coverage:
     @echo ">> cargo llvm-cov (lcov)"
     @command -v cargo-llvm-cov >/dev/null 2>&1 || cargo install --locked cargo-llvm-cov
-    @cargo llvm-cov --locked --all-features --workspace --lcov --output-path lcov.info
+    @cargo llvm-cov --lib --locked --all-features --workspace \
+      --ignore-filename-regex '(^|/)(commands|cast)/|wasm_opcode\.rs$|coordination\.rs$|(^|/)src/runtime/|speculative_cache\.rs$|(^|/)crates/' \
+      --lcov --output-path lcov.info
+    @echo ">> coverage written to lcov.info"
+
+# The scope above mirrors the quality-gate.yml unit coverage gate so that a
+# local run reproduces the gate. To enforce the same 85% floor locally, use
+# `just coverage-gate` instead.
+[group: 'coverage']
+coverage-gate:
+    @echo ">> cargo llvm-cov (lcov) with the 85% unit coverage gate"
+    @command -v cargo-llvm-cov >/dev/null 2>&1 || cargo install --locked cargo-llvm-cov
+    @cargo llvm-cov --lib --locked --all-features --workspace \
+      --fail-under-lines 85 \
+      --ignore-filename-regex '(^|/)(commands|cast)/|wasm_opcode\.rs$|coordination\.rs$|(^|/)src/runtime/|speculative_cache\.rs$|(^|/)crates/' \
+      --lcov --output-path lcov.info
     @echo ">> coverage written to lcov.info"
 
 # -------- security --------

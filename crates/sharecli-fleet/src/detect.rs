@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Agent process pattern detection (FR-006).
 //!
 //! Discovers known coding agents by process name / cmdline tokens.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR:011 / C10 - automatic recovery uses only fresh, latest surface evidence.
 
 use std::path::PathBuf;

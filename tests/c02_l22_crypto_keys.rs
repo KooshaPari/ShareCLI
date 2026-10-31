@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-003 acceptance gates for Audit-v38 C02 L22 (Cryptography & key
 //! management) — score-3 commit.
 //!

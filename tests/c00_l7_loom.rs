@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C00 L7 / FR-003 — loom hard coverage for ProcessPool pid index + relaxed counter.
 //!
 //! Evidence: `crates/sharecli-sync/`, `docs/ops/concurrency.md`.

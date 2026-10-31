@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Read-ahead speculative cache (LRU with `prefetch_ahead` look-behind).
 //!
 //! Tracks access order via a Vec; eviction removes the oldest key. The

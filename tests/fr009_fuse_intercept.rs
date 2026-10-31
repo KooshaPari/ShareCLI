@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-009 — FUSE IO Intercept
 //! FR: FR-009
 //!

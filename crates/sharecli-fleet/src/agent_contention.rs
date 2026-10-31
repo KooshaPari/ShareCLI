@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Host agent-count contention for thermal+agent gating (FR-011).
 //!
 //! When many coding agents run concurrently, speculative coalesce pressure rises

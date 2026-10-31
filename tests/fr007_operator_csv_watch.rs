@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — operator sibling `--csv --watch` (health/pool/status/ps --all)
 //! FR: FR-007
 //!
