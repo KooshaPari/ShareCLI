@@ -224,10 +224,7 @@ mod tests {
         // Lock files prefixed with `sharecli` are picked up; unrelated names are not.
         assert!(removed.contains(&stale_lock), "stale lock missing: {removed:?}");
         assert!(removed.contains(&fresh_lock), "sharecli- prefix lock missing: {removed:?}");
-        assert!(
-            !removed.contains(&unrelated),
-            "unrelated lock should not be purged: {removed:?}"
-        );
+        assert!(!removed.contains(&unrelated), "unrelated lock should not be purged: {removed:?}");
         // Dry run: nothing was actually deleted.
         assert!(stale_lock.exists());
         assert!(unrelated.exists());
