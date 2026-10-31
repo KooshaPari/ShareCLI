@@ -5,6 +5,7 @@
 # runner labeled `desk-sharecli`. Declare that label here so actionlint does
 # not flag `runs-on: [self-hosted, Linux, X64, desk-sharecli]` as an
 # "unknown label" error on every PR.
+# The nightly soak job uses the dedicated desk runner.
 
 self-hosted-runner:
   labels:

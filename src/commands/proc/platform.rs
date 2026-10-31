@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Platform-specific `/proc` helpers for process sampling (CPU%, age).
 
 /// `clock ticks per second` for `/proc/stat` and `/proc/{pid}/stat`. Linux default is 100.

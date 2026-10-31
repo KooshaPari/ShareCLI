@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! process-compose.yaml integration for sharecli
 //!
 //! Parses `process-compose.yaml` files and exposes their service definitions

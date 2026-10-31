@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Integration tests for the sharecli CLI binary.
 //! FR: FR-001
 //!

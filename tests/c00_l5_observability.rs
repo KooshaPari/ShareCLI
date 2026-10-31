@@ -1,7 +1,10 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C00 L5 / FR-003 — Observability (logs / metrics / traces) FR-003 acceptance gates.
 //!
 //! Evidence: `src/metrics.rs`, `src/log_sink.rs`, `src/otel.rs`, `src/commands/serve.rs`,
 //! `src/main.rs`, `Cargo.toml`.
+//!
+//! FR: FR-003
 
 #[test]
 fn c00_l5_metrics_module_exposes_counter_gauge_registry() {
@@ -73,14 +76,27 @@ fn c00_l5_otel_w3c_tracecontext_propagator_present() {
 
 #[test]
 fn c00_l5_serve_route_exposes_prometheus_metrics() {
-    let src = include_str!("../src/commands/serve.rs");
+    // Post-decomposition: the original monolithic `src/commands/serve.rs` was
+    // split into a `commands/serve/` module directory. The HTTP route
+    // definitions live in `commands/serve/run.rs`; the handler stubs and
+    // doc-comments live in `commands/serve/handlers.rs` and other submodules.
+    // Concatenate every `commands/serve/` .rs file so this static check
+    // survives future sub-splits.
+    let src = std::fs::read_dir("src/commands/serve")
+        .expect("src/commands/serve must exist post-decomposition")
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("rs"))
+        .map(|p| std::fs::read_to_string(&p).expect("failed to read serve submodule"))
+        .collect::<Vec<_>>()
+        .join("\n");
     assert!(
         src.contains("/metrics/prometheus") || src.contains("metrics/prometheus"),
-        "serve must expose /metrics/prometheus route"
+        "serve module must expose /metrics/prometheus route"
     );
     assert!(
         src.contains("/healthz") && src.contains("/readyz"),
-        "serve must expose /healthz and /readyz split"
+        "serve module must expose /healthz and /readyz split"
     );
 }
 

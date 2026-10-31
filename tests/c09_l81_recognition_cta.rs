@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-003 acceptance gates for C09 L81.12 (Recognition Over Recall) and
 //! L81.15 (Aesthetic & Minimalist Design — CTA token system).
 //!

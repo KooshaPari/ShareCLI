@@ -39,6 +39,7 @@ export default defineConfig({
       { text: 'Journeys', link: '/journeys/' },
       { text: 'Stories', link: '/stories/' },
       { text: 'Traceability', link: '/traceability/' },
+      { text: 'Compete', link: '/compete/' },
     ],
     sidebar: {
       '/journeys/': [{

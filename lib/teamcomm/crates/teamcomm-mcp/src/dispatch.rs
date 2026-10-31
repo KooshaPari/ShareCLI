@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Dispatches incoming MCP `tools/call` envelopes to the appropriate
 //! handler function in `handlers.rs`. The bridge forwards each tool call
 //! through `teamcomm-client` to the teamcomm daemon over the Unix socket.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Structured async shutdown for long-running sharecli tasks (C00 L4).
 //!
 //! Root [`CancellationToken`] fans out to background tasks; HTTP serve uses

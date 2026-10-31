@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-009 — Hypervisor FUSE write-provenance session wiring
 //! FR: FR-009
 //!

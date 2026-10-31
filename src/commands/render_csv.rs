@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! CSV rendering for operator commands (FR-007 / AC-007.79 / AC-007.82 / AC-007.83).
 //!
 //! Text builders that turn the `health`, `pool`, `status`, and `ps --all`

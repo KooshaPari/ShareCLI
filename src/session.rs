@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Shell-free zmx and capability-gated Ghostty adapters.
 
 use std::io::{BufRead, BufReader, Write};

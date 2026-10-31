@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `sharecli-ipc` — coalesce/debounce/queue tier of the sharecli OS-process hypervisor.
 //!
 //! # Lock-Wait-Cache pattern

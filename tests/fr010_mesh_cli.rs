@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-010 — mesh CLI status / reclaim (operator surface)
 //! FR: FR-010
 //!

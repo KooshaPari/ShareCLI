@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-011 / AC-011.7 — pool + health gate parity with status/report/ps.
 //!
 //! AC-011.7: `sharecli pool` and `sharecli health` expose thermal+agent gate
