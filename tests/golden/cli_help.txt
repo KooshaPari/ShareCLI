@@ -16,7 +16,7 @@ Commands:
   optimize      Optimize resource usage
   prune         Prune idle processes
   pool          Show shared runtime pool status
-  run           Run using pooled runtime
+  run           Pooled execution (currently unavailable; returns an error without executing work)
   limits        Set project resource limits
   check         Check project resource limits
   thermal       Live thermal-gate / hypervisor state monitor (TUI)

@@ -145,7 +145,12 @@ pub async fn stop(
 }
 
 /// Reject pooled execution until a real command/worker protocol is available.
-pub async fn run_pool(_harness_type: &str, _project: &str) -> Result<()> {
+///
+/// Returns the typed domain error (not `anyhow`) so `main` reports the stable
+/// `SHARECLI_ERROR_CODE=io` / `EXIT_IO` classification: an unavailable backend
+/// is an expected condition, not an internal failure. Wrapping this in
+/// `anyhow` erases the type, and `main`'s fallback then reports `internal`.
+pub async fn run_pool(_harness_type: &str, _project: &str) -> crate::error::Result<()> {
     Err(SharedRuntime::execution_unavailable().into())
 }
 
