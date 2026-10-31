@@ -148,3 +148,31 @@ mod project_group_tests {
         assert!(!force_kill_requires_confirmation(true, true));
     }
 }
+
+#[cfg(test)]
+mod run_pool_error_classification {
+    //! PR #938 review follow-up: unavailable pooled execution is an EXPECTED
+    //! condition. It must classify as `io` / `EXIT_IO`, never `internal`.
+    use crate::commands::process_ops::run_pool;
+    use crate::error::{ErrorCode, SharecliError, EXIT_INTERNAL, EXIT_IO};
+
+    #[tokio::test]
+    async fn unavailable_backend_classifies_as_io_not_internal() {
+        let err = run_pool("node", "fixture").await.expect_err("pooled run must fail closed");
+        assert_eq!(err.code(), ErrorCode::Io, "unavailable backend must not be internal");
+        assert_eq!(err.exit_code(), EXIT_IO);
+        assert_ne!(err.exit_code(), EXIT_INTERNAL);
+        assert!(err.to_string().contains("no command execution backend"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn unavailable_backend_survives_anyhow_downcast() {
+        // `main` dispatches through `anyhow::Result` and then downcasts back to
+        // the domain error, so the type must survive that round trip.
+        let boxed: anyhow::Error =
+            run_pool("bun", "fixture").await.expect_err("pooled run must fail closed").into();
+        let domain = boxed.downcast::<SharecliError>().expect("typed error must survive anyhow");
+        assert_eq!(domain.code(), ErrorCode::Io);
+        assert_eq!(domain.exit_code(), EXIT_IO);
+    }
+}
