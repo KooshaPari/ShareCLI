@@ -2,16 +2,18 @@ name: Chaos restart (hard)
 
 # C05 L50 — SIGKILL restart recovery gate (T-630 / FR-003).
 # Promotion: docs/ops/chaos-restart-hard-gate.md phase 4.
-# The PR-side chaos run that used to live in `.github/workflows/ci.yml`
-# (`chaos-restart-hard` job feeding the `ci-success` aggregator) was
-# retired together with the legacy CI workflow (2026-10-17). This
-# workflow keeps cron/dispatch + path-filtered main push for drift
-# detection without double-running chaos on every PR.
+# This workflow is the single definition of the chaos restart gate. It used to
+# duplicate a `chaos-restart-hard` job inside `.github/workflows/ci.yml`; that
+# job was deleted with the legacy CI workflow (2026-10-17) and its PR-time
+# coverage is restored here by the `pull_request` trigger below, so there is
+# still no double run (one definition, PR + main drift + cron).
 
 on:
   schedule:
     - cron: "45 8 * * *"
   workflow_dispatch:
+  # Contract: docs/ops/chaos-restart-hard-gate.md requires PR-time enforcement.
+  pull_request:
   push:
     branches: [main]
     paths:
@@ -28,6 +30,9 @@ jobs:
   chaos-restart-hard:
     name: chaos restart (hard)
     runs-on: ubuntu-24.04
+    # Bounded so a hung restart cannot squat a runner indefinitely now that
+    # this also runs per-PR.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@stable
