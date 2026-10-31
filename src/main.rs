@@ -65,7 +65,64 @@ use runtime::ProcessPool;
     version = env!("CARGO_PKG_VERSION"),
     after_long_help = "Accessibility (C09): docs/a11y/README.md — NO_COLOR/TERM=dumb degrade ANSI color; \
 FR-004 status via `sharecli status` and GET /health. Degraded-mode notes: docs/a11y/status-and-recovery.md\n\
-Help & FAQ (C09 L81.13): docs/faq.md — top troubleshooting answers; `man sharecli` after `just man`."
+Help & FAQ (C09 L81.13): docs/faq.md — top troubleshooting answers; `man sharecli` after `just man`.\n\
+\n\
+EXAMPLES
+  # Show top-level command inventory
+  $ sharecli --help
+
+  # Inventory live processes (human-readable, FR-007)
+  $ sharecli ps
+
+  # Machine-readable inventory for dashboards
+  $ sharecli ps --all --json
+
+  # Continuous live watch, JSON, agent inventory parity (AC-007.49)
+  $ sharecli ps --all --json --watch 2
+
+  # Operator snapshot as CSV (AC-007.82)
+  $ sharecli status --csv
+
+  # Start a claude harness for a project, in a specific working directory
+  $ sharecli start myproject --harness claude --cwd ~/code/myproject
+
+  # Stop a single process by PID, with confirmation prompt
+  $ sharecli stop --pid 4242
+
+  # Stop all processes for a project, force-kill without prompt
+  $ sharecli stop --project myproject --all --force --yes
+
+  # Inspect durable agent sessions (FR-005)
+  $ sharecli session list
+  $ sharecli session inspect <session-id>
+
+  # Surface I/O against a ShareCLI-enabled Ghostty surface
+  $ sharecli surface send --surface-id <surface-id> --text 'echo hello'
+  $ sharecli surface read --surface-id <surface-id> --max-bytes 4096
+
+  # Resource limits (FR-002): set with `limits`, read back with `check`
+  $ sharecli limits myproject --memory 4096 --processes 4
+  $ sharecli check myproject
+
+  # Live thermal-gate / hypervisor state (TUI)
+  $ sharecli thermal
+
+  # Dashboard server (HTTP + WebSocket)
+  $ sharecli serve --bind 127.0.0.1:3939
+
+  # Mount intercept layer (FUSE): backing dir, then mountpoint (both positional)
+  $ sharecli fuse mount ~/work ~/mnt/agent
+  $ sharecli fuse status
+  $ sharecli fuse commit --agent myagent
+  $ sharecli fuse unmount ~/mnt/agent
+
+  # Cast panes (legacy remote-pane surface); `cast send` reads stdin unless a file is given
+  $ sharecli cast register alpha 127.0.0.1:7100
+  $ echo 'hello' | sharecli cast send alpha
+
+  # Service registry (process-compose)
+  $ sharecli proc-compose list
+"
 )]
 struct Cli {
     #[command(subcommand)]

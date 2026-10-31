@@ -134,7 +134,7 @@ ShareCLI is a **mostly production-grade** Rust workspace at v0.8.0 (release 2026
 **Cross-checks (Appendix D):**
 - `VERSION:1` says `0.1.0`; `CHANGELOG.md:27` says `[1.0.0] - 2026-08-31`. Contradicts.
 - `docs/index.md` lists 3 of 30+ subdirs.
-- Parallel ADR directories with overlapping IDs (007-010 in `docs/ops/governance/adrs/` vs `docs/adr/0007`).
+- Parallel ADR directories with overlapping IDs (007-010 in `docs/adr/` vs `docs/adr/0007`).
 
 **Total CVP delta: 13h 40m** of mostly mechanical work.
 
