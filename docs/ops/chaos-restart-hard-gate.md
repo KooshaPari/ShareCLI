@@ -1,27 +1,37 @@
 # Chaos restart hard-gate promotion
 
+> **Enforcement path changed 2026-10-17 (corrected 2026-10-31, PR #933 review).**
+> `.github/workflows/ci.yml` and its `ci-success` aggregator no longer exist.
+> PR-time enforcement of this gate now comes from the `pull_request` trigger on
+> [`.github/workflows/chaos-restart-hard.yml`](../../.github/workflows/chaos-restart-hard.yml),
+> which is a single definition and carries no `continue-on-error`. References to
+> `ci.yml` / `ci-success` further down this document are historical build-log
+> rows describing how the gate was promoted; do not read them as current wiring.
+
 Audit-v38 **C05 L50** — [`chaos_restart.sh`](../../scripts/load/chaos_restart.sh) is a **required merge gate**
-via `ci-success` on PR/push `main`. Builds on the soak contract in
+on PR/push `main`. Builds on the soak contract in
 [`soak-chaos.md`](soak-chaos.md).
 
 Related: [`.github/workflows/soak-soft.yml`](../../.github/workflows/soak-soft.yml) (L47 healthz soak) ·
 [`.github/workflows/load-soft.yml`](../../.github/workflows/load-soft.yml) (L50 burst) ·
-[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) `chaos-restart-hard` job ·
+[`.github/workflows/chaos-restart-hard.yml`](../../.github/workflows/chaos-restart-hard.yml) `chaos-restart-hard` job ·
 [`ruleset-checklist.md`](ruleset-checklist.md) (branch protection runbook).
 
-## Current stance (hard via ci-success)
+## Current stance (hard via chaos-restart-hard.yml)
 
 | Control | Workflow / config | Gate strength | Notes |
 |---------|-------------------|---------------|-------|
 | Chaos kill/restart | `scripts/load/chaos_restart.sh` | **Hard** | SIGKILL + restart; `/healthz` recover < 30s |
-| PR CI | `ci.yml` `chaos-restart-hard` + `ci-success` | **Hard** | Aggregator fails when recovery times out |
+| PR CI | `chaos-restart-hard.yml` (`pull_request`) | **Hard** | Job fails the PR when recovery times out |
 | Local DX | `just chaos-hard` | Maintainer | Builds release + runs script on `:9000` |
-| Drift CI | `chaos-restart-hard.yml` | Cron/dispatch | Path-filtered `main` push; no double PR run |
+| Drift CI | `chaos-restart-hard.yml` (push/cron) | Cron/dispatch | Path-filtered `main` push plus daily cron |
 | Soak CI | `soak-soft.yml` | **Soft** | `continue-on-error: true`; 60s `/healthz` loop |
 | Load CI | `load-soft.yml` | **Soft** | `continue-on-error: true`; burst macrobench |
 
-**Net:** chaos restart recovery is enforced on every PR via `ci-success`. Branch protection
-required check on `chaos restart (required)` remains a maintainer follow-up.
+**Net:** chaos restart recovery runs on every PR via the `pull_request` trigger on
+`chaos-restart-hard.yml` and fails the job on timeout. Branch protection does not list it as
+required (only `ci / lint` and `ci / test` are required), so adding `chaos restart (hard)` to the
+required contexts remains a maintainer follow-up.
 
 ## Target stance (hard)
 

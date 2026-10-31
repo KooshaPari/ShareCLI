@@ -11,6 +11,63 @@
 #     failures) is resolved - they are named `* (informational)` so the status
 #     rollup makes their non-gating nature explicit.
 # =============================================================================
+#
+# Sole-CI declaration (2026-10-17, corrected 2026-10-31): the legacy
+# `.github/workflows/ci.yml` (workflow name `CI`) was deleted in the same PR
+# that added this note. This file is the single source of truth for the
+# required `ci / lint` and `ci / test` branch-protection contexts.
+#
+# Job-by-job mapping from the deleted `ci.yml`. Nothing is dropped silently.
+# An earlier revision of this note claimed everything was "covered or
+# superseded"; that was untrue for Loom, nextest, OSV-on-PR, the hard netblock
+# gate and PR-time chaos (review findings on PR #933).
+#
+#   detect             -> not needed; this workflow has no path-detection
+#                         fan-out (it is Rust-only by contract).
+#   rust (fmt/clippy)  -> `ci-lint` (hard `cargo fmt --check`; clippy stays
+#                         informational pending FR-007 debt).
+#   rust (cargo test)  -> `ci-test` (nextest).
+#   guardrail (nextest)-> `ci-test`. NOTE: `ci.yml` was also what installed
+#                         cargo-nextest. The install now lives in `ci-test`
+#                         itself (pinned `taiki-e/install-action`) and fails
+#                         the job if nextest is missing from PATH.
+#   loom               -> `ci-loom` below. `cfg(loom)` is NOT enabled by any
+#                         ordinary `cargo check`/`nextest` run, so it needs
+#                         its own job.
+#   netblock (hard)    -> `ci-netblock` below. `netblock-soft.yml` is
+#                         `continue-on-error: true` and cannot stand in for the
+#                         hard gate that `ci.yml` provided.
+#   osv (PR)           -> `osv.yml` now also runs on `pull_request`.
+#   chaos-restart-hard -> `chaos-restart-hard.yml` now also runs on
+#                         `pull_request` (docs/ops/chaos-restart-hard-gate.md).
+#   cargo-deny         -> `deny.yml` (pull_request, PATH-FILTERED on
+#                         Cargo.toml/Cargo.lock/deny.toml - narrower than the
+#                         unfiltered `ci.yml` job).
+#   cargo-audit        -> `audit.yml` (pull_request, path-filtered).
+#   security/gitleaks  -> `security.yml` (pull_request).
+#   go                 -> deleted; never ran (`detect` required `go.mod`, which
+#                         does not exist).
+#   typescript         -> deleted; effectively a no-op. The job only ran
+#                         `npm run lint` / `npm test` when those scripts existed
+#                         in package.json, and the root package.json (name:
+#                         "docs", a vitepress/playwright toolchain) defines
+#                         neither. Its one real action, `npm ci`, is still
+#                         exercised on PRs by `a11y.yml`.
+#   python             -> deleted; KNOWN GAP, not silently dropped. The job was
+#                         advisory (`continue-on-error: true`) and did run, because
+#                         `scripts/*.py` (10 files) satisfies `detect`'s python
+#                         rule. Advisory `ruff check` / `ruff format --check` over
+#                         scripts/ therefore no longer runs on PRs. Restoring it
+#                         needs a pytest/ruff workflow rather than a job in this
+#                         Rust CI file; tracked as a follow-up.
+#   dep-review         -> deleted; superseded by `deny.yml` + `audit.yml`.
+#   lint/test/ci-success aggregators -> replaced by the two required contexts
+#                         `ci / lint` and `ci / test`, the only contexts branch
+#                         protection requires.
+#
+# If you reintroduce a second CI workflow, expect branch protection to fail
+# because the required `ci / lint` / `ci / test` contexts would compete.
+# =============================================================================
 
 name: ci
 
@@ -92,10 +149,25 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libglib2.0-dev libgtk-3-dev libxdo-dev pkg-config libayatana-appindicator3-dev
+      - name: Install cargo-nextest
+        # Required: ubuntu-24.04 runner images ship rustfmt but NOT nextest, so
+        # `cargo nextest run` below would otherwise fail with "no such command".
+        # The deleted `.github/workflows/ci.yml` performed this install; it now
+        # lives here. Pinned by SHA and deliberately NOT soft-failed, so a
+        # broken install fails the job instead of silently skipping tests.
+        uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
+        with:
+          tool: nextest
       - name: Build all targets
         run: cargo check --workspace --all-targets
       - name: Unit tests (nextest, informational)
+        # Test RESULTS stay informational (FR-007 debt). A missing binary is a
+        # hard failure: that is a broken pipeline, not known debt.
         run: |
+          if ! command -v cargo-nextest >/dev/null 2>&1; then
+            echo "::error::cargo-nextest is not on PATH; the installation step failed"
+            exit 1
+          fi
           cargo nextest run --workspace 2>&1 | tee nextest.log || true
           if grep -qiE 'FAIL|error\[|panicked' nextest.log; then echo "::warning::cargo nextest reported failures (informational, tracked in FR-007 debt)"; fi
       - name: Post legacy commit-status for merge gate
@@ -112,3 +184,55 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${{ github.repository }}/statuses/${{ github.sha }}" \
             -d "{\"state\":\"$STATE\",\"context\":\"ci / test\",\"description\":\"${{ job.status }}\"}" || echo "::warning::failed to post legacy commit-status for ci / test"
+
+  ci-loom:
+    # Restored from the deleted `ci.yml` `loom` job (review finding P2 on
+    # PR #933). `cfg(loom)` is not enabled by ordinary `cargo check` or
+    # `cargo nextest` runs, so PoolIndex / RelaxedCounter concurrency models
+    # receive zero coverage without this job. Not a required branch-protection
+    # context, so a failure reports signal without blocking merges.
+    name: ci / loom (sharecli-sync)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
+        with:
+          toolchain: 1.96.0
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2
+        with:
+          shared-key: ci-loom
+      - name: Loom model (PoolIndex / RelaxedCounter)
+        env:
+          RUSTFLAGS: "--cfg loom"
+        run: cargo test --locked -p sharecli-sync --test loom_pool_index
+
+  ci-netblock:
+    # Restored from the deleted `ci.yml` `netblock` job (review finding on
+    # PR #933). This is the HARD offline-build gate: it fetches the lockfile,
+    # then builds with CARGO_NET_OFFLINE=1. `netblock-soft.yml` runs the same
+    # script under `continue-on-error: true` and therefore cannot substitute
+    # for it. Not a required branch-protection context.
+    name: netblock hermetic (required)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
+        with:
+          toolchain: 1.96.0
+      - name: Setup Zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2
+        with:
+          shared-key: ci-netblock
+      - name: Netblock hermetic gate
+        run: bash scripts/ci/netblock_check.sh

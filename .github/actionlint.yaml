@@ -12,14 +12,6 @@ self-hosted-runner:
     - desk-sharecli
 
 paths:
-  # Forward reference: the `detect` job's `outputs:` block references
-  # `steps.detect.outputs.*` before the step with `id: detect` is declared.
-  # This is legal in GitHub Actions (step ids resolve within the whole job) and
-  # the detect job is exercised on every CI run, but actionlint's static
-  # analysis reports it as an undefined property. Ignore that specific message.
-  .github/workflows/ci.yml:
-    ignore:
-      - 'property "detect" is not defined in object type'
   # Forward reference: a later step references `steps.run_soak.conclusion`
   # from a step with `id: run_soak` declared earlier in the same job.
   # actionlint cannot resolve the forward reference across the entire

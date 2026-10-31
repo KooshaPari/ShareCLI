@@ -2,7 +2,18 @@ name: Mutation Testing
 
 # C07 L65 — cargo-mutants hard gate (T-640 / FR-003).
 # Promotion: docs/ops/mutants-hard-gate.md phase 4.
-# Aggregated into CI Success via .github/workflows/ci.yml `mutants` job.
+# Correction (2026-10-31, PR #933 review): an earlier revision of this note
+# claimed a `mutants` job had been "retired together with the legacy CI
+# workflow". That was wrong. `git show <main>:.github/workflows/ci.yml` lists
+# no `mutants` job, and no earlier revision of `ci.yml` at the PR base carried
+# one, so this PR removed no mutation coverage. Mutants has never had PR-time
+# coverage; it is scheduled + path-filtered on main only.
+# Remaining gap (pre-existing, NOT introduced here, tracked for a follow-up):
+# nothing runs mutation testing before merge. Adding `pull_request` would be a
+# multi-hour job on every PR, so it is deliberately left out of this change.
+# Single source of truth for cargo-mutants coverage: cron/dispatch plus a
+# path-filtered main push for drift detection. NOT in the required
+# `ci / lint` / `ci / test` branch-protection contexts.
 #
 # T-86 follow-up (2026-08-07): matrix-extended to cover sharecli-fuse
 # alongside sharecli-thermal-tui. Each crate has its own per-crate
@@ -13,9 +24,6 @@ on:
   schedule:
     - cron: "30 7 * * *"
   workflow_dispatch:
-  # PR coverage lives in ci.yml `mutants` (ci-success aggregator). This workflow
-  # keeps cron/dispatch + path-filtered main push for drift detection without
-  # double-running mutants on every PR.
   push:
     branches: [main]
     paths:
@@ -27,7 +35,6 @@ on:
       - "docs/ops/mutants-threshold.md"
       - "docs/ops/mutants-hard-gate.md"
       - ".github/workflows/mutants.yml"
-      - ".github/workflows/ci.yml"
 
 permissions:
   contents: read
