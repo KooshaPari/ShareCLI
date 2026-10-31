@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! MCP stdio server entry point. Reads JSON-RPC messages from stdin,
 //! dispatches to MCP tool handlers (which forward to the teamcomm daemon
 //! via `teamcomm-client`), writes responses to stdout.

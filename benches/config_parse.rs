@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Criterion microbench: TOML Config deserialize (hot path for serve/reload).
 //!
 //! Target (draft SLO): `config_parse` p95 < 1 ms for the default document.

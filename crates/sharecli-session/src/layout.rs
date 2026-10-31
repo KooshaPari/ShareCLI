@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Durable terminal layout snapshots and restore reports.
 
 use std::collections::HashSet;

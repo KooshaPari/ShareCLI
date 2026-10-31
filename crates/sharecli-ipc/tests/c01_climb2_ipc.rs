@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR: FR-003
 //!
 //! C01 climb-2 — ipc CoalesceCache / SlotQueue / nocache edge coverage.

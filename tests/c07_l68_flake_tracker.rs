@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 // tests/c07_l68_flake_tracker.rs — FR-003 acceptance gate for C07 / L68
 // Plan 795 (T-900) Flake-tracker score-3 evidence.
 //

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Library surface for the Windows WinUI tray (wire types + mapping helpers).
 //!
 //! The WinUI binary lives under `windows/ShareCLITray/`; this crate compiles
@@ -6,5 +7,7 @@
 //! AC-007.54 kill / kill_all operator actions.
 
 pub mod ipc;
+/// Operator panel formatting helpers (gate/host/pool lines, visuals, badges).
 pub mod operator_display;
+/// Background poll loop that refreshes tray state from IPC.
 pub mod poll;

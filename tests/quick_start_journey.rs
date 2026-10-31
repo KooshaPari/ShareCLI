@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Outside-in Quick Start journey — maps CLI steps → FR IDs.
 //! FR: FR-001, FR-002, FR-003
 //!

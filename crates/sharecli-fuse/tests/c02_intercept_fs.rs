@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR: FR-003 / FR-009
 //!
 //! C02 — InterceptFs no-mount surfaces: session id, agents.conf, write

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 // Minimal SMTP reply parser (RFC 5321 §4.2 + §4.5.3.1).
 //
 // SMTP replies are a 3-digit code, a separator, and an optional text

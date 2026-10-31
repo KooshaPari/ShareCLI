@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-006 — Process-tree /proc agent detection
 //! FR: FR-006
 //!
