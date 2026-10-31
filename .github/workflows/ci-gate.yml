@@ -45,8 +45,21 @@
 #                         unfiltered `ci.yml` job).
 #   cargo-audit        -> `audit.yml` (pull_request, path-filtered).
 #   security/gitleaks  -> `security.yml` (pull_request).
-#   python/go/ts       -> deleted; this repo is Rust-only (no pyproject.toml,
-#                         go.mod or package.json at the root).
+#   go                 -> deleted; never ran (`detect` required `go.mod`, which
+#                         does not exist).
+#   typescript         -> deleted; effectively a no-op. The job only ran
+#                         `npm run lint` / `npm test` when those scripts existed
+#                         in package.json, and the root package.json (name:
+#                         "docs", a vitepress/playwright toolchain) defines
+#                         neither. Its one real action, `npm ci`, is still
+#                         exercised on PRs by `a11y.yml`.
+#   python             -> deleted; KNOWN GAP, not silently dropped. The job was
+#                         advisory (`continue-on-error: true`) and did run, because
+#                         `scripts/*.py` (10 files) satisfies `detect`'s python
+#                         rule. Advisory `ruff check` / `ruff format --check` over
+#                         scripts/ therefore no longer runs on PRs. Restoring it
+#                         needs a pytest/ruff workflow rather than a job in this
+#                         Rust CI file; tracked as a follow-up.
 #   dep-review         -> deleted; superseded by `deny.yml` + `audit.yml`.
 #   lint/test/ci-success aggregators -> replaced by the two required contexts
 #                         `ci / lint` and `ci / test`, the only contexts branch
