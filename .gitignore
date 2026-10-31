@@ -69,11 +69,14 @@ lib/teamcomm/target/
 dhat-heap.json
 
 # Phase 2b (2026-10-17): untracked from HEAD; kept on disk for development
-# (probe output, lockfile snapshot, terminal recordings, fetched PR body
-# drafts, and a vendored Windows FFI DLL). These remain useful locally but
-# are not source-of-truth and must not show up as working-tree dirt.
+# (probe output, terminal recordings, fetched PR body drafts, and a vendored
+# Windows FFI DLL). These remain useful locally but are not source-of-truth
+# and must not show up as working-tree dirt.
+#
+# NOTE: package-lock.json is deliberately NOT ignored. a11y.yml,
+# deploy-docs.yml and visual-soft.yml run `npm ci`, which requires a tracked
+# lockfile on a clean checkout. Do not re-add it here.
 coverage.json
-package-lock.json
 output/playwright/*.cast
 /pr-*-body.md
 windows/ShareCLITray/*.dll
