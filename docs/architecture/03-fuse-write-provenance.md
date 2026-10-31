@@ -115,7 +115,7 @@ deliberately namespaced (`user.sharecli.*` on Unix,
 `sharecli_*` on Windows ADS) so they survive agent processes
 that write their own xattrs/ADS without colliding.
 
-See [docs/adr/ADR-009-harbor-soak-alternative.md](../../adr/ADR-009-harbor-soak-alternative.md)
+See [docs/adr/ADR-009-harbor-soak-alternative.md](../adr/ADR-009-harbor-soak-alternative.md)
 for the rationale on the FUSE-on-Windows path
 (WinFsp with NTFS alternate data streams) and why we
 chose ADS over a custom xattr shim.

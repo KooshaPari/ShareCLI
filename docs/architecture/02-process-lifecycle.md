@@ -127,5 +127,5 @@ sequenceDiagram
   the last-known snapshot and a "stale" badge. It does not
   re-query the CLI.
 
-See [docs/adr/0008-airlock-convergence-contract-capture.md](../../adr/0008-airlock-convergence-contract-capture.md)
+See [docs/adr/0008-airlock-convergence-contract-capture.md](../adr/0008-airlock-convergence-contract-capture.md)
 for the contract surface between CLI and fleet.

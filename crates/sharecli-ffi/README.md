@@ -2,10 +2,11 @@
 
 > C-ABI FFI surface for sharecli desktop apps (macOS, Windows).
 
-Exposes daemon lifecycle and a synchronous health peek to non-Rust
-consumers over a stable C ABI. The primary data path is the IPC socket
-(Unix socket on Unix, TCP loopback on Windows); FFI only handles
-daemon lifecycle and a quick sync health probe.
+Exposes daemon lifecycle, a synchronous health snapshot, and a thin
+request/HTTP passthrough to non-Rust consumers over a stable C ABI. The
+primary data path is the IPC socket (Unix socket on Unix, TCP loopback on
+Windows); FFI only handles daemon startup plus a quick synchronous health
+probe and request forwarding.
 
 FFI choice: plain C ABI via `extern "C"` + `#[no_mangle]`. No uniffi or
 cxx is needed here because the heavy data path goes through IPC.
@@ -13,17 +14,31 @@ cxx is needed here because the heavy data path goes through IPC.
 ## Consumers
 
 - **macOS tray** — Swift bridging header at
-  `desktop/ShareCLITray/sharecli_ffi.h`.
+  `desktop/ShareCLITray/Sources/CShareCLIFFI/sharecli_ffi.h`
+  (C shim in the adjacent `CShareCLIFFI.c` / `module.modulemap`).
 - **Windows tray** — C# P/Invoke declarations in
   `windows/ShareCLITray/Interop.cs`.
 
 ## Public API (C)
 
-| Symbol | Purpose |
-|--------|---------|
-| `sharecli_ipc_start()` | Start the IPC daemon in the background (idempotent). Returns 0 on success, non-zero on error. |
-| `sharecli_ipc_stop()` | Stop the IPC daemon. Returns 0 on success. |
-| `sharecli_health_peek(out, out_len)` | Write a short health string into the caller's buffer. Returns the number of bytes written. |
+Every symbol below is defined in `src/lib.rs`. Strings returned as
+`char *` are heap-allocated by this library and must be released with
+`sharecli_free_string`.
+
+| Symbol | Signature | Purpose |
+|--------|-----------|---------|
+| `sharecli_ipc_start` | `int sharecli_ipc_start(void)` | Start the IPC daemon in the background (idempotent). Returns 0 on success, non-zero on error. |
+| `sharecli_ipc_socket_path` | `char *sharecli_ipc_socket_path(void)` | Returns the IPC socket path as a null-terminated C string. Free with `sharecli_free_string`. |
+| `sharecli_free_string` | `void sharecli_free_string(char *ptr)` | Free a string allocated by this library. |
+| `sharecli_health_json` | `char *sharecli_health_json(void)` | Quick synchronous health snapshot over the IPC socket/TCP. Returns a JSON string, or null on error. Free with `sharecli_free_string`. |
+| `sharecli_request` | `char *sharecli_request(const char *request_json)` | Send an arbitrary JSON-RPC request string and return the response JSON string, or null on error. Free with `sharecli_free_string`. |
+| `sharecli_serve_get` | `char *sharecli_serve_get(const char *url)` | GET an HTTP URL (e.g. `http://127.0.0.1:9000/healthz`), injecting W3C `traceparent` when the operator env or active OTel context provides one. Returns the response body, or null on error. Free with `sharecli_free_string`. |
+
+There is no stop/shutdown entry point. `sharecli_ipc_start` spawns
+`sharecli-ipc` as a detached sidecar (the `Child` handle is dropped, not
+waited on), so the daemon outlives the calling process. Stopping it is
+out of band: signal the sidecar process or drive a shutdown over the IPC
+socket.
 
 ## Thread-safety
 

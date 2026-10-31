@@ -32,21 +32,59 @@ caller -> Hypervisor::run(SpawnRequest)
 ## Modules
 
 - `detect` — runtime pattern matching (known agent families, system tools).
+- `fuse_guard` — FUSE write-provenance session ids keyed off the command key.
+- `hypervisor` — `Hypervisor` itself: `run` / `run_queued`, thermal-gate
+  check, coalesce-via-lock.
 - `proc_scan` — `/proc`-style process and FD accounting on Unix.
 - `speculation` — speculative pre-spawn / coalesce-ahead primitives.
-- `transaction_contract` — typed SpawnRequest / SpawnOutcome contracts.
+- `thermal_gate` — `ThermalGate` decisions (Allow / Warn / Refuse) derived
+  from hardware pressure plus host agent contention.
+- `transaction_contract` — pure, actor-neutral admission predicates for the
+  proposed global transaction contract. Not an OS effect broker and not a
+  durable ledger.
+- `types` — `HypervisorConfig`, `SpawnRequest`, `SpawnOutcome`, and the
+  cache-result conversions.
 
 ## Quick start
 
-```rust
-use sharecli_core::Hypervisor;
+`Hypervisor::new` is **synchronous** and takes a cache root directory.
+`SpawnRequest::new` takes the full argv vector, the working directory, and
+the child's env overrides. `SpawnOutcome` carries no command key — recompute
+it with `command_key` from the same argv/cwd/env you passed in.
 
-let hv = Hypervisor::new().await?;
-let outcome = hv.run(SpawnRequest::new("ruff", &["check", "."])).await?;
-if outcome.from_cache {
-    println!("cache hit: {}", outcome.command_key);
-} else {
-    println!("spawned pid={}, exit={}", outcome.pid, outcome.exit_code);
+```rust
+use std::path::PathBuf;
+
+use sharecli_core::{command_key, Hypervisor, SpawnRequest};
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    // Cache root; `Hypervisor::new` is not async and defaults the queue to
+    // `{cache_root}/queue`.
+    let hv = Hypervisor::new("/tmp/sharecli-cache");
+
+    let argv = vec!["ruff".to_owned(), "check".to_owned(), ".".to_owned()];
+    let cwd = PathBuf::from(".");
+    let env = Vec::new();
+
+    let request = SpawnRequest::new(argv.clone(), cwd.clone(), env.clone());
+    let outcome = hv.run(request).await?;
+
+    // `SpawnOutcome` has no `command_key` field; derive it from the request.
+    let key = command_key(&argv, &cwd, &env);
+    println!("cache key: {}", key.0);
+
+    if outcome.from_cache {
+        println!("cache hit");
+    } else {
+        println!("spawned, exit={}", outcome.exit_code);
+    }
+    println!(
+        "stdout: {} bytes, stderr: {} bytes",
+        outcome.stdout.len(),
+        outcome.stderr.len()
+    );
+    Ok(())
 }
 ```
 

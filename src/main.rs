@@ -95,15 +95,17 @@ EXAMPLES
 
   # Inspect durable agent sessions (FR-005)
   $ sharecli session list
-  $ sharecli session show <session-id>
+  $ sharecli session inspect <session-id>
 
   # Surface I/O against a ShareCLI-enabled Ghostty surface
-  $ sharecli surface send <surface-id> 'echo hello'
-  $ sharecli surface read <surface-id> --max-bytes 4096
+  # (surface id and payload are named flags, not positionals)
+  $ sharecli surface send --surface-id <surface-id> --text 'echo hello'
+  $ sharecli surface read --surface-id <surface-id> --max-bytes 4096
 
-  # Resource limits (FR-002)
-  $ sharecli limits set myproject --cpu 2.0 --memory 4096
-  $ sharecli limits get myproject
+  # Resource limits (FR-002): `limits` takes the project positionally and has
+  # no set/get subcommands; `check` reports the effective values
+  $ sharecli limits myproject --memory 4096 --processes 8
+  $ sharecli check myproject
 
   # Live thermal-gate / hypervisor state (TUI)
   $ sharecli thermal
@@ -111,18 +113,19 @@ EXAMPLES
   # Dashboard server (HTTP + WebSocket)
   $ sharecli serve --bind 127.0.0.1:3939
 
-  # Mount intercept layer (FUSE)
-  $ sharecli fuse mount --src ~/work --mountpoint ~/mnt/agent
+  # Mount intercept layer (FUSE): backing src and mountpoint are positional
+  $ sharecli fuse mount ~/work ~/mnt/agent
   $ sharecli fuse status
-  $ sharecli fuse commit --agent myagent
+  $ sharecli fuse commit --mountpoint ~/mnt/agent --agent myagent
   $ sharecli fuse unmount ~/mnt/agent
 
   # Cast panes (legacy remote-pane surface)
   $ sharecli cast register alpha 127.0.0.1:7100
-  $ sharecli cast send alpha 'hello'
+  # `cast send [FILE]` reads a file, or stdin when FILE is `-` or omitted
+  $ echo 'hello' | sharecli cast send alpha
 
   # Service registry (process-compose)
-  $ sharecli service list
+  $ sharecli proc-compose list
 "
 )]
 struct Cli {

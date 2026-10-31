@@ -526,9 +526,7 @@ mod tests {
         let replacement = if last == 'A' { 'B' } else { 'A' };
         sig.push(replacement);
         let token = format!("{}.{}.{}", parts[0], parts[1], sig);
-        let err = auth
-            .check_authorization(Some(&format!("Bearer {token}")))
-            .unwrap_err();
+        let err = auth.check_authorization(Some(&format!("Bearer {token}"))).unwrap_err();
         assert!(
             err == "jwt_invalid_sig" || err.starts_with("jwt_invalid:"),
             "expected signature-mapped error, got {err}"
@@ -540,9 +538,7 @@ mod tests {
         let auth = jwt_auth();
         // A string with two dots looks structurally like a JWT but the payload
         // is not valid base64/JSON for our claims; header decode must fail.
-        let err = auth
-            .check_authorization(Some("Bearer this-is-not-a-jwt"))
-            .unwrap_err();
+        let err = auth.check_authorization(Some("Bearer this-is-not-a-jwt")).unwrap_err();
         assert!(
             err.starts_with("jwt_header:") || err.starts_with("jwt_invalid"),
             "expected header-decode error, got {err}"
@@ -552,9 +548,7 @@ mod tests {
     #[test]
     fn jwt_empty_token_rejected() {
         let auth = jwt_auth();
-        let err = auth
-            .check_authorization(Some("Bearer "))
-            .unwrap_err();
+        let err = auth.check_authorization(Some("Bearer ")).unwrap_err();
         assert!(
             err.starts_with("jwt_header:") || err.starts_with("jwt_invalid"),
             "expected header-decode error for empty token, got {err}"
@@ -569,9 +563,7 @@ mod tests {
         let sig = fixture().tokens.valid[2].clone();
         let bad_header = "***not_base64***";
         let token = format!("{bad_header}.{payload}.{sig}");
-        let err = auth
-            .check_authorization(Some(&format!("Bearer {token}")))
-            .unwrap_err();
+        let err = auth.check_authorization(Some(&format!("Bearer {token}"))).unwrap_err();
         assert!(
             err.starts_with("jwt_header:") || err.starts_with("jwt_invalid"),
             "expected malformed-header error, got {err}"
@@ -593,9 +585,6 @@ mod tests {
             ..ServeConfig::default()
         };
         let err = ServeAuth::from_env_or_config(&cfg).unwrap_err();
-        assert_eq!(
-            err,
-            "unknown serve.auth_mode `bogus` (expected open|bearer|jwt)"
-        );
+        assert_eq!(err, "unknown serve.auth_mode `bogus` (expected open|bearer|jwt)");
     }
 }

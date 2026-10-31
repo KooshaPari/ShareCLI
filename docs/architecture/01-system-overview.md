@@ -103,5 +103,5 @@ graph shallow on the inbound side (it only depends on the
 ones it needs at runtime) and the adapter crates free of
 UI-framework dependencies.
 
-See [docs/adr/0007-ports-adapters-hexagonal.md](../../adr/0007-ports-adapters-hexagonal.md)
+See [docs/adr/0007-ports-adapters-hexagonal.md](../adr/0007-ports-adapters-hexagonal.md)
 for the rationale behind this split.
