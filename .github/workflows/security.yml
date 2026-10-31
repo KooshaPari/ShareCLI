@@ -47,7 +47,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run TruffleHog
-        uses: trufflesecurity/trufflehog@e76dff8a7e57d6df0c60ad8cbf5d5cba505a8fc9
+        uses: trufflesecurity/trufflehog@31ce31ee1abbcc7dc8eee5764c17121c3044c8b2
         with:
           version: 3.97.0
           extra_args: --only-verified
@@ -114,7 +114,7 @@ jobs:
 
       - name: Run Trivy vulnerability scanner
         if: ${{ hashFiles('Dockerfile') != '' }}
-        uses: aquasecurity/trivy-action@6abccf398f78b4c337599c0656f933d91efb91a0
+        uses: aquasecurity/trivy-action@8f28faec26515256b6d22074d1d2a8986f4cbd87
         with:
           image-ref: '${{ github.event.repository.name }}:scan'
           format: 'sarif'
@@ -122,6 +122,6 @@ jobs:
 
       - name: Upload Trivy results
         if: ${{ hashFiles('Dockerfile') != '' }}
-        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370
         with:
           sarif_file: 'trivy-results.sarif'
