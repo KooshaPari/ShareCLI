@@ -65,9 +65,8 @@ use runtime::ProcessPool;
     version = env!("CARGO_PKG_VERSION"),
     after_long_help = "Accessibility (C09): docs/a11y/README.md — NO_COLOR/TERM=dumb degrade ANSI color; \
 FR-004 status via `sharecli status` and GET /health. Degraded-mode notes: docs/a11y/status-and-recovery.md\n\
-Help & FAQ (C09 L81.13): docs/faq.md — top troubleshooting answers; `man sharecli` after `just man`.",
-    long_about = None,
-    examples = "\
+Help & FAQ (C09 L81.13): docs/faq.md — top troubleshooting answers; `man sharecli` after `just man`.
+
 EXAMPLES
   # Show top-level command inventory
   $ sharecli --help
@@ -126,7 +125,8 @@ EXAMPLES
 
   # Service registry (process-compose)
   $ sharecli proc-compose list
-"
+)",
+    long_about = None
 )]
 struct Cli {
     #[command(subcommand)]
