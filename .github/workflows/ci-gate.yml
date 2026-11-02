@@ -92,9 +92,51 @@ permissions:
 jobs:
   ci-lint:
     name: ci / lint
+    # `ci / lint` is a REQUIRED branch-protection context, and it is also the
+    # context `.mergify.yml` gates automatic merges on
+    # (check-success=ci / lint, check-success=ci / test). The deleted
+    # `.github/workflows/ci.yml` ran `netblock` as a HARD job (no
+    # `continue-on-error`), but that job was a sibling of `lint` rather than
+    # one of `lint`'s `needs:`, so a failed netblock gate did not turn any
+    # required context red and the merge still went through. The CI dedup
+    # carried `netblock` over to `ci-netblock` without that dependency, which
+    # left the same hole: the hard gate ran but did not gate.
+    #
+    # Restoring the dependency here makes the hard gate actually gate, without
+    # touching branch protection or Mergify configuration.
+    #
+    # Scope note: the old `osv` and `chaos-restart-hard` jobs were
+    # `continue-on-error: true`, i.e. they never blocked a merge either, so
+    # they are deliberately NOT added here. Making them hard would be a new
+    # policy, not a restoration of the pre-dedup behaviour.
+    needs: [ci-netblock]
+    if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
+      - name: Verify hard gates passed
+        # The gate job does the real enforcement; this step turns its result
+        # into the failure of a REQUIRED context, which is what branch
+        # protection (and Mergify) blocks the merge on.
+        env:
+          NETBLOCK_RESULT: ${{ needs.ci-netblock.result }}
+        run: |
+          set -euo pipefail
+          failed=0
+          for pair in "ci-netblock:${NETBLOCK_RESULT}"; do
+            name="${pair%%:*}"
+            result="${pair#*:}"
+            case "$result" in
+              success|skipped) echo "  ok  $name: $result" ;;
+              *) echo "  FAIL $name: $result"; failed=$((failed + 1)) ;;
+            esac
+          done
+          if [ "$failed" -gt 0 ]; then
+            echo ""
+            echo "::error::$failed hard CI gate(s) failed; this required context must not pass"
+            exit 1
+          fi
+          echo "All hard CI gates passed"
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Setup Rust toolchain

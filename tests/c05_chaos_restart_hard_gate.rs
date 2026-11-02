@@ -10,6 +10,19 @@ fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
+/// Strip YAML comments so an assertion cannot be satisfied by a
+/// documented-but-inactive line (for example a `pull_request:` key that is
+/// commented out but whose text still appears in the file).
+fn strip_yaml_comments(src: &str) -> String {
+    src.lines()
+        .map(|line| match line.find('#') {
+            Some(idx) => &line[..idx],
+            None => line,
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// FR-003 / C05 L50 — the chaos restart gate must be hard and must run on PRs.
 /// The `chaos-restart-hard` job used to live in the deleted
 /// `.github/workflows/ci.yml` (feeding the `ci-success` aggregator); it now
@@ -18,24 +31,32 @@ fn repo_root() -> PathBuf {
 fn fr003_chaos_restart_hard_yml_chaos_gate_wired() {
     let ci = fs::read_to_string(repo_root().join(".github/workflows/chaos-restart-hard.yml"))
         .expect("read chaos-restart-hard.yml");
+    // Assert against the comment-stripped workflow: a `pull_request:` key
+    // that has been commented out must NOT satisfy the trigger requirement.
+    let active = strip_yaml_comments(&ci);
 
     assert!(
-        ci.contains("name: chaos restart (hard)"),
+        active.contains("name: chaos restart (hard)"),
         "chaos-restart-hard.yml must define the hard chaos-restart job"
     );
     assert!(
-        ci.contains("bash scripts/load/chaos_restart.sh"),
+        active.contains("bash scripts/load/chaos_restart.sh"),
         "chaos-restart-hard.yml chaos job must run chaos_restart.sh"
     );
 
     // PR-time coverage must be restored: the deleted ci.yml `chaos-restart-hard`
     // job fed the `ci-success` aggregator on every PR.
+    let trigger_block = active
+        .split("\non:")
+        .nth(1)
+        .and_then(|s| s.split("\njobs:").next())
+        .expect("chaos-restart-hard.yml trigger block");
     assert!(
-        ci.contains("pull_request:"),
+        trigger_block.contains("pull_request:"),
         "chaos-restart-hard.yml must trigger on pull_request so the deleted ci.yml chaos coverage is not lost"
     );
 
-    let chaos_section = ci
+    let chaos_section = active
         .split("chaos-restart-hard:")
         .nth(1)
         .and_then(|s| s.split("\n  ci-success:").next())

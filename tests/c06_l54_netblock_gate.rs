@@ -49,6 +49,22 @@ fn fr003_ci_gate_netblock_hard_gate_wired() {
         !netblock_keys.contains("continue-on-error: true"),
         "netblock job must not use continue-on-error"
     );
+
+    // A hard job that nothing depends on does not gate anything. The gate
+    // only blocks a merge when a REQUIRED context fails because of it.
+    // `ci / lint` is a required branch-protection context and is also the
+    // context `.mergify.yml` gates automatic merges on, so `ci-lint` must
+    // declare `needs: [ci-netblock]`.
+    let lint_section = ci.split("ci-lint:").nth(1).expect("lint job block");
+    let lint_keys: String = lint_section
+        .lines()
+        .filter(|line| !line.trim_start().starts_with('#'))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        lint_keys.contains("needs:") && lint_keys.contains("ci-netblock"),
+        "the ci-lint job (required context 'ci / lint') must depend on ci-netblock, otherwise a failed netblock gate does not block the merge"
+    );
 }
 
 /// FR-003 / C06 L54 — hermetic contract documents hard CI enforcement.
