@@ -6,9 +6,11 @@ Audit-v38 **C06 L54**. Goal: reproducible offline builds after dependency fetch.
 
 1. **`Cargo.lock` + `--locked`** on CI builds (already required).
 2. **Fetch then offline:** `cargo fetch --locked` then `cargo build --locked --offline`.
-3. **Required CI gate:** `.github/workflows/ci.yml` `netblock` job runs
-   [`scripts/ci/netblock_check.sh`](../../scripts/ci/netblock_check.sh) and is aggregated into
-   `ci-success` (no `continue-on-error`).
+3. **Required CI gate:** `.github/workflows/ci-gate.yml` `ci-netblock` job runs
+   [`scripts/ci/netblock_check.sh`](../../scripts/ci/netblock_check.sh) on every PR
+   (no `continue-on-error`). The legacy `.github/workflows/ci.yml` `netblock` job and its
+   `ci-success` aggregator were deleted by the CI dedup; `ci-netblock` is the surviving
+   single definition of this hard gate.
 4. **Soft advisory:** `.github/workflows/hermetic-soft.yml` poisoned-proxy smoke
    (`HTTP_PROXY=http://127.0.0.1:9`) and `.github/workflows/netblock-soft.yml` mirror the
    same probe with `continue-on-error: true` for drift signal.

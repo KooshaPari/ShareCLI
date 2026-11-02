@@ -10,30 +10,34 @@ fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-/// FR-003 / C04 L38 — `ci.yml` must aggregate OSV into `ci-success` without soft shims.
+/// FR-003 / C04 L38 — the OSV / GHSA scan must be hard (no soft shim) and must
+/// run on PRs. The PR-time `osv` job used to live in the deleted
+/// `.github/workflows/ci.yml`; it now lives in `osv.yml` with a
+/// `pull_request` trigger, so this gate is asserted against that workflow.
 #[test]
-fn fr003_ci_yml_osv_hard_gate_wired() {
-    let ci = fs::read_to_string(repo_root().join(".github/workflows/ci.yml")).expect("read ci.yml");
+fn fr003_osv_yml_osv_hard_gate_wired() {
+    let osv =
+        fs::read_to_string(repo_root().join(".github/workflows/osv.yml")).expect("read osv.yml");
 
     assert!(
-        ci.contains("name: OSV / GHSA lockfile scan (required)"),
-        "ci.yml must define required OSV job"
+        osv.contains("name: OSV / GHSA lockfile scan"),
+        "osv.yml must define the OSV / GHSA lockfile scan job"
     );
     assert!(
-        ci.contains("--severity=HIGH,CRITICAL"),
-        "ci.yml OSV job must fail on HIGH/CRITICAL only"
+        osv.contains("--severity=HIGH,CRITICAL"),
+        "osv.yml OSV job must fail on HIGH/CRITICAL only"
     );
-    assert!(!ci.contains("Soft gate (always pass)"), "ci.yml must not contain OSV soft pass shim");
+    assert!(
+        !osv.contains("Soft gate (always pass)"),
+        "osv.yml must not contain OSV soft pass shim"
+    );
 
-    let needs_line = ci
-        .lines()
-        .find(|l| l.contains("needs:") && l.contains("ci-success"))
-        .or_else(|| {
-            ci.lines().skip_while(|l| !l.contains("ci-success:")).find(|l| l.contains("needs:"))
-        })
-        .expect("ci-success needs block");
-
-    assert!(needs_line.contains("osv"), "ci-success must need osv job; got: {needs_line}");
+    // PR-time coverage must be restored: the deleted ci.yml `osv` job fed the
+    // `ci-success` aggregator, so the surviving workflow must trigger on PRs.
+    assert!(
+        osv.contains("pull_request:"),
+        "osv.yml must trigger on pull_request so the deleted ci.yml OSV coverage is not lost"
+    );
 }
 
 /// FR-003 / C04 L38 — standalone `osv.yml` stays hard (no continue-on-error on scan).

@@ -10,31 +10,29 @@ fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-/// FR-003 / C05 L50 — `ci.yml` must aggregate chaos restart into `ci-success`.
+/// FR-003 / C05 L50 — the chaos restart gate must be hard and must run on PRs.
+/// The `chaos-restart-hard` job used to live in the deleted
+/// `.github/workflows/ci.yml` (feeding the `ci-success` aggregator); it now
+/// lives in `chaos-restart-hard.yml`, which carries a `pull_request` trigger.
 #[test]
-fn fr003_ci_yml_chaos_restart_hard_gate_wired() {
-    let ci = fs::read_to_string(repo_root().join(".github/workflows/ci.yml")).expect("read ci.yml");
+fn fr003_chaos_restart_hard_yml_chaos_gate_wired() {
+    let ci = fs::read_to_string(repo_root().join(".github/workflows/chaos-restart-hard.yml"))
+        .expect("read chaos-restart-hard.yml");
 
     assert!(
-        ci.contains("name: chaos restart (required)"),
-        "ci.yml must define required chaos-restart-hard job"
+        ci.contains("name: chaos restart (hard)"),
+        "chaos-restart-hard.yml must define the hard chaos-restart job"
     );
     assert!(
         ci.contains("bash scripts/load/chaos_restart.sh"),
-        "ci.yml chaos job must run chaos_restart.sh"
+        "chaos-restart-hard.yml chaos job must run chaos_restart.sh"
     );
 
-    let needs_line = ci
-        .lines()
-        .find(|l| l.contains("needs:") && l.contains("ci-success"))
-        .or_else(|| {
-            ci.lines().skip_while(|l| !l.contains("ci-success:")).find(|l| l.contains("needs:"))
-        })
-        .expect("ci-success needs block");
-
+    // PR-time coverage must be restored: the deleted ci.yml `chaos-restart-hard`
+    // job fed the `ci-success` aggregator on every PR.
     assert!(
-        needs_line.contains("chaos-restart-hard"),
-        "ci-success must need chaos-restart-hard job; got: {needs_line}"
+        ci.contains("pull_request:"),
+        "chaos-restart-hard.yml must trigger on pull_request so the deleted ci.yml chaos coverage is not lost"
     );
 
     let chaos_section = ci
