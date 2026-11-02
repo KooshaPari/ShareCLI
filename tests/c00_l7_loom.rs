@@ -34,7 +34,12 @@ fn c00_l7_concurrency_docs_reference_loom() {
 
 #[test]
 fn c00_l7_ci_wires_loom_job() {
-    let ci = include_str!("../.github/workflows/ci.yml");
-    assert!(ci.contains("loom"), "ci.yml must run loom job");
-    assert!(ci.contains("sharecli-sync"), "ci.yml must target sharecli-sync loom test");
+    // The legacy `.github/workflows/ci.yml` (which carried the `loom` job) was
+    // deleted by the CI dedup. The loom model now lives in `ci-gate.yml`
+    // (`ci-loom` job), which is the surviving single definition.
+    let ci = include_str!("../.github/workflows/ci-gate.yml");
+    assert!(ci.contains("loom"), "ci-gate.yml must run loom job");
+    assert!(ci.contains("sharecli-sync"), "ci-gate.yml must target sharecli-sync loom test");
+    assert!(ci.contains("--cfg loom"), "ci-gate.yml must enable cfg(loom) for the loom job");
+    assert!(ci.contains("loom_pool_index"), "ci-gate.yml must run the loom_pool_index suite");
 }
