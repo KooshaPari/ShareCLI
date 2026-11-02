@@ -103,22 +103,32 @@ mod tests {
 
     use super::*;
 
-    /// Serializes every test that reads or mutates the process-global XDG_* vars.
+    /// Process-global XDG variables are shared by every thread in the test
+    /// binary, so a test that reads or mutates one must hold this guard.
+    /// Without it, `std::env::set_var` in one test can land between another
+    /// test's `set_var` and its `well_known_paths()` call, making that test
+    /// observe a path it never installed.
+    ///
+    /// The mutex is non-reentrant, so each test acquires it exactly once and
+    /// holds it for its whole body. None of these tests are `async`, so the
+    /// guard is never held across an `.await`.
     ///
     /// `std::env::set_var` / `remove_var` are process-wide, so tests that touch
     /// `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, or `XDG_RUNTIME_DIR` must not overlap.
-    /// Poisoning is recovered (`unwrap_or_else(PoisonError::into_inner)`) so one
-    /// panicking test cannot cascade into unrelated failures.
+    /// Poisoning only records that some other test panicked; the process
+    /// environment is still usable, so recover rather than cascade failures.
     static XDG_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
-        XDG_ENV_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    fn xdg_env_lock() -> std::sync::MutexGuard<'static, ()> {
+        // Poisoning only records that some other test panicked; the process
+        // environment is still usable, so recover rather than cascade failures.
+        XDG_ENV_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     // FR-003 — uninstall path resolution for C11 L121.
     #[test]
     fn fr003_well_known_paths_include_config_and_state() {
-        let _env = env_lock();
+        let _env = xdg_env_lock();
         let paths = well_known_paths();
         assert!(paths.config_dir.ends_with("sharecli"));
         assert!(paths.state_dir.ends_with("sharecli"));
@@ -126,26 +136,23 @@ mod tests {
 
     #[test]
     fn fr003_purge_dry_run_does_not_delete() {
-        let _env = env_lock();
+        let _env = xdg_env_lock();
         let tmp = tempfile::tempdir().expect("tempdir");
         let cfg = tmp.path().join("sharecli");
         fs::create_dir_all(&cfg).expect("mkdir");
-        let prev = std::env::var_os("XDG_CONFIG_HOME");
-        unsafe {
-            std::env::set_var("XDG_CONFIG_HOME", tmp.path());
-        }
+        let _g = EnvGuard::set("XDG_CONFIG_HOME", tmp.path());
         let paths = well_known_paths();
         assert_eq!(paths.config_dir, cfg);
         let removed = purge_data_dirs(true, true).expect("dry run");
         assert!(removed.iter().any(|p| p == &cfg));
         assert!(cfg.exists(), "dry_run must not delete");
-        match prev {
-            Some(v) => unsafe { std::env::set_var("XDG_CONFIG_HOME", v) },
-            None => unsafe { std::env::remove_var("XDG_CONFIG_HOME") },
-        }
     }
 
     /// Helper: install an env override for the duration of one test, restore on drop.
+    ///
+    /// The caller must already hold [`xdg_env_lock`]; this type only owns the
+    /// set/restore pair so that a panicking test cannot leak its override into
+    /// the tests that run after it.
     struct EnvGuard {
         key: &'static str,
         previous: Option<std::ffi::OsString>,
@@ -172,7 +179,7 @@ mod tests {
 
     #[test]
     fn xdg_config_home_takes_precedence_over_default() {
-        let _env = env_lock();
+        let _env = xdg_env_lock();
         let tmp = tempfile::tempdir().expect("tempdir");
         let _g = EnvGuard::set("XDG_CONFIG_HOME", tmp.path());
         let paths = well_known_paths();
@@ -181,7 +188,7 @@ mod tests {
 
     #[test]
     fn xdg_state_home_takes_precedence_over_default() {
-        let _env = env_lock();
+        let _env = xdg_env_lock();
         let tmp = tempfile::tempdir().expect("tempdir");
         let _g = EnvGuard::set("XDG_STATE_HOME", tmp.path());
         let paths = well_known_paths();
@@ -190,7 +197,7 @@ mod tests {
 
     #[test]
     fn xdg_runtime_dir_takes_precedence_over_temp() {
-        let _env = env_lock();
+        let _env = xdg_env_lock();
         let tmp = tempfile::tempdir().expect("tempdir");
         let _g = EnvGuard::set("XDG_RUNTIME_DIR", tmp.path());
         let paths = well_known_paths();
@@ -199,7 +206,7 @@ mod tests {
 
     #[test]
     fn empty_xdg_var_falls_back_to_default() {
-        let _env = env_lock();
+        let _env = xdg_env_lock();
         // XDG_CONFIG_HOME="" must NOT be honored — empty strings are treated as unset.
         let _g = EnvGuard::set("XDG_CONFIG_HOME", std::path::Path::new(""));
         let paths = well_known_paths();
@@ -210,7 +217,7 @@ mod tests {
 
     #[test]
     fn purge_data_when_purge_false_returns_no_targets() {
-        let _env = env_lock();
+        let _env = xdg_env_lock();
         // !purge_data short-circuits the target list to empty.
         let removed = purge_data_dirs(false, false).expect("no-op");
         assert!(removed.is_empty(), "purge_data=false must return no targets");
@@ -218,7 +225,7 @@ mod tests {
 
     #[test]
     fn purge_data_dry_run_collects_sharecli_lock_entries() {
-        let _env = env_lock();
+        let _env = xdg_env_lock();
         let cfg_tmp = tempfile::tempdir().expect("tempdir");
         let state_tmp = tempfile::tempdir().expect("tempdir");
         let run_tmp = tempfile::tempdir().expect("tempdir");

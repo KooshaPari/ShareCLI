@@ -467,6 +467,7 @@ mod tests {
         assert_eq!(parsed.seq, 42);
         assert_eq!(parsed.kind, SurfaceEventKind::Output);
         assert_eq!(parsed.timestamp.as_deref(), Some("2026-10-17T22:00:00Z"));
+        assert!(parsed.event_bytes_base64.is_none());
         // JSON-shape round trip: serialize again and confirm byte-equivalence.
         let reserialized = serde_json::to_string(&parsed).expect("reserialize");
         assert_eq!(serialized, reserialized);

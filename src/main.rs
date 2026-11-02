@@ -65,8 +65,8 @@ use runtime::ProcessPool;
     version = env!("CARGO_PKG_VERSION"),
     after_long_help = "Accessibility (C09): docs/a11y/README.md — NO_COLOR/TERM=dumb degrade ANSI color; \
 FR-004 status via `sharecli status` and GET /health. Degraded-mode notes: docs/a11y/status-and-recovery.md\n\
-Help & FAQ (C09 L81.13): docs/faq.md — top troubleshooting answers; `man sharecli` after `just man`.\n\
-\n\
+Help & FAQ (C09 L81.13): docs/faq.md — top troubleshooting answers; `man sharecli` after `just man`.
+
 EXAMPLES
   # Show top-level command inventory
   $ sharecli --help
@@ -97,11 +97,13 @@ EXAMPLES
   $ sharecli session inspect <session-id>
 
   # Surface I/O against a ShareCLI-enabled Ghostty surface
+  # (surface id and payload are named flags, not positionals)
   $ sharecli surface send --surface-id <surface-id> --text 'echo hello'
   $ sharecli surface read --surface-id <surface-id> --max-bytes 4096
 
-  # Resource limits (FR-002): set with `limits`, read back with `check`
-  $ sharecli limits myproject --memory 4096 --processes 4
+  # Resource limits (FR-002): `limits` takes the project positionally and has
+  # no set/get subcommands; `check` reports the effective values
+  $ sharecli limits myproject --memory 4096 --processes 8
   $ sharecli check myproject
 
   # Live thermal-gate / hypervisor state (TUI)
@@ -110,19 +112,21 @@ EXAMPLES
   # Dashboard server (HTTP + WebSocket)
   $ sharecli serve --bind 127.0.0.1:3939
 
-  # Mount intercept layer (FUSE): backing dir, then mountpoint (both positional)
+  # Mount intercept layer (FUSE): backing src and mountpoint are positional
   $ sharecli fuse mount ~/work ~/mnt/agent
   $ sharecli fuse status
-  $ sharecli fuse commit --agent myagent
+  $ sharecli fuse commit --mountpoint ~/mnt/agent --agent myagent
   $ sharecli fuse unmount ~/mnt/agent
 
-  # Cast panes (legacy remote-pane surface); `cast send` reads stdin unless a file is given
+  # Cast panes (legacy remote-pane surface)
   $ sharecli cast register alpha 127.0.0.1:7100
+  # `cast send [FILE]` reads a file, or stdin when FILE is `-` or omitted
   $ echo 'hello' | sharecli cast send alpha
 
   # Service registry (process-compose)
   $ sharecli proc-compose list
-"
+)",
+    long_about = None
 )]
 struct Cli {
     #[command(subcommand)]

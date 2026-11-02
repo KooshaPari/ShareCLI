@@ -52,7 +52,11 @@ recoverable. It is **not** a "sessions older than N" selector: raising
 it widens the window of sessions considered live/recoverable, and
 lowering it narrows it. The CLI exposes the same knob as
 `sharecli session recovery-plan --max-age-seconds <N>` (default four
-hours).
+hours, range `1..=604800`).
+
+`SessionService::new(store)` wraps the same store and is what the
+`sharecli session` subcommand drives; its `recovery_plan(max_age)`
+delegates to the store.
 
 ## Build
 
