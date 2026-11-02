@@ -55,15 +55,81 @@ fn fr003_ci_gate_netblock_hard_gate_wired() {
     // `ci / lint` is a required branch-protection context and is also the
     // context `.mergify.yml` gates automatic merges on, so `ci-lint` must
     // declare `needs: [ci-netblock]`.
-    let lint_section = ci.split("ci-lint:").nth(1).expect("lint job block");
-    let lint_keys: String = lint_section
-        .lines()
-        .filter(|line| !line.trim_start().starts_with('#'))
-        .collect::<Vec<_>>()
-        .join("\n");
+    //
+    // Parse the workflow instead of slicing text: a text slice of `ci-lint:`
+    // runs on into the LATER jobs, so a `needs:` belonging to another job
+    // could satisfy a substring check that does not actually constrain
+    // `ci-lint`.
+    let doc: serde_yaml::Value = serde_yaml::from_str(&ci).expect("ci-gate.yml must be valid YAML");
+    let jobs = doc
+        .get("jobs")
+        .and_then(serde_yaml::Value::as_mapping)
+        .expect("ci-gate.yml must define a jobs mapping");
+
+    let job = |id: &str| -> serde_yaml::Value {
+        jobs.get(serde_yaml::Value::String(id.to_string()))
+            .cloned()
+            .unwrap_or(serde_yaml::Value::Null)
+    };
+
+    let lint = job("ci-lint");
+    let needs = lint.get("needs").expect("ci-lint job must declare needs");
+    let need_ids: Vec<String> = match needs {
+        serde_yaml::Value::String(s) => vec![s.clone()],
+        serde_yaml::Value::Sequence(seq) => {
+            seq.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()
+        }
+        other => panic!("ci-lint needs must be a string or a sequence, got {other:?}"),
+    };
     assert!(
-        lint_keys.contains("needs:") && lint_keys.contains("ci-netblock"),
-        "the ci-lint job (required context 'ci / lint') must depend on ci-netblock, otherwise a failed netblock gate does not block the merge"
+        need_ids.iter().any(|n| n == "ci-netblock"),
+        "the ci-lint job (required context 'ci / lint') must depend on ci-netblock, otherwise a failed netblock gate does not block the merge; got needs={need_ids:?}"
+    );
+
+    // The dependency alone is not enough: with the default `success()`
+    // condition a skipped or failed dependency would skip `ci-lint` entirely
+    // instead of failing it, and a skipped required context does not block.
+    // `if: always()` is what makes the gate result reach the failure step.
+    assert_eq!(
+        lint.get("if").and_then(serde_yaml::Value::as_str),
+        Some("always()"),
+        "ci-lint must use `if: always()` so a failed dependency is evaluated rather than skipping the required context"
+    );
+
+    // The failure must actually be propagated: the job needs a step that
+    // receives the dependency result and exits non-zero on failure. The
+    // result reaches the step through an `env:` binding, so assert that
+    // binding rather than a literal expression inside the script.
+    let steps = lint
+        .get("steps")
+        .and_then(serde_yaml::Value::as_sequence)
+        .expect("ci-lint job must declare steps");
+    let gate_step = steps
+        .iter()
+        .find(|step| {
+            step.get("name")
+                .and_then(serde_yaml::Value::as_str)
+                .is_some_and(|n| n.contains("hard gates"))
+        })
+        .expect("ci-lint must have a step that verifies the hard gates");
+    let env = gate_step.get("env").and_then(serde_yaml::Value::as_mapping);
+    let env_pairs: Vec<(String, String)> = env
+        .map(|m| {
+            m.iter()
+                .filter_map(|(k, v)| Some((k.as_str()?.to_string(), v.as_str()?.to_string())))
+                .collect()
+        })
+        .unwrap_or_default();
+    assert!(
+        env_pairs
+            .iter()
+            .any(|(_, v)| v.contains("needs.ci-netblock.result")),
+        "the gate-verification step must bind needs.ci-netblock.result into its environment, otherwise it cannot detect a failed gate; got env={env_pairs:?}"
+    );
+    let run = gate_step.get("run").and_then(serde_yaml::Value::as_str).unwrap_or_default();
+    assert!(
+        run.contains("exit 1"),
+        "the gate-verification step must exit non-zero when a hard gate fails, otherwise the required context still passes"
     );
 }
 

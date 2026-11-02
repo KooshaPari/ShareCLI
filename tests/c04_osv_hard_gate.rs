@@ -58,16 +58,46 @@ fn fr003_osv_yml_osv_hard_gate_wired() {
         "osv.yml must not contain OSV soft pass shim"
     );
     // The scan step itself must be a hard step: `continue-on-error: true` is
-    // only acceptable on the SARIF upload, never on the scan.
-    let scan_block = active
-        .split("scan-args:")
-        .nth(1)
-        .and_then(|rest| rest.split("continue-on-error").next())
-        .unwrap_or("");
+    // only acceptable on the SARIF upload, never on the scan. Inspect the
+    // step as a parsed YAML mapping - a text slice that starts after the
+    // step's `name:` line would miss a key placed before it, and a slice
+    // that stops at the first `continue-on-error` occurrence would remove
+    // the very token it is looking for.
+    let doc: serde_yaml::Value = serde_yaml::from_str(&osv).expect("osv.yml must be valid YAML");
+    let jobs = doc
+        .get("jobs")
+        .and_then(serde_yaml::Value::as_mapping)
+        .expect("osv.yml must define a jobs mapping");
+    let osv_job = jobs
+        .get(serde_yaml::Value::String("osv".to_string()))
+        .expect("osv.yml must define the osv job");
+    let steps = osv_job
+        .get("steps")
+        .and_then(serde_yaml::Value::as_sequence)
+        .expect("osv job must declare steps");
+
+    let scan_step = steps
+        .iter()
+        .find(|step| step.get("with").and_then(|w| w.get("scan-args")).is_some())
+        .expect("osv job must have a step that invokes the scanner");
     assert!(
-        !scan_block.contains("continue-on-error: true"),
+        scan_step.get("continue-on-error").and_then(serde_yaml::Value::as_bool) != Some(true),
         "the OSV scan step must not be soft-failed via continue-on-error"
     );
+
+    // The SARIF upload may be soft (it is best-effort reporting), but only
+    // that step may be: no OTHER step may carry continue-on-error.
+    for step in steps.iter() {
+        let soft = step.get("continue-on-error").and_then(serde_yaml::Value::as_bool) == Some(true);
+        if !soft {
+            continue;
+        }
+        let name = step.get("name").and_then(serde_yaml::Value::as_str).unwrap_or("");
+        assert!(
+            name.contains("SARIF"),
+            "only the SARIF upload step may be soft-failed, found a soft step named {name:?}"
+        );
+    }
 
     // PR-time coverage must be restored: the deleted ci.yml `osv` job fed the
     // `ci-success` aggregator, so the surviving workflow must trigger on PRs.
@@ -95,12 +125,30 @@ fn fr003_osv_yml_no_soft_shim() {
         "osv.yml must scan with osv-scanner.toml, which carries the HIGH/CRITICAL severity policy"
     );
 
-    let scan_section =
-        active.split("Scan Cargo.lock with OSV-Scanner").nth(1).expect("osv.yml scan step");
-    let scan_block = scan_section.split("Upload SARIF").next().expect("scan block before SARIF");
+    // Inspect the whole scan step as a parsed mapping rather than slicing
+    // text: a slice that starts after the step's `name:` line misses a key
+    // placed before it, and a slice that stops at the first
+    // `continue-on-error` occurrence removes the very token being searched
+    // for.
+    let doc: serde_yaml::Value = serde_yaml::from_str(&osv).expect("osv.yml must be valid YAML");
+    let jobs = doc
+        .get("jobs")
+        .and_then(serde_yaml::Value::as_mapping)
+        .expect("osv.yml must define a jobs mapping");
+    let osv_job = jobs
+        .get(serde_yaml::Value::String("osv".to_string()))
+        .expect("osv.yml must define the osv job");
+    let steps = osv_job
+        .get("steps")
+        .and_then(serde_yaml::Value::as_sequence)
+        .expect("osv job must declare steps");
+    let scan_step = steps
+        .iter()
+        .find(|step| step.get("with").and_then(|w| w.get("scan-args")).is_some())
+        .expect("osv job must have a step that invokes the scanner");
 
     assert!(
-        !scan_block.contains("continue-on-error: true"),
+        scan_step.get("continue-on-error").and_then(serde_yaml::Value::as_bool) != Some(true),
         "OSV scan step must not use continue-on-error"
     );
 }
