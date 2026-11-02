@@ -21,8 +21,9 @@ cxx is needed here because the heavy data path goes through IPC.
 
 ## Public API (C)
 
-Every symbol below is defined in `src/lib.rs`. Strings returned as
-`char *` are heap-allocated by this library and must be released with
+Every symbol below is defined in `src/lib.rs` and mirrored in
+`desktop/include/sharecli_ffi.h`. Strings returned as `char *` are
+heap-allocated by this library and must be released with
 `sharecli_free_string`.
 
 | Symbol | Signature | Purpose |

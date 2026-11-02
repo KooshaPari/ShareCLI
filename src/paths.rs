@@ -112,6 +112,11 @@ mod tests {
     /// The mutex is non-reentrant, so each test acquires it exactly once and
     /// holds it for its whole body. None of these tests are `async`, so the
     /// guard is never held across an `.await`.
+    ///
+    /// `std::env::set_var` / `remove_var` are process-wide, so tests that touch
+    /// `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, or `XDG_RUNTIME_DIR` must not overlap.
+    /// Poisoning only records that some other test panicked; the process
+    /// environment is still usable, so recover rather than cascade failures.
     static XDG_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     fn xdg_env_lock() -> std::sync::MutexGuard<'static, ()> {

@@ -17,10 +17,10 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::commands::runtime_helpers::{get_project_resources, get_shared_runtime};
+use crate::commands::runtime_helpers::get_project_resources;
 use crate::config::Config;
 use crate::progress::StepProgress;
-use crate::runtime::{ProcessFilter, ProcessPool, ProjectLimits};
+use crate::runtime::{ProcessFilter, ProcessPool, ProjectLimits, SharedRuntime};
 use crate::spawn_policy::SpawnPolicy;
 
 /// When `force` is set, destructive SIGKILL requires explicit `--yes` (C09 L81.6).
@@ -144,13 +144,9 @@ pub async fn stop(
     Ok(())
 }
 
-/// Run using pooled runtime
-pub async fn run_pool(harness_type: &str, project: &str) -> Result<()> {
-    let runtime = get_shared_runtime();
-    let result = runtime.run_with_pool(harness_type, project, "").await?;
-    println!("Pooled {} process {} for project {}", harness_type, result.0, project);
-    println!("Output: {}", result.1);
-    Ok(())
+/// Reject pooled execution until a real command/worker protocol is available.
+pub async fn run_pool(_harness_type: &str, _project: &str) -> Result<()> {
+    Err(SharedRuntime::execution_unavailable().into())
 }
 
 /// Set project limits

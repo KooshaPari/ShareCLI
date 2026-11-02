@@ -3,7 +3,7 @@
 This diagram traces what happens when an agent writes a file
 through a FUSE mount created by `sharecli fuse mount`. It is
 the source of truth for **FR-009** (FUSE IO intercept) and the
-write-provenance xattr contract that audits every
+write-provenance xattr contract that stamps every
 agent-originated write.
 
 ```mermaid
@@ -24,7 +24,7 @@ flowchart TD
   PROV[provenance::annotate_write]:::fuse
   XATTR1[setxattr<br/>user.sharecli.session]:::store
   XATTR2[setxattr<br/>user.sharecli.written_at]:::store
-  SESS[sharecli-session<br/>ledger append]:::core
+  QUERY[sharecli fuse provenance FILE<br/>reads the attrs back]:::core
   CLI[sharecli fuse commit<br/>--agent myagent]:::core
 
   A -->|write fd| VFS
@@ -37,8 +37,8 @@ flowchart TD
   BAK --> PROV
   PROV --> XATTR1
   PROV --> XATTR2
-  XATTR1 --> SESS
-  XATTR2 --> SESS
+  XATTR1 -.->|read back| QUERY
+  XATTR2 -.->|read back| QUERY
   BAK -.->|sharecli fuse commit| CLI
   CLI -->|merge stage -> backing| BAK
 ```
@@ -66,9 +66,13 @@ flowchart TD
    **backing file**:
    - `user.sharecli.session = <session-id>` (opaque, UTF-8)
    - `user.sharecli.written_at = <unix-secs>` (decimal ASCII)
-6. Both xattrs are also appended to the `sharecli-session`
-   ledger so the audit can replay the sequence of writes per
-   session, not just the final state.
+6. The provenance record lives **only on the backing file**.
+   `sharecli-fuse` does not depend on `sharecli-session` and does
+   not append writes to any ledger, so there is no per-session
+   replay log of the write sequence — the audit surface is the
+   current xattr/ADS pair on each file, read back with
+   `sharecli fuse provenance <path>` (add `--json` for machine
+   output; it prints `null` when the attrs are absent).
 7. The CoW stage is only promoted to the backing file when
    the operator runs `sharecli fuse commit --agent myagent`.
    `sharecli fuse discard --agent myagent` is the no-merge
@@ -79,7 +83,7 @@ flowchart TD
 - **The backing file is the source of truth, not the FUSE
   layer.** Even if `sharecli-fuse` is killed mid-write, the
   xattrs on the backing file are still queryable
-  (`sharecli fuse status` reads them). The FUSE layer is a
+  (`sharecli fuse provenance <path>` reads them). The FUSE layer is a
   routing/auditing wrapper, not a content store.
 - **Provenance is set after the write succeeds, never
   before.** The contract is: a file with a `user.sharecli.*`

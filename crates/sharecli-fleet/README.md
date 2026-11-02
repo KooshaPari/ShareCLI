@@ -41,10 +41,13 @@ cargo build -p sharecli-fleet --release
 
 ## Configuration
 
-- `SHARECLI_NATS_URL` — NATS connection string for the registry
-  (defaults to `nats://127.0.0.1:4222`).
+- **NATS URL** — passed explicitly to `FleetRegistry::connect(url)`.
+  This crate reads no environment variable for it. The exported
+  default constant is
+  `sharecli_fleet::DEFAULT_COORDINATOR = "nats://localhost:4222"`.
 - `RUST_LOG` — tracing filter (defaults to `sharecli_fleet=info`).
 
 ## License
 
-Apache-2.0 OR MIT (dual).
+MIT — matches `license = "MIT"` in this crate's `Cargo.toml` and the
+repository `LICENSE` file.

@@ -132,20 +132,25 @@ impl SharedRuntime {
         Ok(())
     }
 
+    /// Pooled execution is unavailable until a command/worker protocol is wired.
+    ///
+    /// Do not acquire a worker here: the pool currently probes `--version`,
+    /// which cannot execute a script or provide its output and exit status.
     pub async fn run_with_pool(
         &self,
-        harness_type: &str,
-        project: &str,
+        _harness_type: &str,
+        _project: &str,
         _script: &str,
     ) -> Result<(u32, String)> {
-        let pooled = self.acquire(harness_type).await?;
+        Err(Self::execution_unavailable().into())
+    }
 
-        let output =
-            format!("Using pooled {} process {} for project {}", harness_type, pooled.pid, project);
-
-        self.release(harness_type, pooled.pid).await?;
-
-        Ok((pooled.pid, output))
+    /// Shared rejection for callers that must not even construct a runtime.
+    pub(crate) fn execution_unavailable() -> std::io::Error {
+        std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "pooled run unavailable: no command execution backend is wired; no work was executed",
+        )
     }
 
     pub async fn health_check(&self) -> RuntimeHealth {

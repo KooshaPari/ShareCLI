@@ -132,11 +132,11 @@ pub struct SurfaceEventEnvelope {
     pub seq: u64,
     pub kind: SurfaceEventKind,
     pub timestamp: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub event_bytes_base64: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dropped: Option<u64>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resync_required: Option<bool>,
 }
 
@@ -455,11 +455,12 @@ mod tests {
             resync_required: None,
         };
         let serialized = serde_json::to_string(&original).expect("serialize");
-        // Optional fields with `#[serde(default)]` (no skip_serializing_if) are
-        // emitted as `null` on the wire — confirms downstream readers see
-        // explicit `null` rather than missing keys.
-        assert!(serialized.contains("\"event_bytes_base64\":null"));
-        assert!(serialized.contains("\"dropped\":null"));
+        // Optional fields are skipped on the wire when None
+        // (`skip_serializing_if = "Option::is_none"`); `#[serde(default)]` covers
+        // the read path so absent keys still deserialize. Mirrors the canonical
+        // wire type in crates/sharecli-session/src/events.rs.
+        assert!(!serialized.contains("event_bytes_base64"));
+        assert!(!serialized.contains("dropped"));
         let parsed: SurfaceEventEnvelope = serde_json::from_str(&serialized).expect("deserialize");
         assert_eq!(parsed.subscription_id, 7);
         assert_eq!(parsed.surface_id, "surface-9");
