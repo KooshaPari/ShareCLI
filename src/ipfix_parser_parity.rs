@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 // Minimal IPFIX (RFC 7011) template + data record codec. Parses a single
 // template record (set_id=2) and the first data record from a data set
 // (set_id>=256). Variable-length fields carry a u8 length prefix. Does

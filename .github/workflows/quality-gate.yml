@@ -51,11 +51,21 @@ jobs:
         with:
           version: 0.14.1
 
+      # tray-icon 0.26 pulls libappindicator -> gtk -> glib-sys on Linux
+      # targets, so glib-sys's build script needs the system glib development
+      # package. Without it the build fails with "Package glib-2.0 was not
+      # found in the pkg-config search path". Matches ci.yml.
+      # libappindicator-sys also needs libayatana-appindicator3-dev at build time.
+      - name: Install system dependencies (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libglib2.0-dev libgtk-3-dev libxdo-dev pkg-config libayatana-appindicator3-dev
+
       - name: Cache dependencies
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@84f5ac3124727fb3d284d4d22ee9ab3654fd09a6 # v2
+        uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2
         with:
           tool: cargo-llvm-cov
 
@@ -66,15 +76,27 @@ jobs:
       # Ignore CLI/cast/runtime/orchestration/table surfaces and workspace
       # stubs that are covered by tests/ integration suites or are not
       # unit-testable — matching the --lib job scope. Do not lower the %.
+      # src/runtime.rs was split into src/runtime/ by #960, so the former
+      # `runtime\.rs$` alternative is dead and has been dropped. The
+      # replacement `(^|/)src/runtime/` is scoped to the root crate's
+      # src/runtime/ tree: unlike the previous unanchored `(^|/)runtime/` it no
+      # longer swallows a same-named directory at any depth (e.g. a future
+      # src/<mod>/runtime/). Files under crates/ stay excluded wholesale by the
+      # `(^|/)crates/` alternative, so crate paths are unaffected. This
+      # alternative only restores the pre-split DENOMINATOR for src/runtime/;
+      # it does not by itself imply any particular resulting percentage.
+      # llvm-cov matches this regex against ABSOLUTE paths, so the `(^|/)`
+      # alternation is kept rather than a bare `^src/runtime/`, which would
+      # never match and would re-add the 1537 excluded lines to the gate.
       - name: Enforce unit coverage threshold
         run: |
           cargo llvm-cov --lib --locked --all-features --workspace \
             --fail-under-lines "${COVERAGE_THRESHOLD}" \
-            --ignore-filename-regex '(^|/)(commands|cast)/|wasm_opcode\.rs$|coordination\.rs$|runtime\.rs$|speculative_cache\.rs$|(^|/)crates/' \
+            --ignore-filename-regex '(^|/)(commands|cast)/|wasm_opcode\.rs$|coordination\.rs$|(^|/)src/runtime/|speculative_cache\.rs$|(^|/)crates/' \
             --lcov --output-path lcov.info
 
       - name: Upload coverage
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: ./lcov.info
           fail_ci_if_error: false
@@ -91,6 +113,14 @@ jobs:
         uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
         with:
           toolchain: 1.96.0
+
+      # See unit-tests: the Linux dependency graph reaches glib-sys through
+      # tray-icon's libappindicator backend.
+      # libappindicator-sys also needs libayatana-appindicator3-dev at build time.
+      - name: Install system dependencies (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libglib2.0-dev libgtk-3-dev libxdo-dev pkg-config libayatana-appindicator3-dev
 
       - name: Cache dependencies
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
@@ -110,6 +140,14 @@ jobs:
         uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
         with:
           toolchain: 1.96.0
+
+      # See unit-tests: the Linux dependency graph reaches glib-sys through
+      # tray-icon's libappindicator backend.
+      # libappindicator-sys also needs libayatana-appindicator3-dev at build time.
+      - name: Install system dependencies (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libglib2.0-dev libgtk-3-dev libxdo-dev pkg-config libayatana-appindicator3-dev
 
       - name: Cache dependencies
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
@@ -158,6 +196,16 @@ jobs:
     needs: [unit-tests, e2e-tests, integration-tests, fr-annotation-check]
     if: always()
     runs-on: ubuntu-24.04
+    # The workflow declares a workflow-level `permissions: {}`, which grants
+    # every job an empty token scope, so the report comment was rejected with
+    # 403 "Resource not accessible by integration". The comment targets a pull
+    # request, and GitHub requires the pull-requests scope for a PR target --
+    # the issues scope alone is not enough. The repo's other commenting
+    # workflows (flake-tracker.yml, pr-freshness.yml) use the same scope.
+    # `contents: read` is needed for the checkout.
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -208,6 +256,10 @@ jobs:
             const fs = require('fs');
             const report = fs.readFileSync('report.md', 'utf8');
 
+            // Create an issue comment on a pull request. The endpoint is the
+            // same one `gh pr comment` uses, which is what the repo's other
+            // commenting workflows (flake-tracker.yml) rely on successfully
+            // with the pull-requests scope.
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,

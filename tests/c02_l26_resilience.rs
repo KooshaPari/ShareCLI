@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C02 L26 — Resilience integration gates (FR-003).
 //!
 //! FR: FR-003

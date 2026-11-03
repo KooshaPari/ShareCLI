@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Harbor soak harness — long-running CLI stability evaluation.
 //!
 //! `sharecli soak [--duration <secs>] [--interval <secs>] [--config <path>] [--output <path>]`

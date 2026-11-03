@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FUSE write-serialize / CoW operator meters (FR-009 / AC-009.10).
 
 use std::sync::atomic::{AtomicU64, Ordering};

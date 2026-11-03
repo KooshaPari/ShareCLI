@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR: FR-012 — Serve HTTP Federated AuthN (JWT / JWKS resource server).
 //!
 //! AC-012.1 Valid RS256 JWT with matching iss/aud → authorized

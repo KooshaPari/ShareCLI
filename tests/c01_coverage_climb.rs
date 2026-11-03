@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR: FR-003
 
 //! C01 — coverage climb toward 85% broad-workspace lines (FR-003).

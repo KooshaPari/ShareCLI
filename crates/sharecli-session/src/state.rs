@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Explicit launch-time state evidence for harness session recovery.
 
 use std::io::Write;

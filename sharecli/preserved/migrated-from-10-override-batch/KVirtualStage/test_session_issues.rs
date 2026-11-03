@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 #!/usr/bin/env rust-script
 
 // Test script to reproduce session management issues

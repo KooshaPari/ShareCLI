@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Domain errors and stable CLI exit codes (audit-v38 C01 L14).
 //!
 //! Operators map `SHARECLI_ERROR_CODE` in stderr to runbooks. HTTP serve

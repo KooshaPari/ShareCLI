@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! In-process HTTP RED metrics for `sharecli serve`.
 //!
 //! Counters/histograms are process-local atomics updated by the serve

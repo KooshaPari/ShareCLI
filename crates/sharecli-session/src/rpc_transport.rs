@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Plain request/response Unix transport for the surface control protocol.
 
 use super::*;

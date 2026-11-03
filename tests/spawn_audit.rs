@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C02 L28 — spawn/stop audit JSONL rows when `SHARECLI_AUDIT_LOG` is set.
 //! FR: FR-004
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! # serve
 //!
 //! `gateway-tools serve --port <PORT>` starts a small axum 0.8 HTTP server that
@@ -48,16 +49,16 @@ use std::net::SocketAddr;
 
 fn util_registry() -> Vec<(&'static str, &'static str, usize)> {
     vec![
-        ("jwt",     "gateway::jwt_hs256",         5),
-        ("dns",     "gateway::dns_message_parser", 5),
-        ("redis",   "gateway::redis_resp",         5),
-        ("tls",     "gateway::tls_record",         5),
-        ("pkcs7",   "gateway::pkcs7_padding",      5),
-        ("patch",   "gateway::json_patch",         5),
+        ("jwt", "gateway::jwt_hs256", 5),
+        ("dns", "gateway::dns_message_parser", 5),
+        ("redis", "gateway::redis_resp", 5),
+        ("tls", "gateway::tls_record", 5),
+        ("pkcs7", "gateway::pkcs7_padding", 5),
+        ("patch", "gateway::json_patch", 5),
         ("metrics", "gateway::prometheus_exposition", 5),
-        ("pem",     "gateway::pem_codec",          5),
-        ("m3u",     "gateway::m3u_parser",         5),
-        ("chunked", "gateway::chunked_transfer",   5),
+        ("pem", "gateway::pem_codec", 5),
+        ("m3u", "gateway::m3u_parser", 5),
+        ("chunked", "gateway::chunked_transfer", 5),
     ]
 }
 
@@ -65,18 +66,18 @@ fn util_registry() -> Vec<(&'static str, &'static str, usize)> {
 /// Kept short and human-readable so the cockpit surface stays scannable.
 fn cast_registry() -> Vec<(&'static str, &'static str)> {
     vec![
-        ("jwt",     "JWT HS256 sign / verify (and b64url helpers)"),
-        ("dns",     "Parse a minimal DNS packet (header + first question)"),
-        ("redis",   "Encode/parse a single RESP value"),
-        ("tls",     "Parse one TLS record from a hex payload"),
-        ("pkcs7",   "PKCS#7 pad/unpad"),
-        ("patch",   "Apply a JSON Patch (RFC-6902) to an in-memory document"),
+        ("jwt", "JWT HS256 sign / verify (and b64url helpers)"),
+        ("dns", "Parse a minimal DNS packet (header + first question)"),
+        ("redis", "Encode/parse a single RESP value"),
+        ("tls", "Parse one TLS record from a hex payload"),
+        ("pkcs7", "PKCS#7 pad/unpad"),
+        ("patch", "Apply a JSON Patch (RFC-6902) to an in-memory document"),
         ("metrics", "Render a Prometheus exposition text from inline metrics"),
-        ("pem",     "PEM encode / decode"),
-        ("m3u",     "M3U parse / render"),
+        ("pem", "PEM encode / decode"),
+        ("m3u", "M3U parse / render"),
         ("chunked", "Chunked transfer encoding helpers (hex chunked)"),
         ("inspect", "List gateway utility modules or print one module's top fn signatures"),
-        ("serve",   "Start the gateway-tools HTTP cockpit (this command)"),
+        ("serve", "Start the gateway-tools HTTP cockpit (this command)"),
     ]
 }
 
@@ -146,7 +147,8 @@ async fn splash() -> Response {
     // ASCII splash is server-rendered (NO_COLOR-aware, matches `substrate_splash`
     // in main.rs but stripped of ANSI escapes so it's safe over HTTP text/plain).
     let text = if std::env::var("NO_COLOR").is_ok_and(|v| !v.is_empty()) {
-        "substrate gateway-tools serve  (Backbone-2 sync-violet #a371f7 + amber #d29922)\n".to_string()
+        "substrate gateway-tools serve  (Backbone-2 sync-violet #a371f7 + amber #d29922)\n"
+            .to_string()
     } else {
         format!(
             r#"
@@ -160,12 +162,7 @@ substrate gateway-tools serve  sync-violet (#a371f7)  +  warm-amber (#d29922)
 "#
         )
     };
-    (
-        StatusCode::OK,
-        [("content-type", "text/plain; charset=utf-8")],
-        text,
-    )
-        .into_response()
+    (StatusCode::OK, [("content-type", "text/plain; charset=utf-8")], text).into_response()
 }
 
 async fn inspect_one(Path(module): Path<String>) -> Response {
@@ -174,12 +171,7 @@ async fn inspect_one(Path(module): Path<String>) -> Response {
             let body = format!(
                 "# gateway module: {alias}\npath: {path}\npublic surface: {n} top fns (run `gateway-tools inspect {alias}` for full sigs)\n"
             );
-            (
-                StatusCode::OK,
-                [("content-type", "text/plain; charset=utf-8")],
-                body,
-            )
-                .into_response()
+            (StatusCode::OK, [("content-type", "text/plain; charset=utf-8")], body).into_response()
         }
         None => {
             let known: Vec<&str> = util_registry().into_iter().map(|(a, _, _)| a).collect();
@@ -197,13 +189,7 @@ async fn inspect_one(Path(module): Path<String>) -> Response {
 }
 
 async fn not_found(uri: axum::http::Uri) -> (StatusCode, Json<ErrorBody>) {
-    (
-        StatusCode::NOT_FOUND,
-        Json(ErrorBody {
-            error: "not_found",
-            path: uri.path().to_string(),
-        }),
-    )
+    (StatusCode::NOT_FOUND, Json(ErrorBody { error: "not_found", path: uri.path().to_string() }))
 }
 
 // ---------------------------------------------------------------------------
@@ -297,12 +283,7 @@ async fn cockpit() -> Response {
 </html>
 "#
     );
-    (
-        StatusCode::OK,
-        [("content-type", "text/html; charset=utf-8")],
-        html,
-    )
-        .into_response()
+    (StatusCode::OK, [("content-type", "text/html; charset=utf-8")], html).into_response()
 }
 
 // ---------------------------------------------------------------------------
@@ -322,7 +303,7 @@ fn router(port: u16) -> Router {
         .route("/v1/cast", get(cast))
         .route("/v1/util", get(util))
         .route("/v1/splash", get(splash))
-        .route("/v1/inspect/:module", get(inspect_one))
+        .route("/v1/inspect/{module}", get(inspect_one))
         .fallback(not_found)
         .with_state(state)
 }
@@ -345,9 +326,8 @@ pub async fn run_serve(port: u16) -> Result<()> {
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .with_context(|| format!("failed to bind :{port}"))?;
-    let bound = listener
-        .local_addr()
-        .with_context(|| format!("failed to read local_addr for :{port}"))?;
+    let bound =
+        listener.local_addr().with_context(|| format!("failed to read local_addr for :{port}"))?;
     eprintln!("[gateway-tools] listening on http://{bound}");
     eprintln!("[gateway-tools] routes:");
     eprintln!("  GET http://{bound}/");
@@ -356,9 +336,7 @@ pub async fn run_serve(port: u16) -> Result<()> {
     eprintln!("  GET http://{bound}/v1/util");
     eprintln!("  GET http://{bound}/v1/splash");
     eprintln!("  GET http://{bound}/v1/inspect/<module>");
-    axum::serve(listener, app)
-        .await
-        .with_context(|| format!("axum server crashed on :{bound}"))?;
+    axum::serve(listener, app).await.with_context(|| format!("axum server crashed on :{bound}"))?;
     Ok(())
 }
 
@@ -427,8 +405,12 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
         let body = axum::body::to_bytes(resp.into_body(), 4096).await.unwrap();
         let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        let names: Vec<&str> = v.as_array().unwrap().iter().map(|e| e["name"].as_str().unwrap()).collect();
-        for expected in ["jwt", "dns", "redis", "tls", "pkcs7", "patch", "metrics", "pem", "m3u", "chunked", "inspect", "serve"] {
+        let names: Vec<&str> =
+            v.as_array().unwrap().iter().map(|e| e["name"].as_str().unwrap()).collect();
+        for expected in [
+            "jwt", "dns", "redis", "tls", "pkcs7", "patch", "metrics", "pem", "m3u", "chunked",
+            "inspect", "serve",
+        ] {
             assert!(names.contains(&expected), "missing cast entry: {expected}");
         }
     }
@@ -466,12 +448,7 @@ mod tests {
     #[tokio::test]
     async fn inspect_known_module_returns_200() {
         let resp = app()
-            .oneshot(
-                Request::builder()
-                    .uri("/v1/inspect/dns")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri("/v1/inspect/dns").body(Body::empty()).unwrap())
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
@@ -484,12 +461,7 @@ mod tests {
     #[tokio::test]
     async fn inspect_unknown_module_returns_404_json() {
         let resp = app()
-            .oneshot(
-                Request::builder()
-                    .uri("/v1/inspect/nope")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri("/v1/inspect/nope").body(Body::empty()).unwrap())
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
@@ -503,12 +475,7 @@ mod tests {
     #[tokio::test]
     async fn unknown_path_returns_404_json() {
         let resp = app()
-            .oneshot(
-                Request::builder()
-                    .uri("/totally/unknown")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri("/totally/unknown").body(Body::empty()).unwrap())
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
@@ -520,22 +487,11 @@ mod tests {
 
     #[tokio::test]
     async fn cockpit_returns_html_with_palette_and_mod_count() {
-        let resp = app()
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
+        let resp =
+            app().oneshot(Request::builder().uri("/").body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let ct = resp
-            .headers()
-            .get("content-type")
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_string();
-        assert!(
-            ct.starts_with("text/html"),
-            "expected text/html content-type, got {ct}"
-        );
+        let ct = resp.headers().get("content-type").unwrap().to_str().unwrap().to_string();
+        assert!(ct.starts_with("text/html"), "expected text/html content-type, got {ct}");
         let body = axum::body::to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
         let s = String::from_utf8(body.to_vec()).unwrap();
         // sharecli palette (NOT sync-violet — that's the substrate side)

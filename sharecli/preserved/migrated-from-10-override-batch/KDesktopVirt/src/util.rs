@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Generic utility helpers used across `kvirtualstage`.
 //!
 //! Provides a `time::Duration` parser that accepts human-friendly strings such as

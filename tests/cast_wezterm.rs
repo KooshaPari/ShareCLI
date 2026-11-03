@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Tests for the wezterm caster (Task 4 of the cast backlog).
 //!
 //! The wezterm caster shells out to `wezterm cli` twice:

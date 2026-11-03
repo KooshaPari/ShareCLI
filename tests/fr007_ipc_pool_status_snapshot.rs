@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — IPC `pool.status` + `status.snapshot` gate + host_watch siblings
 //! FR: FR-007
 //!

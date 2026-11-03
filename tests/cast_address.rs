@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-CAST-001 — Pane Address Schema
 //! FR: FR-CAST-001
 //!

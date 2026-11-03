@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! sharecli-ipc — JSON-RPC server
 //!
 //! Unix: listens on Unix socket `~/.local/share/sharecli/ipc.sock`

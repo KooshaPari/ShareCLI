@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-008 / AC-008.11 — Hypervisor coalesce operator meters in `sharecli status`.
 //!
 //! AC-008.11: `sharecli status` surfaces process-wide coalesce hit/miss/nocache

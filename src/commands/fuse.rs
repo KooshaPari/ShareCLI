@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `sharecli fuse …` — FUSE IO intercept operator surface (FR-009).
 //!
 //! Exposes mount control, staged CoW commit/discard (per-agent), global FUSE

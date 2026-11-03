@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — operator envelope matrix parity regression suite (AC-007.84, proc --tree AC-007.85,
 //! proc --pid AC-007.86, CSV watch frame smoke AC-007.93, same-tick footer flush AC-007.95/97/98)
 //! FR: FR-007

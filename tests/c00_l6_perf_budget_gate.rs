@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C00 L6 / FR-003 — tight perf budgets (10% bench-gate) + profiler CI artifacts.
 
 #[test]

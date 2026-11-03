@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 pub fn hex_to_rgb(hex: &str) -> (u8, u8, u8) {
     let s = hex.trim_start_matches('#');
     let v = u32::from_str_radix(s, 16).unwrap_or(0);

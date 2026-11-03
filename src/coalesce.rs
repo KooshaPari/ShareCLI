@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Coalescer: combine N rapid-fire events into 1 emission within a time window.
 //!
 //! Trailing-edge coalescing. The first event in a quiet window emits;

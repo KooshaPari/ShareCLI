@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C05 OTel local collector gate — T-1130 (Wave19 gap remediation).
 //!
 //! Validates that the local OTel collector stack files exist, parse as

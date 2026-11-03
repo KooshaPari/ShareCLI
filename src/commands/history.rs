@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `sharecli history` — recent CLI invocation log (FR-003 / C09 L81.12).
 //!
 //! Records every CLI invocation as a JSONL line in the state directory.

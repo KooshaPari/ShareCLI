@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — `sharecli report --format json` embedded pool + status siblings (AC-007.73)
 //! FR: FR-007
 //!

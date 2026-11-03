@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Pure admission policy for agent-issued commands.
 
 use std::cell::Cell;

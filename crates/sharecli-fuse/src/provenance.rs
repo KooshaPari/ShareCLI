@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Write provenance via extended attributes (`user.sharecli.*`).
 //!
 //! Every InterceptFs write / CoW commit records `(session-id, timestamp)` on the

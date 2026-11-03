@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-006 — thermal TUI DetectedAgent panel (proc scan + per-PID watch)
 //! FR: FR-006, FR-007
 //!

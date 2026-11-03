@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! harness-cache-key binary: compute cache keys for strategies
 //!
 //! Computes deterministic cache keys based on command arguments, environment,

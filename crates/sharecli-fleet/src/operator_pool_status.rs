@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Pool + proc-scan operator panel shapes (FR-007 / AC-007.69–007.71).
 //!
 //! Shared field layout for tray, dashboard, and thermal TUI operator surfaces.

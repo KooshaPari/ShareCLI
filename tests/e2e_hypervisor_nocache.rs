@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! E2E tier — Hypervisor nocache path (C07 L64 / FR-008 AC-008.10).
 //! FR: FR-008
 //!
