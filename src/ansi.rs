@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! ANSI terminal escape sequences.
 //!
 //! A small set of helpers for emitting terminal control sequences: cursor

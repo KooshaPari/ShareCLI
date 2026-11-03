@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Request dispatch for the IPC server.
 //!
 //! Methods exposed:
@@ -495,9 +496,10 @@ impl Handler {
             }
 
             "process.kill" => {
-                let pid: u32 =
-                    req.params["pid"].as_u64().ok_or_else(|| anyhow::anyhow!("missing pid"))?
-                        as u32;
+                let pid_value =
+                    req.params["pid"].as_u64().ok_or_else(|| anyhow::anyhow!("missing pid"))?;
+                let pid = u32::try_from(pid_value)
+                    .map_err(|_| anyhow::anyhow!("process.kill: pid out of range"))?;
                 self.pool.kill(pid).await?;
                 Ok(Value::Bool(true))
             }
@@ -508,9 +510,10 @@ impl Handler {
             }
 
             "process.cmdline" => {
-                let pid: u32 =
-                    req.params["pid"].as_u64().ok_or_else(|| anyhow::anyhow!("missing pid"))?
-                        as u32;
+                let pid_value =
+                    req.params["pid"].as_u64().ok_or_else(|| anyhow::anyhow!("missing pid"))?;
+                let pid = u32::try_from(pid_value)
+                    .map_err(|_| anyhow::anyhow!("process.cmdline: pid out of range"))?;
                 // Per plan §3.3: return empty Vec when the pid is gone or the
                 // cmdline is unreadable. The Swift UI renders "No command line
                 // available" when the list is empty.
@@ -1113,5 +1116,38 @@ mod dispatch_tests {
         let resp = handler.dispatch(raw).await;
         assert!(resp.error.is_none(), "session.list should not error: {:?}", resp.error);
         assert!(resp.result.is_array(), "result must be an array");
+    }
+
+    /// process.kill rejects a u64 pid that overflows u32 (silent truncation would
+    /// allow arbitrary bits into a process kill request). The bounds check must
+    /// fire before the kill call. Regression for audit commit 55ca0562.
+    #[tokio::test]
+    async fn kill_rejects_u64_pid_overflow() {
+        let handler = Handler::with_session_store(SessionStore::open_memory().unwrap());
+        let resp = handler
+            .dispatch(r#"{"id":99,"method":"process.kill","params":{"pid":4294967296}}"#)
+            .await;
+        assert_eq!(resp.id, 99);
+        assert!(
+            resp.error.as_deref().unwrap_or_default().contains("pid out of range"),
+            "expected 'pid out of range' error, got: {:?}",
+            resp.error
+        );
+    }
+
+    /// process.cmdline rejects a u64 pid that overflows u32 (symmetric coverage
+    /// for the bounds check). Regression for audit commit 55ca0562.
+    #[tokio::test]
+    async fn cmdline_rejects_u64_pid_overflow() {
+        let handler = Handler::with_session_store(SessionStore::open_memory().unwrap());
+        let resp = handler
+            .dispatch(r#"{"id":42,"method":"process.cmdline","params":{"pid":4294967296}}"#)
+            .await;
+        assert_eq!(resp.id, 42);
+        assert!(
+            resp.error.as_deref().unwrap_or_default().contains("pid out of range"),
+            "expected 'pid out of range' error, got: {:?}",
+            resp.error
+        );
     }
 }

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Thermal governor — reads system thermal/memory pressure before scheduling work.
 
 /// System thermal pressure level.

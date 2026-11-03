@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR:011 / C10 — session ledger durability: observations survive a store
 //! reopen, and heuristic-confidence observations persist without being marked
 //! auto-resumable.

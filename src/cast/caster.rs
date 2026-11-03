@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Caster abstraction — sends text to a registered pane.
 //!
 //! A `Caster` is the runtime side of a `PaneAddress` lookup. Given a

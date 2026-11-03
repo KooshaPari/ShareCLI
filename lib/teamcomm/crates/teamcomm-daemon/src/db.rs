@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! SQLite persistence layer for teamcomm daemon.
 //!
 //! Provides a `Store` struct that reads/writes sessions, reservations,

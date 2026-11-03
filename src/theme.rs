@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Backbone-2 theme tokens for sharecli (Phase 2 tokens.css adoption).
 //!
 //! Source of truth: tokens.css (`bb2-graphite`, `bb2-panel`, `bb2-pulse-green`,

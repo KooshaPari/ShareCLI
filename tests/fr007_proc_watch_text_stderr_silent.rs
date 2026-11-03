@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — `sharecli proc --watch` text stderr silence (inverse of AC-007.28/29)
 //! FR: FR-007
 //!

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `sharecli-fleet` — fleet registry and thermal governor.
 //!
 //! Provides the device registry (NATS-backed) and thermal-aware scheduling

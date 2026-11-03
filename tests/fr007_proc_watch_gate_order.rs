@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — thermal gate ordering on `sharecli proc --watch` refresh surfaces
 //! FR: FR-007
 //!

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Durable observation records for terminal surfaces and agent sessions.
 
 use serde::{Deserialize, Serialize};

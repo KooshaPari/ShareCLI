@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Level A landmark + screen-reader structure checks for the embedded serve dashboard.
 //! FR: FR-004 NFR (C09 L81.1 / L81.4 / L81.5)
 

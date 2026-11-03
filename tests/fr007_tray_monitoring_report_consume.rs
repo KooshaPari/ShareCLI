@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — tray refresh consumes `monitoring.report` snapshot (AC-007.48)
 //! FR: FR-007
 //!

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Harness/session evidence resolution without shell evaluation.
 
 use std::path::{Path, PathBuf};

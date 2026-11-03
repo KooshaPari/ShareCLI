@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Pure, actor-neutral admission predicates for the proposed global transaction contract.
 //!
 //! This module is intentionally not an OS effect broker or a durable ledger.

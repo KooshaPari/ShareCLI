@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Tray dashboard HTTP client with W3C `traceparent` injection (C05 L44 / T-610).
 //!
 //! Used by `sharecli-ffi` and integration tests when the desktop tray probes

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Native system-tray client for sharecli.
 //!
 //! Replaces the WinUI 3 XAML `windows/ShareCLITray` dashboard window (which

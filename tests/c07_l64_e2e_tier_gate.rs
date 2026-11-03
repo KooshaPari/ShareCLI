@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C07 L64 — e2e/chaos test pyramid tier (FR-003).
 //!
 //! FR: FR-003

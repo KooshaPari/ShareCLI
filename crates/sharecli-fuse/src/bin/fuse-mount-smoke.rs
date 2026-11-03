@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Privileged mount smoke binary (AC-009.8 / AC-009.16 / AC-009.25).
 //! Prefer this over full `sharecli` package tests inside Containerfile.fuse-smoke.
 

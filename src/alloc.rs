@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Global allocator selection for long-running `sharecli serve` (C00 L8).
 //!
 //! - `jemalloc` feature: production serve/container builds on Unix (not MSVC).

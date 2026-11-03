@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — operator CLI JSON embedded pool + status siblings (AC-007.77)
 //! FR: FR-007
 //!

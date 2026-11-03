@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! klipdot observability helpers — thin wrapper around pheno-tracing (ADR-012, ADR-036).
 //!
 //! Pheno-tracing is a port-driven tracing substrate. Consumers build a

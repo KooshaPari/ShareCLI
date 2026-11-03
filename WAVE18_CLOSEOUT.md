@@ -54,10 +54,10 @@ All 17 Wave18 tasks have been executed. This document records the closeout.
 - `scripts/build_msi_layout.sh` — Windows MSI layout builder
 
 ### Governance Files (7)
-- `docs/ops/governance/adrs/ADR-007-coverage-ratchet-recovery.md`
-- `docs/ops/governance/adrs/ADR-008-code-signing-hardening.md`
-- `docs/ops/governance/adrs/ADR-009-harbor-soak-alternative.md`
-- `docs/ops/governance/adrs/ADR-010-packaging-pipeline-hardening.md`
+- `docs/adr/ADR-007-coverage-ratchet-recovery.md`
+- `docs/adr/ADR-008-code-signing-hardening.md`
+- `docs/adr/ADR-009-harbor-soak-alternative.md`
+- `docs/adr/ADR-010-packaging-pipeline-hardening.md`
 - `COMPREHENSIVE_AUDIT_SCORECARD.md`
 - `WAVE18_CLOSEOUT.md` (this file)
 

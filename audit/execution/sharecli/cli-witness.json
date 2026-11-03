@@ -1,0 +1,116 @@
+[
+  {
+    "artifact": "baseline-existing-artifact-unpinned",
+    "binary": "/Users/kooshapari/CodeProjects/Phenotype/repos/sharecli-worktrees/refactor-session-cmd-exhaustiveness-20261017/target/debug/sharecli",
+    "sha256": "138f2d66925c2fc046807a0c0f43ee25839fbb0fc8ed93c17210467b1085f691",
+    "argv": [
+      "run",
+      "node",
+      "synthetic-project"
+    ],
+    "env_overrides": {
+      "HOME": "<isolated-tempdir>",
+      "XDG_CONFIG_HOME": "<isolated-tempdir>",
+      "PATH": "<empty-tempdir>"
+    },
+    "exit": 1,
+    "stdout": "",
+    "stderr": "SHARECLI_ERROR_CODE=internal error: No such file or directory (os error 2)\n  caused by: No such file or directory (os error 2)\n",
+    "backend_oracle": false
+  },
+  {
+    "artifact": "baseline-existing-artifact-unpinned",
+    "binary": "/Users/kooshapari/CodeProjects/Phenotype/repos/sharecli-worktrees/refactor-session-cmd-exhaustiveness-20261017/target/debug/sharecli",
+    "sha256": "138f2d66925c2fc046807a0c0f43ee25839fbb0fc8ed93c17210467b1085f691",
+    "argv": [
+      "run",
+      "bun",
+      "synthetic-project"
+    ],
+    "env_overrides": {
+      "HOME": "<isolated-tempdir>",
+      "XDG_CONFIG_HOME": "<isolated-tempdir>",
+      "PATH": "<empty-tempdir>"
+    },
+    "exit": 1,
+    "stdout": "",
+    "stderr": "SHARECLI_ERROR_CODE=internal error: No such file or directory (os error 2)\n  caused by: No such file or directory (os error 2)\n",
+    "backend_oracle": false
+  },
+  {
+    "artifact": "baseline-existing-artifact-unpinned",
+    "binary": "/Users/kooshapari/CodeProjects/Phenotype/repos/sharecli-worktrees/refactor-session-cmd-exhaustiveness-20261017/target/debug/sharecli",
+    "sha256": "138f2d66925c2fc046807a0c0f43ee25839fbb0fc8ed93c17210467b1085f691",
+    "argv": [
+      "run",
+      "missing-backend",
+      "synthetic-project"
+    ],
+    "env_overrides": {
+      "HOME": "<isolated-tempdir>",
+      "XDG_CONFIG_HOME": "<isolated-tempdir>",
+      "PATH": "<empty-tempdir>"
+    },
+    "exit": 1,
+    "stdout": "",
+    "stderr": "SHARECLI_ERROR_CODE=internal error: Unsupported harness type: missing-backend. Use 'node' or 'bun'\n  caused by: Unsupported harness type: missing-backend. Use 'node' or 'bun'\n",
+    "backend_oracle": false
+  },
+  {
+    "artifact": "candidate",
+    "binary": "/Users/kooshapari/CodeProjects/Phenotype/repos/sharecli-worktrees/fix-run-fail-closed-20261017/target/debug/sharecli",
+    "sha256": "e8bd99a24730630ef1bd923035439056a9d2f3bea6cd9090c394146a28846ea8",
+    "argv": [
+      "run",
+      "node",
+      "synthetic-project"
+    ],
+    "env_overrides": {
+      "HOME": "<isolated-tempdir>",
+      "XDG_CONFIG_HOME": "<isolated-tempdir>",
+      "PATH": "<empty-tempdir>"
+    },
+    "exit": 1,
+    "stdout": "",
+    "stderr": "SHARECLI_ERROR_CODE=internal error: pooled run unavailable: no command execution backend is wired; no work was executed\n  caused by: pooled run unavailable: no command execution backend is wired; no work was executed\n",
+    "backend_oracle": true
+  },
+  {
+    "artifact": "candidate",
+    "binary": "/Users/kooshapari/CodeProjects/Phenotype/repos/sharecli-worktrees/fix-run-fail-closed-20261017/target/debug/sharecli",
+    "sha256": "e8bd99a24730630ef1bd923035439056a9d2f3bea6cd9090c394146a28846ea8",
+    "argv": [
+      "run",
+      "bun",
+      "synthetic-project"
+    ],
+    "env_overrides": {
+      "HOME": "<isolated-tempdir>",
+      "XDG_CONFIG_HOME": "<isolated-tempdir>",
+      "PATH": "<empty-tempdir>"
+    },
+    "exit": 1,
+    "stdout": "",
+    "stderr": "SHARECLI_ERROR_CODE=internal error: pooled run unavailable: no command execution backend is wired; no work was executed\n  caused by: pooled run unavailable: no command execution backend is wired; no work was executed\n",
+    "backend_oracle": true
+  },
+  {
+    "artifact": "candidate",
+    "binary": "/Users/kooshapari/CodeProjects/Phenotype/repos/sharecli-worktrees/fix-run-fail-closed-20261017/target/debug/sharecli",
+    "sha256": "e8bd99a24730630ef1bd923035439056a9d2f3bea6cd9090c394146a28846ea8",
+    "argv": [
+      "run",
+      "missing-backend",
+      "synthetic-project"
+    ],
+    "env_overrides": {
+      "HOME": "<isolated-tempdir>",
+      "XDG_CONFIG_HOME": "<isolated-tempdir>",
+      "PATH": "<empty-tempdir>"
+    },
+    "exit": 1,
+    "stdout": "",
+    "stderr": "SHARECLI_ERROR_CODE=internal error: pooled run unavailable: no command execution backend is wired; no work was executed\n  caused by: pooled run unavailable: no command execution backend is wired; no work was executed\n",
+    "backend_oracle": true
+  }
+]

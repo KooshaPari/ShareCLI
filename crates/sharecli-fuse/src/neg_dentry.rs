@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Negative dentry cache — remember ENOENT lookups with TTL (FR-009).
 //!
 //! When a relative path is confirmed missing, subsequent probes within the TTL

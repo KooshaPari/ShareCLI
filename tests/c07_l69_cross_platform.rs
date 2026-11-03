@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-003 acceptance gates for C07 L69 — Cross-platform CI.
 //!
 //! These tests assert that the cross-platform CI infrastructure is

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C00 L7 — loom model of ProcessPool pid registry (FR:003 · T-670).
 
 #![cfg(loom)]

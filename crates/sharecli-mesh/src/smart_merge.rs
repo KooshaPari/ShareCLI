@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Smart three-way merge with optional mergiraf, git merge-file fallback (FR-010).
 //!
 //! Rust port of `thegent.mesh.smart_merge.SmartMerger` fallback path:
