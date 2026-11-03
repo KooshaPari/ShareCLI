@@ -3,6 +3,220 @@
 All notable changes to this project will be documented in this file.
 
 ## Bug Fixes
+- Refresh CLI goldens and classify unavailable backend correctly (#1002) ([`8745a5d`](https://github.com/KooshaPari/ShareCLI/commit/8745a5d0d4e14c6e59769a2b7056c569778e1058))
+* fix(runtime): refresh CLI goldens and classify unavailable backend correctly
+
+  > The pooled-execution change altered the `run` command description, so the two
+  > golden CLI help fixtures were stale and the required test gate failed. The
+  > Unsupported error is also now mapped to the repo's existing exit code for an
+  > unavailable backend instead of being reported as an internal error.
+- Fail closed when pooled execution is unavailable (#938) ([`0f5d470`](https://github.com/KooshaPari/ShareCLI/commit/0f5d470604411df8c1165440b5305c13558ca195))
+* fix(runtime): reject unavailable pooled execution before probing
+  > tx-agent: codex
+  > tx-validated: cargo-check
+  > tx-scope: run
+
+  > * docs(audit): record exact execution repair receipt
+- Replace unreachable!() on Offline state with graceful tokens (rebased) (#958) ([`54b6a63`](https://github.com/KooshaPari/ShareCLI/commit/54b6a63679c40f9fe0c61ae0a934523859f4e274))
+* fix(tray): replace unreachable!() on Offline state with graceful tokens
+
+  > Rebased onto current main (7d0e5278). The fix is still needed — main
+  > still had unreachable!() at operator_display.rs:{96,89} on the Offline
+  > arm of both tray crates. Behavior is unchanged on every existing path;
+  > the Offline arm is now panic-free.
+
+  > Conflict resolution: the PR's commit added a comprehensive new test
+  > suite (~250 LOC) on top of an older parent commit. Current main has
+  > independently evolved the test module with equivalent coverage. The
+  > cherry-pick conflicts were:
+  >   - Test renames (e.g. unknown_pressure_maps_to_warning) whose assertions
+  >     contradict main's actual PURPLE→Normal behavior (the implementation
+  >     is unchanged from main; only the assertion is wrong in the PR).
+  >   - Reformatting of degraded pool snapshots.
+  >   - Additions to format_bytes_compact (2.0 MB).
+  > Resolution: take only the unique value of #917 — the unreachable!() →
+  > graceful tokens fix and the four Phase C offline-coverage tests that
+  > are NOT already present on main.
+- Deterministic coalesce tests, lib coverage wiring, glib-sys deps (#977) ([`29484db`](https://github.com/KooshaPari/ShareCLI/commit/29484db4e37d8c34c5935ef37ff489b192ca2e40))
+* fix(ci): install glib/gtk system deps for quality-gate cargo jobs
+
+  > The quality-gate workflow's unit-tests, e2e-tests and integration-tests
+  > jobs build the workspace on ubuntu-24.04 without installing the GTK
+  > development packages that the Linux dependency graph requires.
+
+  > cargo tree --target x86_64-unknown-linux-gnu -i glib-sys -e normal,dev
+  > shows the chain:
+
+  >   sharecli-tray-windows (dev-dependency)
+  >     -> tray-icon 0.26.1 (feature: libappindicator)
+  >       -> libappindicator 0.9.0
+  >         -> gtk 0.18.2 -> gtk-sys -> glib-sys 0.18.1
+
+  > glib-sys's build script runs pkg-config for glib-2.0, which is absent on
+  > the stock runner, so the build aborts with:
+
+  >   Package glib-2.0 was not found in the pkg-config search path.
+  >   The system library `glib-2.0` required by crate `glib-sys` was not found.
+
+  > This is a pre-existing failure on main (run 39210200396 and the
+  > dependency branches b23ed581 / c74f188d fail identically), not a
+  > regression from the advisory-config work in #976.
+
+  > Install the same package set ci.yml already uses
+  > (libglib2.0-dev libgtk-3-dev libxdo-dev pkg-config) so the quality-gate
+  > jobs match the main CI build environment. Quality Report inherits the
+  > fix because it consumes needs.unit-tests.result.
+- Align all three advisory scanner configs (Linux/BSD scope, block-buffer re-triage) (#976) ([`1456942`](https://github.com/KooshaPari/ShareCLI/commit/14569420df638c181bebb0b0cab46b4385ac2315))
+* chore(deps): unblock OSV + Cargo Deny gates for zbus/zvariant advisory cluster
+
+  > Main is red on two required CI gates after #972 bumped tray-icon 0.25 -> 0.26
+  > and #975 bumped the PhenoShared git source. Both gates fail on the same three
+  > RustSec advisories:
+
+  >   RUSTSEC-2026-0370  zvariant         5.15.0
+  >   RUSTSEC-2026-0371  zbus_names       4.3.4
+  >   RUSTSEC-2026-0372  zvariant_derive  5.15.0
+
+  > All three are 'unmaintained' advisories: the standalone zvariant / zbus_names /
+  > zvariant_derive crates were folded into the monolithic zbus 6.x. RustSec
+  > reports "No safe upgrade is available!" because zbus 5.x still re-exports the
+  > pre-merge crate names for source compatibility.
+
+  > Provenance (cargo tree -i <crate> --target all):
+
+  >   sharecli-tray-linux (cfg(target_os = "linux")-gated)
+  >     -> ksni 0.3.6
+  >       -> zbus 5.19.0
+  >         -> zvariant / zbus_names / zvariant_derive
+
+  > sharecli does not depend on these crates directly. ksni pulls them in only when
+  > the Linux StatusNotifierItem tray crate is built, and that crate is
+  > cfg(target_os = "linux")-gated, so the entire ksni dep graph is excluded from
+  > compilation on the Windows and macOS targets that gate CI.
+
+  > Config changes (both files must stay in sync - they maintain parallel
+  > advisory ignore lists):
+
+  > osv-scanner.toml
+  >   + 3 ignores for the zbus family (RUSTSEC-2026-0370/0371/0372)
+  >   + 2 ignores for glib 0.18.x (RUSTSEC-2024-0429 + GHSA-wrw7-89jp-8q8g alias).
+  >     Dropping the previous gtk-rs block let RUSTSEC-2024-0429 resurface: OSV's
+  >     lockfile scan does not consider glib 0.18.5 patched, while cargo-deny does.
+  >     The patched glib 0.20.0 is a breaking release that gtk 0.18.2 (still in
+  >     the tree) does not accept, so there is no non-breaking upgrade path.
+  >   - 8 stale gtk-rs 0.18 ignores (RUSTSEC-2024-0412/0413/0415/0416/0418/0419/
+  >     0420/0429). cargo-deny reports each as advisory-not-detected because
+  >     gtk 0.18.2 / glib 0.18.5 / cairo-rs 0.18.5 are the patched releases of
+  >     their respective advisories.
+  >   ~ RUSTSEC-2024-0370 reason corrected: proc-macro-error 1.0.4 is a
+  >     build-time macro transitive of sharecli-tray-windows via tray-icon's
+  >     libappindicator backend, not a Linux-only gtk backend dep. cargo-deny
+  >     treats it as patched; OSV does not. Listed so both scanners agree.
+
+  > deny.toml
+  >   + 3 ignores for the zbus family
+  >   + 1 ignore for RUSTSEC-2024-0429 (CI parity with osv-scanner.toml)
+  >   ~ RUSTSEC-2024-0370 reason corrected to match the actual code path
+
+  > The 7 remaining gtk-rs ignores are retained. cargo-deny emits
+  > advisory-not-detected warnings for them (it considers gtk 0.18.2 and friends
+  > patched) but those are warnings, not failures, and keeping them means a future
+  > tray-icon bump that reintroduces an unpatched gtk-rs is already covered.
+
+  > Verified locally against Cargo.lock at 33fb14af:
+
+  >   cargo deny check      -> advisories ok, bans ok, licenses ok, sources ok
+  >   osv-scanner scan      -> exit 0, "No issues found", 9 vulnerabilities filtered
+- Bump webpki roots to clear RUSTSEC-2026-0381/0382/0383 (#984) ([`0c304f1`](https://github.com/KooshaPari/ShareCLI/commit/0c304f114e34f3a5b3f96cb5651cc581ca3dbce2))
+The webpki advisory cluster was reported by both osv-scanner and cargo-deny
+  > against main's Cargo.lock, with no ignore entry in either osv-scanner.toml or
+  > deny.toml. This resolves it through dependency versions only, so advisory
+  > configuration stays untouched and the change remains independent of the zbus
+  > advisory suppression in PR #976 and the system-dependency fixes in PR #977.
+
+  > The flagged crate is webpki-roots 1.0.9, not the webpki-roots 0.26.11 entry.
+  > 0.26.11 is a shim that re-exports the 1.x crate; the advisory's affected
+  > version range treats it as unaffected because the vulnerable code lives in the
+  > 1.x crate it wraps. Bumping the 1.x copy is therefore sufficient.
+
+  > Dependency path to the affected crate:
+
+  >   sharecli-fleet -> async-nats 0.50.0 -> tokio-websockets 0.10.1
+  >     -> webpki-roots 0.26.11 -> webpki-roots 1.0.9
+
+  > Cargo.lock changes (7 insertions, 7 deletions, one file):
+
+  >   rustls-webpki      0.103.15 -> 0.103.16
+  >   webpki-root-certs  1.0.9    -> 1.0.10
+  >   webpki-roots       1.0.9    -> 1.0.10
+
+  > No manifest, config, or source changes. The lockfile is byte-identical after
+  > a plain (non --locked) cargo metadata resolution, which is how CI invokes
+  > cargo deny check.
+
+  > An async-nats feature trim was considered and rejected: it is not required to
+  > clear the advisory, and it would drop ws:// and wss:// URL support, a
+  > behavior change unrelated to the advisory.
+- Reject overflowing process IDs in IPC kill and cmdline (#893) ([`41ea2cd`](https://github.com/KooshaPari/ShareCLI/commit/41ea2cd226e6acd73e15927eb9b2229edde2a4d6))
+The IPC process.kill and process.cmdline handlers parsed the `pid`
+  > parameter via `as_u64()?` then cast to `u32` with a plain `as`. Any
+  > u64 value > u32::MAX (e.g. 4294967296 = 2^32) was silently truncated,
+  > which would let a malicious or malformed caller feed arbitrary bits
+  > into a process kill request. Replace the silent truncation with
+  > `u32::try_from(...)` so an out-of-range pid is rejected with a
+  > clear `pid out of range` error before the kill/cmdline call.
+
+  > Added regression tests in handler::dispatch_tests for both methods.
+
+  > This is a re-derivation of audit commit 55ca0562 (Oct 7) against
+  > current main, which had refactored the surrounding handler context
+  > and made the original cherry-pick conflict.
+- Correct check-success target from non-existent 'ci' to actual 'ci / test' + 'ci / lint' (#961) ([`af4e4a6`](https://github.com/KooshaPari/ShareCLI/commit/af4e4a67892795b6156f87ee635c0aa240fbbac9))
+The mergify rule condition 'check-success=ci' references a check named exactly
+  > 'ci', but no such check exists in this repo. Branch protection requires
+  > 'ci / lint' and 'ci / test'; the only other related check is 'CI Success Gate'
+  > (also a literal name, not a prefix match). As a result, the rule condition was
+  > syntactically unsatisfiable and mergify auto-merge never fired, even when
+  > PR Summary reports SUCCESS and all other conditions (approvals, other checks)
+  > are met.
+
+  > Reproduced on PRs #909, #896, #893, #960 — all have Summary=success but sit
+  > on the mergify queue with 'does not currently match the merge queue
+  > conditions'. The 'Summary' check is mergify's own report and does not gate
+  > the underlying rule.
+- Validate desk runner and documentation gates ([`c017502`](https://github.com/KooshaPari/ShareCLI/commit/c017502dfee425ceaa838922e3855fa5693a7957))
+Allow the dedicated soak runner in actionlint, reword the Vale finding, and check Pages configuration before building documentation.
+- Enable libappindicator feature for Linux tray-icon backend ([`b464475`](https://github.com/KooshaPari/ShareCLI/commit/b464475773cc481259d96f187fdcd6aed9911f0d))
+The ci-gate.yml tray-icon fix installs libayatana-appindicator3-dev but
+  > that's only half the solution. The sharecli-tray-windows crate currently
+  > declares tray-icon with default-features = false and no features, so
+  > even with the apt package present the Rust crate has no Linux backend
+  > selected. cargo check --workspace --all-targets therefore still tries
+  > to link tray-icon on Linux without any backend.
+
+  > This is the second half of the fix called out in the codex P1 review
+  > on PR #944: enable the libappindicator Cargo feature so tray-icon can
+  > use the system libayatana-appindicator3 library. The ci-gate.yml change
+  > in 5eb05ef1 already installs the matching apt package, so the two halves
+  > together let cargo check --workspace --all-targets succeed on Linux.
+
+  > Codex review thread: PR #944 review by chatgpt-codex-connector
+  > at .github/workflows/ci-gate.yml line 94 (P1).
+- Bump PhenoShared substrate rev to ea27186 (FR-001) ([`b9ead3d`](https://github.com/KooshaPari/ShareCLI/commit/b9ead3dc0049184cccf1c014f155623764f5e221))
+The previous PhenoShared rev (`68beca2`) carries a corrupted
+  > `agileplus-cache/Cargo.toml` with three duplicate `[lib]` and three
+  > duplicate `[features]` tables. This corrupts the dependency manifest
+  > and blocks `cargo check`, `cargo clippy`, `cargo test`, and `cargo
+  > doc` at manifest-parse time, before any code is compiled.
+
+  > Confirmed at:
+  > `~/.cargo/git/checkouts/phenoshared-.../68beca2/crates/agile-plus/
+  >   crates/agileplus-cache/Cargo.toml`
+  >    - 6 [lib] / [features] table headers at lines 8,11,15,18,22,25
+
+  > `ea27186` ("fix(agileplus-cache): drop triplicate Cargo.toml tables")
+  > is the focused upstream repair; updating the lockfile to that rev
+  > restores the workspace to a buildable state.
 - Untrack lib/teamcomm/target/ (vendored build artifacts) ([`e182151`](https://github.com/KooshaPari/ShareCLI/commit/e182151d4183c964547c017a4cc3f606a7cfb8ae))
 lib/teamcomm is a vendored Rust workspace (absorbed from
   > phenotype-teamcomm in commit 27aa1dc2). Its build output (target/
@@ -1247,8 +1461,10 @@ Serialize XDG_RUNTIME_DIR mutations and exercise lock contention via a
 Format the tree, clear rustc dead_code/unused under RUSTFLAGS=-D warnings, add a temporary Cargo.toml clippy allow-list (keep CI RUSTFLAGS), and fix sharecli-ipc serve_lock coverage failures (pid_alive sentinel + same-process flock).
 - Dedupe pub mod macho_parse + ini_parser ([`cbc3856`](https://github.com/KooshaPari/ShareCLI/commit/cbc3856ec15bebd36dfb4e5a7389dced01b38320))
 ## Documentation
-- Refresh via git-cliff, reconcile VERSION drift, absorb cliff.toml ASCII fix ([`5b7627c`](https://github.com/KooshaPari/ShareCLI/commit/5b7627cd0f4393e443404ca9180c5d89c0dc11dd))
-- regenerate CHANGELOG.gen.md from v0.8.0..HEAD via 'git cliff' (4732 lines)
+- CHANGELOG, 6 READMEs, ADR consolidate, CLI examples, 3 architecture diagrams (#946) ([`073edba`](https://github.com/KooshaPari/ShareCLI/commit/073edba154ab93e045f48e3fd5b337089d8c522d))
+* docs(changelog): refresh via git-cliff, reconcile VERSION drift, absorb cliff.toml ASCII fix
+
+  > - regenerate CHANGELOG.gen.md from v0.8.0..HEAD via 'git cliff' (4732 lines)
   > - bump VERSION from 0.1.0 to 1.0.0 to match [1.0.0] - 2026-08-31 release
   > - cross-reference CHANGELOG.gen.md from hand-curated CHANGELOG.md
   > - absorb WIP cliff.toml ASCII-cleanup (drop emoji, hardcode GitHub link,
@@ -1256,6 +1472,11 @@ Format the tree, clear rustc dead_code/unused under RUSTFLAGS=-D warnings, add a
   >   chore/cliff-toml-ascii-20261017 branch which never landed
   > - hand-curated CHANGELOG.md (Wave/Plan) remains source of truth; the
   >   generated view is for machine consumers and ground-truth auditing
+- Add compete section to documentation index (#964) ([`2e6589c`](https://github.com/KooshaPari/ShareCLI/commit/2e6589c8ce634864e760f535218ca83e68559c06))
+- Link compete section in site nav (#963) ([`a85c54a`](https://github.com/KooshaPari/ShareCLI/commit/a85c54abc5f1fcc1d5236251176e03d496ed834d))
+- Add compete section stub (#962) ([`c0c3945`](https://github.com/KooshaPari/ShareCLI/commit/c0c39450305f82a260e390df692284630fa9bcb0))
+Add initial structure for competitors documentation.
+- Lift 4 lowest-coverage crates to 100% (FR-001, FR-007) (#953) ([`7d0e527`](https://github.com/KooshaPari/ShareCLI/commit/7d0e5278f457731465c620df8f3361f6287d5423))
 - 2026-10-17 deep state audit (8 lanes, master synthesis, PDF) ([`134888e`](https://github.com/KooshaPari/ShareCLI/commit/134888ede651bbd74f9d951866af1bb542e64395))
 8-lane parallel deep audit of sharecli @ 3d6a41c9. Read-only.
 - Add code signing policy (SignPath Foundation) (#910) ([`ad1a012`](https://github.com/KooshaPari/ShareCLI/commit/ad1a012e632c99c76a8c7e438046dc3adb6ddceb))
@@ -1457,6 +1678,36 @@ Phase 3 visual polish — surface the brand icon at the top of README.md
 
   > Additive only — existing prose preserved. No code, no tokens.css edits.
 ## Features
+- Implement is_agent() sentinel-file detection ([`e0afe04`](https://github.com/KooshaPari/ShareCLI/commit/e0afe046fc4d266c871f89fac8d3fe3496e25dc7))
+The harness-is-agent binary was a 11-line TODO that always exited 1.
+  > The dispatcher (dispatcher.rs) calls it via:
+
+  >     Command::new($is_agent_bin)
+  >         .env("HARNESS_VAR", harness_home.join("var"))
+  >         .env("PPID", &ppid)
+  >         .output()
+  >         .map(|o| o.status.success())
+
+  > and treats exit 0 as "is an agent under hypervisor control" /
+  > exit 1 as "regular CLI invocation". The sentinel file location and
+  > content convention come from the existing get_agent_name() consumer
+  > (dispatcher.rs:215-227), which classifies the orchestrator-written
+  > file at ${HARNESS_VAR}/agent_sessions/${PPID}.
+
+  > Detection rules (matches get_agent_name semantics):
+  >   * "human"              -> NOT an agent
+  >   * empty / unset file   -> NOT an agent
+  >   * any other non-empty  -> an agent, optionally named ("koala", etc.)
+- Add SpeculativeCoalescer for in-flight request dedup (FR-008) ([`7f61f8c`](https://github.com/KooshaPari/ShareCLI/commit/7f61f8c5f2ed5dbe6b76a6b4408db35a33c00fe7))
+Adds `SpeculativeCoalescer` — a thread-safe in-flight request deduplicator
+  > that merges concurrent identical calls arriving within
+  > `SPECULATIVE_COALESCE_WINDOW` (100ms default) into a single execution that
+  > broadcasts the same `Result<CachedResult>` to all callers.
+
+  > This complements the existing `SpeculationTracker` (long-running, background,
+  > predictive) with a per-call, request-local coalescer that handles the
+  > reactive case: many callers hit the same key before any pre-execution has
+  > landed in the `CoalesceCache`.
 - Actor-neutral nested transaction admission guards (#892) ([`0358ee9`](https://github.com/KooshaPari/ShareCLI/commit/0358ee99eaabf48e2122573e15363c14e9b81f64))
 * feat(ledger): add actor-neutral transactional admission guards and tests
 
@@ -3719,6 +3970,17 @@ Expose the gateway utility modules over HTTP via a small axum 0.8 server,
 - HTTP route registry and FIFO task queue ([`b3633ef`](https://github.com/KooshaPari/ShareCLI/commit/b3633efab0b8651fd4e6c0bf15c227d18515109b))
 - HTTP route registry (#79) ([`81e4c4d`](https://github.com/KooshaPari/ShareCLI/commit/81e4c4de5d400681adaad7ef228a875a3d6acdba))
 ## Refactoring
+- Decompose next 5 of 17 oversized files (>500L) into 47 sub-500L files (rebased) (#960) ([`2f153da`](https://github.com/KooshaPari/ShareCLI/commit/2f153da5892224a35fd10502e35087ff3c8b2215))
+* refactor(sharecli-core): decompose lib.rs (1684L) into 6 files under 500L
+
+  > - lib.rs (108L): module docs + mod decls + pub use re-exports
+  > - thermal_gate.rs (264L): ThermalGate trait + System/AgentAware/Fake impls + retry constants + 6 tests
+  > - fuse_guard.rs (383L): FUSE mount constants, FuseGuard RAII, wait_fuse_mount_ready, fuse_session_id_for_command_key + 9 FUSE tests
+  > - types.rs (333L): HypervisorConfig, SpawnRequest, SpawnOutcome, CachedResult conversions + 9 type tests
+  > - hypervisor.rs (442L): Hypervisor struct + run/run_queued/coalesce_via_lock/thermal_gate_check + spawn_process_sync + queue_lane_from_argv
+  > - tests_hypervisor.rs (381L): hypervisor integration tests, loaded via #[path] in lib.rs
+
+  > All 65 sharecli-core tests pass; cargo check --workspace --all-targets clean; tests/fr009_fuse_hypervisor_session 5/5 pass.
 - Poll for frames in 9 more FR007 watch tests ([`bd520db`](https://github.com/KooshaPari/ShareCLI/commit/bd520dbfdc43a27035f21104bba87f9ffc70b1a1))
 Replace fixed-sleep drains (12s/18s/20s) with deadline-bounded polling in
   > the remaining 9 FR007 watch test binaries. This matches the same hardening
@@ -3818,6 +4080,170 @@ The shim was added during PR 9 (sidebar restructure) when live
   > to ProcessTableView remains. Delete it.
 - Ratchet unused-mut warnings + dedupe byte helpers ([`6698421`](https://github.com/KooshaPari/ShareCLI/commit/6698421d09441147589356f97f0e5e3c15c02a85))
 ## Testing
+- 6 inline test additions across session, paths, pprof_http, shutdown, progress, serve_auth (FR-001) (#948) ([`600644b`](https://github.com/KooshaPari/ShareCLI/commit/600644b5c2b8aa19258fd4c8bc9697ad1a137710))
+* docs(changelog): refresh via git-cliff, reconcile VERSION drift, absorb cliff.toml ASCII fix
+
+  > - regenerate CHANGELOG.gen.md from v0.8.0..HEAD via 'git cliff' (4732 lines)
+  > - bump VERSION from 0.1.0 to 1.0.0 to match [1.0.0] - 2026-08-31 release
+  > - cross-reference CHANGELOG.gen.md from hand-curated CHANGELOG.md
+  > - absorb WIP cliff.toml ASCII-cleanup (drop emoji, hardcode GitHub link,
+  >   add auto-commit/merge commit filters, drop {{ now }} var) from
+  >   chore/cliff-toml-ascii-20261017 branch which never landed
+  > - hand-curated CHANGELOG.md (Wave/Plan) remains source of truth; the
+  >   generated view is for machine consumers and ground-truth auditing
+- Widen the coverage margin from 23 to 70 lines (#998) ([`f7ae9c3`](https://github.com/KooshaPari/ShareCLI/commit/f7ae9c3980615095bd2aef19a3596121e6854a9f))
+* test(monitoring): cover the untested formatters and idle logic
+
+  > The coverage gate passed on main by 23 lines (85.44% against an 85% floor),
+  > which is too thin to survive a refactor. monitoring.rs was the cheapest
+  > place to buy headroom: 316 lines, only 3 tests, 59 missed lines.
+
+  > Adds 5 tests over previously unexercised code:
+  > - HostResourceWatchJson::format_csv_companion header, row and 2dp rounding
+  > - HostResourceWatchJson::format_text_section (delegates to
+  >   ResourceWatchSample::format_status_section)
+  > - ProcessStats::new zero-defaults for the resource-watch fields
+  > - ProcessStats::is_idle boundary matrix: uptime strictly-greater than the
+  >   threshold, cpu strictly-below 1.0, and the equal-to cases
+
+  > Measured with the shipped gate command (default features; --all-features
+  > cannot build on this host):
+  >   before: 5276 lines, 4508 hit, 85.44%, margin 23 lines
+  >   after:  5334 lines, 4604 hit, 86.31%, margin 70 lines
+
+  > No production code changed; tests only.
+- Add non-demo + error-path coverage and ship the gateway stub crate ([`6f4813e`](https://github.com/KooshaPari/ShareCLI/commit/6f4813e8bd5d242d6c23a8e9ade89146a92977cf))
+The previous audit undercounted gateway-tools as '0 tests, MVP subcommands'.
+  > The crate already has 19 passing smoke tests (12 `*_demo` invocations in
+  > main.rs + 7 HTTP route tests in serve.rs); this commit layers 24 new tests
+  > on top of them and ships the missing `gateway` stub crate that
+  > `gateway-tools` imports.
+
+  > What lands
+
+  > - New `crates/gateway/` library: 11 modules backing the gateway-tools
+  >   dispatchers. HMAC-SHA256 is implemented inline per RFC 2104 to avoid the
+  >   `digest` 0.10/0.11 conflict between `hmac` and `sha2`. PEM exposes
+  >   both `encode_pem`/`decode_pem` (tuple return) and the
+  >   `encode`/`decode` (struct return) shapes the inspect registry lists;
+  >   m3u exposes `render(&[M3uEntry])` and `parse -> Vec<M3uEntry>` plus
+  >   `render_playlist`/`parse_playlist` aliases for the old Playlist shape.
+  > - Root `Cargo.toml`: `crates/gateway` and `crates/gateway-tools` added
+  >   to workspace members, plus a `[workspace.package]` block and a
+  >   `[workspace.dependencies]` block for the deps the two crates share.
+  > - `crates/gateway-tools/src/main.rs`: 24 new tests pinning non-demo
+  >   invocations and the primary error paths (custom JWT payloads, custom
+  >   DNS hex with a known answer, custom RESP bulk string round-trip, custom
+  >   TLS record parse, custom PKCS#7 pad, custom patch operations, custom
+  >   PEM encode, custom M3U render+parse, and the gated `metrics` and
+  >   `chunked encode` paths that require `--demo`).
+  > - `crates/gateway-tools/src/serve.rs`: `/v1/inspect/:module` →
+  >   `/v1/inspect/{module}` (axum 0.8 syntax) so the 7 `serve::tests`
+  >   route tests can run; same external URL, no public-API change.
+  > - `crates/gateway-tools/src/main.rs` `run_tls`: demo hex was malformed
+  >   ("16030003000000" — bytes 2-3 read as length 768 not TLS 1.2 + length
+  >   0); corrected to "1603030000". The byte `22 03 03 00 00` is the
+  >   spec-shaped handshake record the comment already promised.
+
+  > Test results
+
+  > `cargo test -p gateway-tools` → 43 passed, 0 failed. Of those, 19
+  > pre-existing + 24 new = 43.
+
+  > - JWT HS256: 3 (1 demo + 2 new) ok
+  > - DNS: 4 (1 demo + 3 new) ok
+  > - Redis RESP: 4 (1 demo + 3 new) ok
+  > - TLS record: 4 (1 demo + 3 new) ok
+  > - PKCS#7: 4 (1 demo + 3 new) ok
+  > - JSON Patch: 4 (1 demo + 3 new) ok
+  > - Prometheus: 2 (1 demo + 1 new) ok
+  > - PEM: 3 (1 demo + 2 new) ok
+  > - M3U: 4 (1 demo + 3 new) ok
+  > - Chunked: 2 (1 demo + 1 new) ok
+  > - Inspect: 1 (1 demo) ok
+  > - Serve HTTP routes: 7 ok (after the path-syntax fix above)
+  > - Total: 43
+
+  > Pre-existing external blocker
+- Add FR-001 annotation to ffi_api.rs (FR Annotation Check) ([`4ec0f87`](https://github.com/KooshaPari/ShareCLI/commit/4ec0f877fd7b74e6e0301ecdd205ddfa0fe3a3b4))
+- Add C-ABI coverage for all 6 extern functions ([`49c90f0`](https://github.com/KooshaPari/ShareCLI/commit/49c90f099b74100dcdc0c7f1692d0e2f2f8a7202))
+The sharecli-ffi crate exposes 6 extern "C" functions
+  > (sharecli_ipc_start, sharecli_ipc_socket_path, sharecli_free_string,
+  > sharecli_health_json, sharecli_request, sharecli_serve_get) and had
+  > 0% test coverage. This commit adds an end-to-end integration test
+  > suite that loads the freshly built cdylib at runtime via libloading
+  > and exercises every export through the same ABI the Swift tray
+  > consumes.
+
+  > Key design decisions:
+
+  > - Tests use libloading (not static linking) because the crate is
+  >   configured as cdylib+staticlib; the test binary can't statically
+  >   link the cdylib's no_mangle symbols. Loading the dylib at runtime
+  >   is also the most accurate end-to-end ABI test.
+
+  > - A small build.rs emits the absolute path of the freshly built
+  >   libsharecli_ffi.{dylib,so} into OUT_DIR so the tests can dlopen
+  >   it deterministically (handles CARGO_TARGET_DIR relocation).
+
+  > - A 14-test suite covers happy path + null/edge case for every
+  >   function. sharecli_free_string and sharecli_health_json also have
+  >   dedicated null/error-path tests. Tests that mutate the
+  >   process-global SHARECLI_IPC_SOCK env var are #[serial].
+
+  > - Real UnixListener / TcpListener harnesses back the IPC and HTTP
+  >   tests (no mocks). Newline-delimited JSON protocol matches the
+  >   sharecli-ipc handler's lines().next_line() reader.
+- Add panda coverage for tray-linux + tray-windows operator_display ([`26695d2`](https://github.com/KooshaPari/ShareCLI/commit/26695d2279efe14783c3db6a83c20e1f8125f978))
+Adds 13 new tests per crate covering the TrayGateVisual resolver, severity
+  > ordering, format_bytes_compact branches, format_gate_rss_tray_line,
+  > format_pool_tray_line (healthy/degraded), format_status_snapshot_tray_line,
+  > format_pool_status_operator_lines, and the resolve_gate_decision_class /
+  > resolve_thermal_class mapping functions.  These complement the existing
+  > in-module tests and the koala offline coverage that lands separately on
+  > test/gateway-tools-coverage.
+
+  > No public API changes.
+- Add FR-001 annotation to public_api + transaction_contract tests (FR Annotation Check) ([`561ccca`](https://github.com/KooshaPari/ShareCLI/commit/561cccac7c98654747cf7236cfc2a16d35dceea4))
+- Add integration tests for transaction_contract and public_api ([`f3853cc`](https://github.com/KooshaPari/ShareCLI/commit/f3853cc56fe52f988def23c08408dc4e64902799))
+Adds 60 integration tests under crates/sharecli-core/tests/ exercising the
+  > public surface that is not already covered by the inline unit tests in
+  > src/lib.rs.
+
+  > transaction_contract.rs (41 tests)
+  >   - ActorKind / Actor construction
+  >   - Grant::validate_delegation (6 branches: attenuated descendant,
+  >     identical grant, non-descendant scope, epoch mismatch, units
+  >     overflow, operation not in parent)
+  >   - ReservationPool (new, admitted sum, duplicate id, zero units,
+  >     capacity overflow, release not-reclaimed, release unknown,
+  >     release frees capacity)
+  >   - SharedProducer (new, join inserts, stale generation, stopping
+  >     state, eligibility, detach returns false when others remain,
+  >     detach becomes stopping, unknown consumer, stale generation detach)
+  >   - EffectOutcome + can_retry_effect (confirmed success never,
+  >     not dispatched always, confirmed failure requires proof or auth,
+  >     unknown requires dedup or explicit proof)
+  >   - ParentMembership (default, add bumps version, duplicate id,
+  >     reject after seal, mark accepted unknown, seal stale expected,
+  >     seal all-accepted, no double-seal)
+  >   - GuardError / EffectOutcome Copy+Eq, BTreeSet determinism
+
+  > public_api.rs (19 tests)
+  >   - SpawnRequest::new defaults, with_queue_priority override, downgrade
+  >   - SpawnRequest::from_operator with rule_priority=None
+  >   - SpawnOutcome::agent_family, fuse_intercept_active, remap_fuse_path
+  >   - CachedResult <-> SpawnOutcome From impls (from_cache preserved)
+  >   - ThermalDecision Copy+Eq
+  >   - combine_thermal_agent_decision (5 branches: allow+ok, warn stays,
+  >     thermal refuse wins, agent refuse overrides allow, agent warn
+  >     promotes allow to warn)
+  >   - fuse_session_id_for_command_key (short, 16-char truncation,
+  >     stability across calls)
+
+  > Pattern follows crates/sharecli-ipc/tests/handler_dispatch.rs:
+  > each scenario is a separate #[test] fn with descriptive name.
+  > No public API changes. tx-agent: jcode, tx-validated: test.
 - Poll for frames in proc --watch instead of fixed sleeps ([`cc72183`](https://github.com/KooshaPari/ShareCLI/commit/cc72183d66f88a4e0694c2605d9162d386d04cb4))
 Same hardening pattern applied to the FR007/FR008 binaries in commits
   > 7f4ad4d7 and bd520dbf: replace the 8s/5s/25s/12s fixed sleeps in the
@@ -4147,6 +4573,62 @@ Pin the phenotype-org-audits audit-v38 rubric, fill missing C00-C02 lanes, refre
 
   > L37/L38/L40 lifts; C04 60%→70% C. Overall stays ~71% C.
 ## Style
+- Apply rustfmt to PR-923 cherry-pick onto current main ([`6266470`](https://github.com/KooshaPari/ShareCLI/commit/6266470627f68e5f7834f98694a96ea1b129ec7f))
+OPS lane: rebases PR #923 onto current main (which has PR #924 and
+  > PR #927 merged), and applies cargo fmt to keep ci / lint green.
+
+  > This also resolves a transitive compile error from PR #923's tests
+  > that referenced TrayGateSeverity. The new cherry-pick drops the
+  > unreachable!() fix and partial-ordering tests, keeping only the
+  > non-demo + error-path coverage and the gateway stub crate.
+- Apply rustfmt to FR-001 ffi_api.rs tests ([`c5ae59c`](https://github.com/KooshaPari/ShareCLI/commit/c5ae59c75d78e99089f77405ce3b004b9cf03e8a))
+OPS lane: fixes lint failure on PR #925 by applying cargo fmt to the
+  > files that were not formatted to rustfmt standards.
+
+  > Affected files:
+  > - crates/sharecli-ffi/tests/ffi_api.rs
+
+  > The unformatted multi-line closure would have failed
+  > ci / lint in ci-gate.yml.
+- Apply rustfmt to is_agent detection ([`5a4b4ad`](https://github.com/KooshaPari/ShareCLI/commit/5a4b4ad5c1825a070ade679da3cffcba42d014b2))
+OPS lane: fixes lint failure on PR #929 by applying cargo fmt to the
+  > files that were not formatted to rustfmt standards.
+
+  > Affected files:
+  > - crates/harness-native/src/is_agent.rs
+
+  > The unformatted multi-line Path::new() chain would have failed
+  > ci / lint in ci-gate.yml.
+- Apply rustfmt to FR-001 tray operator_display coverage ([`64d1caf`](https://github.com/KooshaPari/ShareCLI/commit/64d1caf9edf8ae6e19d166fbcdfbfb88514f47a6))
+OPS lane: fixes lint failure on PR #924 by applying cargo fmt to the
+  > files that were not formatted to rustfmt standards.
+
+  > Affected files:
+  > - crates/sharecli-tray-linux/src/operator_display.rs
+  > - crates/sharecli-tray-windows/src/operator_display.rs
+
+  > The unformatted multi-line struct expressions would have failed
+  > ci / lint in ci-gate.yml.
+- Apply rustfmt to FR-008 SpeculativeCoalescer ([`a7c8cad`](https://github.com/KooshaPari/ShareCLI/commit/a7c8cad225ae15cafb8d976e52dbb6d582e50621))
+OPS lane: fixes lint failure on PR #927 by applying cargo fmt to the
+  > files that were not formatted to rustfmt standards.
+
+  > Affected files:
+  > - crates/sharecli-core/src/lib.rs (re-export ordering)
+  > - crates/sharecli-core/src/speculation.rs (multi-line statements)
+
+  > The unformatted multi-line expressions would have failed
+  > ci / lint in ci-gate.yml.
+- Apply rustfmt to FR-001 annotation tests ([`fd8fd9d`](https://github.com/KooshaPari/ShareCLI/commit/fd8fd9d53375f5d607e8fe4424066079ad254c27))
+OPS lane: fixes lint failure on PR #922 by applying cargo fmt to the
+  > two test files that were not formatted to rustfmt standards.
+
+  > Affected files:
+  > - crates/sharecli-core/tests/public_api.rs
+  > - crates/sharecli-core/tests/transaction_contract.rs
+
+  > The unformatted multi-line assert_eq! and trailing whitespace would
+  > have failed ci / lint in ci-gate.yml.
 - Remove blank line after doc comment in cli_list ([`c133277`](https://github.com/KooshaPari/ShareCLI/commit/c133277797778bc0f55a99ec62b180644261046e))
 Clippy 1.96's empty_line_after_doc_comments lint flagged the blank line
   > between the trailing `/// accent markers ...` line and `fn cli_list`.
