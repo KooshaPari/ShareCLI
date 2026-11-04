@@ -197,7 +197,7 @@ jobs:
         # The deleted `.github/workflows/ci.yml` performed this install; it now
         # lives here. Pinned by SHA and deliberately NOT soft-failed, so a
         # broken install fails the job instead of silently skipping tests.
-        uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
+        uses: taiki-e/install-action@1919c4a95903d2c33e4a221102edca87309fc14b # v2.89.0
         with:
           tool: nextest
       - name: Build all targets
@@ -244,7 +244,7 @@ jobs:
         with:
           toolchain: 1.96.0
       - name: Cargo cache
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2
+        uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31  # v2
         with:
           shared-key: ci-loom
       - name: Loom model (PoolIndex / RelaxedCounter)
@@ -273,7 +273,7 @@ jobs:
         with:
           version: 0.14.1
       - name: Cargo cache
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2
+        uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31  # v2
         with:
           shared-key: ci-netblock
       - name: Netblock hermetic gate
