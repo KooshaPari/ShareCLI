@@ -2,8 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
-
 ## Bug Fixes
+- Keep commit bodies nested, content ASCII, and range wording honest ([`426204e`](https://github.com/KooshaPari/ShareCLI/commit/426204e9b7d541697840a6d5d3e16708b91616eb))
+  > Address the four CodeRabbit findings on #1009:
+  >
+  > - cliff.toml: prefix every commit-body line with `  > ` via split/join so a
+  >   body line starting with `*` no longer becomes a top-level list item
+  >   (MD027). The `indent` filter cannot do this on git-cliff 2.12.0:
+  >   `first_line=true` is a no-op, and `trim = true` strips the leading
+  >   spaces of the first body line, so `trim` is now false.
+  > - cliff.toml: add commit_preprocessors that normalize dashes, smart quotes,
+  >   arrows and ellipses to ASCII in the generated view. Git history keeps its
+  >   original bytes; only the rendered file is normalized.
+  > - justfile: the recipe strips trailing whitespace and trailing blank lines
+  >   after generation, since `trim = false` leaves blockquote padding behind.
+  > - CHANGELOG.md: describe the generated range by its last included commit
+  >   instead of claiming it reaches `HEAD` (chore commits are skipped by
+  >   design, so the snapshot can never contain the commit that regenerates it).
+  > - CONTRIBUTING.md: use ASCII punctuation in the release instructions.
+  >
+  > Regenerated CHANGELOG.gen.md with git-cliff 2.12.0. Verified: no trailing
+  > whitespace (git diff --check clean), no body line at column 0, zero smart
+  > quotes and zero em/en dashes or arrows in the generated file, regeneration
+  > twice byte-identical.
 - Refresh CLI goldens and classify unavailable backend correctly (#1002) ([`8745a5d`](https://github.com/KooshaPari/ShareCLI/commit/8745a5d0d4e14c6e59769a2b7056c569778e1058))
   > * fix(runtime): refresh CLI goldens and classify unavailable backend correctly
   >
