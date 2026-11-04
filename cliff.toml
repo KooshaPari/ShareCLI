@@ -10,8 +10,9 @@
 #     `git cliff --tag <tag>` to anchor the release date externally)
 #   * `^Merge` / `^merge` parser rules + `filter_unconventional = false`
 #     drop the 182 merge commits that previously tripped the
-#     "Missing type in commit summary" parse error (now 37 grouping
-#     errors, all from non-conventional historical commits).
+#     "Missing type in commit summary" parse error. 37 grouping errors
+#     remain, all from genuinely non-conventional historical commits
+#     (auto-commit daemon era, pre-conventional-commits policy).
 #
 # The hand-curated CHANGELOG.md (Wave/Plan structure) remains the source
 # of truth for historical release notes; this config is kept functional

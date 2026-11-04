@@ -1247,15 +1247,6 @@ Serialize XDG_RUNTIME_DIR mutations and exercise lock contention via a
 Format the tree, clear rustc dead_code/unused under RUSTFLAGS=-D warnings, add a temporary Cargo.toml clippy allow-list (keep CI RUSTFLAGS), and fix sharecli-ipc serve_lock coverage failures (pid_alive sentinel + same-process flock).
 - Dedupe pub mod macho_parse + ini_parser ([`cbc3856`](https://github.com/KooshaPari/ShareCLI/commit/cbc3856ec15bebd36dfb4e5a7389dced01b38320))
 ## Documentation
-- Refresh via git-cliff, reconcile VERSION drift, absorb cliff.toml ASCII fix ([`5b7627c`](https://github.com/KooshaPari/ShareCLI/commit/5b7627cd0f4393e443404ca9180c5d89c0dc11dd))
-- regenerate CHANGELOG.gen.md from v0.8.0..HEAD via 'git cliff' (4732 lines)
-  > - bump VERSION from 0.1.0 to 1.0.0 to match [1.0.0] - 2026-08-31 release
-  > - cross-reference CHANGELOG.gen.md from hand-curated CHANGELOG.md
-  > - absorb WIP cliff.toml ASCII-cleanup (drop emoji, hardcode GitHub link,
-  >   add auto-commit/merge commit filters, drop {{ now }} var) from
-  >   chore/cliff-toml-ascii-20261017 branch which never landed
-  > - hand-curated CHANGELOG.md (Wave/Plan) remains source of truth; the
-  >   generated view is for machine consumers and ground-truth auditing
 - 2026-10-17 deep state audit (8 lanes, master synthesis, PDF) ([`134888e`](https://github.com/KooshaPari/ShareCLI/commit/134888ede651bbd74f9d951866af1bb542e64395))
 8-lane parallel deep audit of sharecli @ 3d6a41c9. Read-only.
 - Add code signing policy (SignPath Foundation) (#910) ([`ad1a012`](https://github.com/KooshaPari/ShareCLI/commit/ad1a012e632c99c76a8c7e438046dc3adb6ddceb))
@@ -4141,6 +4132,18 @@ Pin the phenotype-org-audits audit-v38 rubric, fill missing C00-C02 lanes, refre
   > - phenotype-observability, phenotype-state-machine
 ## Fuzz
 - Add protocol parser fuzz targets for DNS, SNMPv3, SSH, CoAP, and LDAP ([`1f4e787`](https://github.com/KooshaPari/ShareCLI/commit/1f4e7876d3ceaaa21b47c70a0ceea0b74d550394))
+## Merge
+- Reconcile coverage lift with AC-008.19 / fuse mainline ([`8e83fbb`](https://github.com/KooshaPari/ShareCLI/commit/8e83fbb255c5a176e8bd51cd5362786a1b0cd1fe))
+- Reconcile Harbor N/A closeout with Wave14 governance ([`07e5598`](https://github.com/KooshaPari/ShareCLI/commit/07e55982b9df69030f29c44831c4587ccd0af721))
+- Feat/sharecli-c03-agent into wave1-lift ([`8ef7e1c`](https://github.com/KooshaPari/ShareCLI/commit/8ef7e1c000e56c61ae36b8e00f4933f3e7aa74af))
+- Feat/sharecli-c08-eval into wave1-lift ([`0edf210`](https://github.com/KooshaPari/ShareCLI/commit/0edf21000f38f1e43dbf3218398fae2a9253b48d))
+- Feat/sharecli-c11-ship into wave1-lift ([`de6c554`](https://github.com/KooshaPari/ShareCLI/commit/de6c554c7adef82ec2053913b4470acfe1415362))
+- Feat/sharecli-c07-devex into wave1-lift ([`acdbab9`](https://github.com/KooshaPari/ShareCLI/commit/acdbab9058f325d41c1d941a7e9603d94fd2529d))
+- Feat/sharecli-spawn-win into wave1-lift ([`af38b12`](https://github.com/KooshaPari/ShareCLI/commit/af38b120b86a982026d4f997b6ae9ed72253ccd9))
+- Feat/sharecli-ci-test doctest fixes into v38-audit-ci-truth ([`05c7950`](https://github.com/KooshaPari/ShareCLI/commit/05c79507de26246281ec650cbfac314579138e3b))
+- Feat/sharecli-ci-fr into v38-audit-ci-truth ([`24134f9`](https://github.com/KooshaPari/ShareCLI/commit/24134f9ed823afa1d4a9648959e3f52886b70066))
+- Feat/sharecli-ci-rustsec into v38-audit-ci-truth ([`a45681a`](https://github.com/KooshaPari/ShareCLI/commit/a45681a9afc069e51aeb6d7f286c3468572c9b88))
+- Feat/sharecli-ci-test into v38-audit-ci-truth ([`e6f4aaa`](https://github.com/KooshaPari/ShareCLI/commit/e6f4aaaca75159bd15d4c05330c6757c40bd0180))
 ## Sec
 - OSV scan, Dependabot groups, container hardening (FR-004) (#243) ([`ab5590c`](https://github.com/KooshaPari/ShareCLI/commit/ab5590cf23b1f0f3b06f59fa7cdcfeabe79bc38d))
 * sec(c04): OSV scan, Dependabot groups, container hardening (FR-004)
