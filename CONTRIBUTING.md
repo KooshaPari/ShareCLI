@@ -229,10 +229,15 @@ See [`AGENTS.md`](AGENTS.md) for the project-wide mandate. In short:
 Releases are driven by the `.github/workflows/release.yml` pipeline:
 
 1. Bump `version` in `Cargo.toml` (and `VERSION` if present).
-2. Update `CHANGELOG.md` (use `just changelog` to regenerate from conventional
-   commits via `git-cliff`).
-3. Commit with `chore(release): vX.Y.Z` on `main`.
-4. Push — the `Release` workflow builds, signs, attests, and (after approval)
+2. Update the hand-curated `CHANGELOG.md` by hand — add an `[Unreleased]`
+   entry (or promote it to the new version heading). This file is the
+   human-facing source of truth and is never written by tooling.
+3. Regenerate the machine-consumer view `CHANGELOG.gen.md` with
+   `just changelog` (runs `git-cliff` over the repository history per
+   `cliff.toml`). The recipe writes **only** `CHANGELOG.gen.md`; it does not
+   edit `CHANGELOG.md`.
+4. Commit with `chore(release): vX.Y.Z` on `main`.
+5. Push — the `Release` workflow builds, signs, attests, and (after approval)
    publishes to crates.io.
 
 ---

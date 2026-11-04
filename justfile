@@ -315,6 +315,7 @@ ci-fast: fmt-check lint test build
 version:
     @grep '^version' Cargo.toml | head -1 | cut -d'"' -f2
 
+# Regenerate CHANGELOG.gen.md only (never the curated CHANGELOG.md)
 [group: 'release']
 changelog:
     @echo ">> generating CHANGELOG.gen.md via git-cliff"
