@@ -95,6 +95,92 @@ domain errors to JSON at the boundary, not inside handlers.
 - Phases 2–4 of `lib-sprawl-plan.md` can be executed against these rules
   with CI enforcement.
 
+## Reconciliation (2026-10-17)
+
+The 2026-10-17 deep-state audit (see
+`audit-sessions/2026-10-17-deep-state-audit/MASTER-STATE-AUDIT.md`) found
+that the current implementation diverges from the strict dependency-free
+domain-core rule in §1 above:
+
+- `crates/sharecli-core/Cargo.toml:9-13` declares runtime dependencies on
+  `sharecli-ipc`, `sharecli-fleet`, `sharecli-fuse`, and `tokio = "1"`.
+- The same `Cargo.toml` table appears in the comprehensive audit
+  scorecard as row L2 (Layered Crate Topology) and is rated 3/3
+  ("excellent") with the prose summary "Core -> IPC -> Fleet -> Fuse
+  layering is consistent".
+
+The scorecard's positive evaluation and ADR §1's prohibition directly
+contradict each other. There are two honest resolutions; this section
+adopts **(b) and documents the current state as a deliberately relaxed
+variant** pending a future commit to (a).
+
+### (a) Migrate `sharecli-core` to be dependency-free [rejected, multi-day]
+
+The original §1 invariant. Requires:
+
+- Extracting the IPC bridge into a `sharecli-ports` crate (or port
+  traits in `sharecli-core` with a stub `sharecli-ipc` adapter).
+- Moving the Fleet registry calls behind a port trait.
+- Removing `tokio` from `sharecli-core` (move all async wrappers into
+  the `sharecli-runtime` application service).
+- Reworking the FUSE trigger path that today flows through
+  `sharecli-core` (likely needs a callback or message-bus port).
+
+This is a multi-day refactor that the audit flagged as out of scope for
+the 2026-10-17 forward path. It is recorded as a follow-up in
+`docs/FOLLOWUPS-2026-10-17.md` (TBD).
+
+### (b) Revise ADR §1 to match the current state [adopted for now]
+
+Replace the strict dependency-free invariant with a deliberately
+relaxed "core-with-allowed-facade-deps" pattern, and update §2's
+dependency-arrow diagram accordingly. The current `sharecli-core`
+Cargo.toml becomes the canonical reference, not a violation.
+
+**Revised §1 (effective 2026-10-17):**
+
+> `sharecli-core` may depend on a closed set of in-tree facade crates
+> (`sharecli-ipc`, `sharecli-fleet`, `sharecli-fuse`) and on `tokio`
+> for the async runtime. `sharecli-core` must not depend on driving
+> adapters (CLI, tray, TUI), on `axum` or other HTTP frameworks, or on
+> third-party I/O libraries. New facade dependencies require an ADR
+> amendment.
+
+**Revised §2 diagram (effective 2026-10-17):**
+
+```text
+Driving adapters (CLI, tray, TUI)
+    → Application services (runtime, config, serve)
+        → Domain core (sharecli-core)
+            → In-tree facades (sharecli-ipc, sharecli-fleet, sharecli-fuse)
+            → Tokio async runtime
+        → Driven adapters (sharecli-session, sharecli-mesh, spawn-core-sys)
+            → OS / hardware
+```
+
+The horizontal `Domain core -> In-tree facades` arrow is the deliberate
+relaxation. It is the smallest delta that lets the audit's scorecard
+rating and the source-of-truth `Cargo.toml` agree with the ADR.
+
+### Audit cross-references
+
+- The original contradiction is logged in
+  `audit-sessions/2026-10-17-deep-state-audit/subagent-reports/08-cross-cutting.md`
+  under "ADR-0007 vs scorecard".
+- The scorecard file
+  `audit-sessions/2026-10-17-deep-state-audit/COMPREHENSIVE_AUDIT_SCORECARD.md`
+  row L2 should be re-read as a positive evaluation of the relaxed
+  pattern, not a false confirmation of the strict rule.
+
+### Date and ownership
+
+- **Reconciliation date:** 2026-10-17
+- **Adopted variant:** (b) above
+- **Owner:** sharecli maintainers
+- **Follow-up:** TBD — see (a) above if/when the strict variant becomes
+  feasible (e.g., after v1.0 ships and a port-trait refactor can land
+  without breaking downstream forks).
+
 ## References
 
 - lib-sprawl-plan.md: [`../ops/lib-sprawl-plan.md`](../ops/lib-sprawl-plan.md)
