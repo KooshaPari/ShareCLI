@@ -7,8 +7,8 @@
 │                  CLI (clap derive)                    │
 │  ps | start | stop | status | config | project | run │
 ├──────────┬──────────┬───────────┬───────────────────┤
-│ Process  │ Project  │ Runtime   │ Monitoring        │
-│ Manager  │ Registry │ Pool      │ Health checks     │
+│ Agent    │ Project  │ Runtime   │ Monitoring        │
+│ Runtime  │ Registry │ Pool      │ Health checks     │
 ├──────────┴──────────┴───────────┴───────────────────┤
 │              Configuration (TOML)                     │
 │           ~/.config/sharecli/config.toml              │

@@ -1,6 +1,6 @@
 # sharecli
 
-Shared CLI process manager for multi-project agent orchestration.
+OS/kernel-adjacent agent runtime / hypervisor for multi-agent hosts.
 
 ## Stack
 

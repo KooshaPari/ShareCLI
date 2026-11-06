@@ -1,8 +1,8 @@
 # Contributing to sharecli
 
 First off, thank you for considering contributing to **sharecli** — it is
-people like you who make this shared CLI process manager better for everyone
-running multi-project agent infrastructure on Phenotype.
+people like you who make this OS/kernel-adjacent agent runtime / hypervisor better
+for everyone running multi-agent host infrastructure on Phenotype.
 
 This document is a tier-0 guide. For deeper context, see:
 [`AGENTS.md`](AGENTS.md) · [`SPEC.md`](SPEC.md) · [`docs/`](docs/)
