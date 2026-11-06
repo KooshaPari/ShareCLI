@@ -247,6 +247,7 @@ members = [
   "crates/spawn-core-sys",
   "crates/sharecli-fuse",
   "crates/sharecli-core",
+  "crates/sharecli-core-pure",
   "crates/sharecli-thermal-tui",
   "crates/fuse-smoke-runner",
   "crates/sharecli-session",

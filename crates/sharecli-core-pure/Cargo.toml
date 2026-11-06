@@ -1,0 +1,14 @@
+[package]
+name = "sharecli-core-pure"
+description = "Pure data types re-exported from sharecli-core; zero infrastructure dependencies for embedders."
+version = "0.8.0"
+edition = "2021"
+license = "MIT"
+
+# Zero infra deps allowed:
+# - sharecli-ffi, sharecli-ipc, sharecli-fuse, sharecli-storage, sharecli-sync,
+#   sharecli-mesh, sharecli-session are FORBIDDEN (direct or transitive).
+# - tokio, anyhow, tracing, tempfile are FORBIDDEN (they pin a runtime choice).
+# - Only std + serde + sharecli-core itself are allowed.
+[dependencies]
+sharecli-core = { path = "../sharecli-core" }
