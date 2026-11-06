@@ -1710,7 +1710,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4618,7 +4618,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5056,7 +5056,7 @@ dependencies = [
 [[package]]
 name = "runtime-process"
 version = "0.3.10"
-source = "git+https://github.com/KooshaPari/PhenoShared#39b212d72e5e076fadbab9797ef1a99fed7e7ae3"
+source = "git+https://github.com/KooshaPari/PhenoShared#32edefb0f33d661e8938682931ff665d70f12044"
 dependencies = [
  "async-trait",
  "command-group",
@@ -5127,7 +5127,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5185,7 +5185,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5954,7 +5954,7 @@ dependencies = [
 [[package]]
 name = "substrate"
 version = "0.3.10"
-source = "git+https://github.com/KooshaPari/PhenoShared#39b212d72e5e076fadbab9797ef1a99fed7e7ae3"
+source = "git+https://github.com/KooshaPari/PhenoShared#32edefb0f33d661e8938682931ff665d70f12044"
 dependencies = [
  "substrate-core",
 ]
@@ -5962,7 +5962,7 @@ dependencies = [
 [[package]]
 name = "substrate-core"
 version = "0.3.10"
-source = "git+https://github.com/KooshaPari/PhenoShared#39b212d72e5e076fadbab9797ef1a99fed7e7ae3"
+source = "git+https://github.com/KooshaPari/PhenoShared#32edefb0f33d661e8938682931ff665d70f12044"
 dependencies = [
  "async-trait",
  "serde",
@@ -6135,7 +6135,7 @@ dependencies = [
  "getrandom 0.3.4",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
