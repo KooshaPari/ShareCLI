@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — `sharecli ps --all --watch` text stderr silence (inverse of AC-007.49)
 //! FR: FR-007
 //!
@@ -6,8 +7,8 @@
 //! on stdout only (parity with AC-007.35 proc text watch stderr silence).
 
 use std::io::Read;
-use std::sync::{Arc, Mutex};
 use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -57,11 +58,7 @@ fn drain_watch_pipes(
 
     let deadline = Instant::now() + max;
     loop {
-        let count = stdout_buf
-            .lock()
-            .expect("stdout lock")
-            .matches(frame_marker)
-            .count();
+        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
         if count >= frames_needed || Instant::now() >= deadline {
             break;
         }
@@ -148,7 +145,8 @@ fn fr007_ps_all_watch_text_stderr_silent() {
         .spawn()
         .expect("spawn sharecli ps --all --watch 1");
 
-    let (stdout, stderr) = drain_watch_pipes(&mut child, INVENTORY_HEADER, 2, Duration::from_millis(30_000));
+    let (stdout, stderr) =
+        drain_watch_pipes(&mut child, INVENTORY_HEADER, 2, Duration::from_millis(30_000));
 
     assert_stderr_silent(&stderr, "ps --all --watch");
     assert_stderr_no_companion_markers(&stderr, "ps --all --watch");

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Remap FUSE mount paths back to backing paths (FR-009 / AC-009.14).
 //!
 //! Hypervisor spawns children against an ephemeral intercept mount while

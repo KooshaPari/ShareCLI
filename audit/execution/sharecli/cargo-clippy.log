@@ -1,0 +1,7 @@
+error: duplicate key
+  --> ../../../../../.cargo/git/checkouts/phenoshared-e15052dca608b5ac/68beca2/crates/agile-plus/crates/agileplus-cache/Cargo.toml:15:2
+   |
+15 | [lib]
+   |  ^^^
+    Checking sharecli v0.8.0 (/Users/kooshapari/CodeProjects/Phenotype/repos/sharecli-worktrees/fix-run-fail-closed-20261017)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 6.46s

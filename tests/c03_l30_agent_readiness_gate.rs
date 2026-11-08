@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C03 L30.1 / L30.3 / L30.9 — agent-readiness evidence gates (FR-003).
 //!
 //! FR: FR-003
@@ -42,7 +43,8 @@ fn fr003_l303_fr_guardrail_coverage_and_pin() {
     let root = repo_root();
     let matrix = fs::read_to_string(root.join("TEST_COVERAGE_MATRIX.md"))
         .expect("read TEST_COVERAGE_MATRIX.md");
-    let ci = fs::read_to_string(root.join(".github/workflows/ci.yml")).expect("read ci.yml");
+    let ci =
+        fs::read_to_string(root.join(".github/workflows/ci-gate.yml")).expect("read ci-gate.yml");
     let justfile = fs::read_to_string(root.join("justfile")).expect("read justfile");
 
     assert!(!matrix.contains("| TBD |"), "TEST_COVERAGE_MATRIX must not contain TBD FR rows");
@@ -60,9 +62,8 @@ fn fr003_l303_fr_guardrail_coverage_and_pin() {
     let measured_start = matrix
         .find("## Measured coverage pin")
         .expect("TEST_COVERAGE_MATRIX must have Measured coverage pin section");
-    let prior_start = matrix
-        .find("### Prior pin")
-        .expect("TEST_COVERAGE_MATRIX must have Prior pin section");
+    let prior_start =
+        matrix.find("### Prior pin").expect("TEST_COVERAGE_MATRIX must have Prior pin section");
     let measured_section = &matrix[measured_start..prior_start];
     assert!(
         measured_section.contains("77.34%"),
@@ -84,7 +85,7 @@ fn fr003_l303_fr_guardrail_coverage_and_pin() {
         root.join("audit/coverage-snapshots/5d8dc08.coverage-snapshot.json").is_file(),
         "retained llvm-cov snapshot artifact must exist"
     );
-    assert!(ci.contains("cargo nextest run"), "ci.yml must run nextest guardrail suite");
+    assert!(ci.contains("cargo nextest run"), "ci-gate.yml must run nextest guardrail suite");
     assert!(justfile.contains("test"), "justfile must expose test recipe");
 }
 

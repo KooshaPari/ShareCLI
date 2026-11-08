@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-004 — Process & Pool Health Status (pool / health)
 //! FR: FR-004
 //!

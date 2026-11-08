@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — `sharecli ps --all --csv` operator companion rows (AC-007.83)
 //! FR: FR-007
 //!

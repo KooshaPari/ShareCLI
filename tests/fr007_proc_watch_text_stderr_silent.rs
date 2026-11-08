@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — `sharecli proc --watch` text stderr silence (inverse of AC-007.28/29)
 //! FR: FR-007
 //!
@@ -58,11 +59,7 @@ fn drain_watch_pipes(
 
     let deadline = Instant::now() + max;
     loop {
-        let count = stdout_buf
-            .lock()
-            .expect("stdout lock")
-            .matches(frame_marker)
-            .count();
+        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
         if count >= frames_needed || Instant::now() >= deadline {
             break;
         }
@@ -149,7 +146,8 @@ fn fr007_proc_watch_text_stderr_silent() {
         .spawn()
         .expect("spawn sharecli proc --watch 1");
 
-    let (stdout, stderr) = drain_watch_pipes(&mut child, INVENTORY_HEADER, 2, Duration::from_millis(30_000));
+    let (stdout, stderr) =
+        drain_watch_pipes(&mut child, INVENTORY_HEADER, 2, Duration::from_millis(30_000));
 
     assert_stderr_silent(&stderr, "proc --watch");
     assert_stderr_no_companion_markers(&stderr, "proc --watch");

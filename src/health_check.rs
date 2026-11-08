@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Multi-process health-check scheduler.
 //!
 //! Each registered process can have one or more endpoints (HTTP or TCP).

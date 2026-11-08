@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — `sharecli report --watch --format json` NDJSON gate + host_watch parity
 //! FR: FR-007
 //!
@@ -5,8 +6,8 @@
 //! every refresh; stderr carries text companions (parity with proc watch AC-007.28).
 
 use std::io::Read;
-use std::sync::{Arc, Mutex};
 use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -96,11 +97,7 @@ fn drain_watch_pipes(
 
     let deadline = Instant::now() + max;
     loop {
-        let count = stdout_buf
-            .lock()
-            .expect("stdout lock")
-            .matches(frame_marker)
-            .count();
+        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
         if count >= frames_needed || Instant::now() >= deadline {
             break;
         }
@@ -127,8 +124,13 @@ fn fr007_report_watch_ndjson_stderr_gate_before_host_watch() {
         .spawn()
         .expect("spawn sharecli report --format json --watch 1");
 
-    let (_stdout, stderr) = drain_watch_pipes(&mut child, "
-", 2, Duration::from_millis(30_000));
+    let (_stdout, stderr) = drain_watch_pipes(
+        &mut child,
+        "
+",
+        2,
+        Duration::from_millis(30_000),
+    );
 
     assert!(
         stderr.contains(GATE_MARKER),
@@ -156,8 +158,13 @@ fn fr007_report_watch_ndjson_stdout_no_companion_leak() {
         .spawn()
         .expect("spawn sharecli report --format json --watch 1");
 
-    let (stdout, _stderr) = drain_watch_pipes(&mut child, "
-", 2, Duration::from_millis(30_000));
+    let (stdout, _stderr) = drain_watch_pipes(
+        &mut child,
+        "
+",
+        2,
+        Duration::from_millis(30_000),
+    );
 
     assert!(
         !stdout.contains(GATE_MARKER),
@@ -193,8 +200,13 @@ fn fr007_report_watch_ndjson_gate_ordering() {
         .spawn()
         .expect("spawn sharecli report --format json --watch 1");
 
-    let (stdout, _stderr) = drain_watch_pipes(&mut child, "
-", 2, Duration::from_millis(30_000));
+    let (stdout, _stderr) = drain_watch_pipes(
+        &mut child,
+        "
+",
+        2,
+        Duration::from_millis(30_000),
+    );
 
     let lines: Vec<&str> = stdout.lines().filter(|l| !l.is_empty()).collect();
     assert!(

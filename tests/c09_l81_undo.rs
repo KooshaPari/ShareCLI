@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C09 L81.9 Undo / restore model — FR:003 acceptance gates.
 //!
 //! Traces to FR:003 (coverage/traceability, Wave17 thesis residual).

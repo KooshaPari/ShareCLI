@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — thermal TUI operator watch panels (Feb harness dashboard slice)
 //! FR: FR-007
 //!

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-006 — `sharecli proc` process-state export on JSON/CSV surfaces
 //! FR: FR-006
 //!

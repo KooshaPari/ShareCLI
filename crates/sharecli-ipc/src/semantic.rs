@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Semantic argv normalization (Feb harness `harness::semantic::normalize`).
 //!
 //! When enabled, lint-tool path arguments collapse so equivalent invocations share

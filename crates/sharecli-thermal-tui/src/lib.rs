@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `sharecli-thermal-tui` — live TUI for thermal-gate / hypervisor state.
 //!
 //! # Design

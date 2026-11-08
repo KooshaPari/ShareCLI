@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 mod tests {
     use sharecli_fleet::collect_forest_pids;
     use sharecli_fleet::proc_scan::{DetectedAgent, FakeProcSource, ProcSnapshot};

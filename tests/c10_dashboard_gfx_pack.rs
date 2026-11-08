@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-003 / C10 L107 — Phenotype UI pack wired into dashboard + serve static assets.
 //! FR: FR-003
 

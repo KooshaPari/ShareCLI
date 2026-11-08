@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Shared proptest runner config (C07 L66 — shrink + file-backed replay).
 //!
 //! Committed seeds live under `proptest-regressions/` at the crate root.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! HTTP JSON error envelope for `sharecli serve` (`docs/ops/error-envelope.md`).
 
 use axum::http::StatusCode;

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `sharecli uninstall` — document and optionally purge local data dirs (C11 L121).
 
 use anyhow::Result;

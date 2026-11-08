@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Fleet analytics report command.
 //!
 //! `sharecli report [--format text|json|csv] [--watch <secs>] [--sort memory|name]`

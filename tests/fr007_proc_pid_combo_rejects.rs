@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — `sharecli proc --pid` inventory-flag rejection (AC-007.92)
 //! FR: FR-007
 //!

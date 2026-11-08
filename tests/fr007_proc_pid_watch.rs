@@ -1,11 +1,12 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — `sharecli proc --pid N --watch` refresh surfaces
 //! FR: FR-007
 //!
 //! AC-007.87 `proc --pid N --watch [secs]` text/NDJSON watch parity with flat `proc --watch`
 
 use std::io::Read;
-use std::sync::{Arc, Mutex};
 use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -57,11 +58,7 @@ fn drain_watch_pipes(
 
     let deadline = Instant::now() + max;
     loop {
-        let count = stdout_buf
-            .lock()
-            .expect("stdout lock")
-            .matches(frame_marker)
-            .count();
+        let count = stdout_buf.lock().expect("stdout lock").matches(frame_marker).count();
         if count >= frames_needed || Instant::now() >= deadline {
             break;
         }
@@ -114,7 +111,8 @@ fn fr007_proc_pid_watch_text_stderr_silent() {
         .spawn()
         .expect("spawn sharecli proc --pid --watch 1");
 
-    let (stdout, stderr) = drain_watch_pipes(&mut child, DETAIL_HEADER, 2, Duration::from_millis(30_000));
+    let (stdout, stderr) =
+        drain_watch_pipes(&mut child, DETAIL_HEADER, 2, Duration::from_millis(30_000));
 
     assert!(
         stderr.is_empty(),
@@ -149,7 +147,8 @@ fn fr007_proc_pid_watch_ndjson_stderr_gate_before_host_watch() {
         .spawn()
         .expect("spawn sharecli proc --pid --json --watch 1");
 
-    let (_stdout, stderr) = drain_watch_pipes(&mut child, DETAIL_HEADER, 2, Duration::from_millis(30_000));
+    let (_stdout, stderr) =
+        drain_watch_pipes(&mut child, DETAIL_HEADER, 2, Duration::from_millis(30_000));
 
     assert!(
         stderr.contains(GATE_MARKER),
@@ -178,7 +177,8 @@ fn fr007_proc_pid_watch_ndjson_stdout_pipe_clean() {
         .spawn()
         .expect("spawn sharecli proc --pid --json --watch 1");
 
-    let (stdout, _stderr) = drain_watch_pipes(&mut child, DETAIL_HEADER, 2, Duration::from_millis(30_000));
+    let (stdout, _stderr) =
+        drain_watch_pipes(&mut child, DETAIL_HEADER, 2, Duration::from_millis(30_000));
 
     assert!(
         !stdout.contains(GATE_MARKER),

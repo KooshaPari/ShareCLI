@@ -51,7 +51,7 @@ ignore = [
   # Marvin attack advisory covers every released version of rsa (introduced 0.0.0-0, no patch).
   # sharecli only decodes/verifies JWTs with RSA public keys for local sidecar auth (src/serve_auth.rs);
   # it never performs network-exposed RSA private-key operations.
-  { id = "RUSTSEC-2023-0071", reason = "No patched rsa release exists (advisory covers all versions); JWT use is local public-key verification only." },
+  { id = "RUSTSEC-2023-0071", reason = "rsa Marvin-attack advisory covers every released version (introduced 0.0.0-0, no patched release). sharecli only decodes/verifies JWTs with RSA public keys for local sidecar auth (src/serve_auth.rs); it never performs network-exposed RSA private-key operations, which the advisory names as the unsafe setting." },
   # Informational 'unmaintained' advisory for paste - stale Cargo.lock entry, not in the workspace dep graph.
   { id = "RUSTSEC-2024-0436", reason = "paste is a stale Cargo.lock entry; cargo tree -i paste is empty, nothing to replace." },
   # gtk-rs 0.18 GTK3 bindings are Linux-only transitive deps of tray-icon's gtk

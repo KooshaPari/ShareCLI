@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Configuration validation for sharecli.
 //!
 //! After deserializing a [`Config`] from TOML, call [`validate_config`] to
@@ -174,16 +175,10 @@ fn validate_project_limits(
 /// reject the value on save.
 fn validate_runtime(runtime: &crate::config::RuntimeConfig, errors: &mut Vec<ValidationError>) {
     if runtime.max_memory_mb == Some(0) {
-        errors.push(ValidationError::new(
-            "config.runtime.max_memory_mb",
-            "must be greater than 0",
-        ));
+        errors.push(ValidationError::new("config.runtime.max_memory_mb", "must be greater than 0"));
     }
     if runtime.max_processes == Some(0) {
-        errors.push(ValidationError::new(
-            "config.runtime.max_processes",
-            "must be greater than 0",
-        ));
+        errors.push(ValidationError::new("config.runtime.max_processes", "must be greater than 0"));
     }
 }
 

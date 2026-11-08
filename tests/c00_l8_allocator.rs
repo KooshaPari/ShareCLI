@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C00 L8 / FR-003 — jemalloc + dhat-heap feature gates for serve allocator policy.
 //!
 //! Evidence: `src/alloc.rs`, `docs/ops/memory.md`, `docs/ops/alloc-profiling.md`.

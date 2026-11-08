@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — one-shot `sharecli health` / `sharecli pool` text stderr silence
 //! FR: FR-007
 //!

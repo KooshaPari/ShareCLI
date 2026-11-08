@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Config file watcher with debounced hot-reload.
 //!
 //! # Usage

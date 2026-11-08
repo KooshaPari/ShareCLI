@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Configuration management for sharecli
 //!
 //! All configurable parameters are consolidated here. Hardcoded defaults
@@ -454,11 +455,8 @@ impl Config {
             return false;
         };
         // target/<profile>/deps/<crate>-<hash>
-        let in_deps = exe
-            .parent()
-            .and_then(|p| p.file_name())
-            .map(|n| n == "deps")
-            .unwrap_or(false);
+        let in_deps =
+            exe.parent().and_then(|p| p.file_name()).map(|n| n == "deps").unwrap_or(false);
         if in_deps {
             return true;
         }

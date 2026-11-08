@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `sharecli-mesh` — execution-substrate mesh primitives for sharecli.
 //!
 //! # Boundary

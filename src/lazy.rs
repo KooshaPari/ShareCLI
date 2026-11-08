@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 pub struct Lazy<T> {
     cell: std::cell::OnceCell<T>,
     init: fn() -> T,

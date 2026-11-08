@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Hypervisor SlotQueue operator meters (FR-008 / AC-008.12).
 
 use std::sync::atomic::{AtomicU64, Ordering};

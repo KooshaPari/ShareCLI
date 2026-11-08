@@ -10,9 +10,16 @@ name: Code Signing (Hard Gate)
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
+
+# NOTE: pull_request removed (2026-10-16, ci/skip-codesign-on-pr).
+# Why: this hard gate requires Infisical Apple cert secrets, which
+# are not exposed to PR build contexts (and must not be exposed to
+# fork-PR workflows at all). Running on PRs caused every open PR to
+# fail codesign with INFISICAL_TOKEN unavailable.
+# Effect: codesign only runs on push to main (post-merge) and on
+# manual dispatch. The hard gate still protects releases while letting
+# PR CI proceed.
 
 permissions:
   contents: read
@@ -122,7 +129,7 @@ jobs:
           echo "Re-wrapped p12 to legacy PBES1 for macOS import compatibility"
 
       - name: Import Apple certificate
-        uses: apple-actions/import-codesign-certs@5142e029c445c10ffc7149d172e540235a065466 # v7.0.0
+        uses: apple-actions/import-codesign-certs@288b8ec97b82c66b6f2a6baaf7acc8dfbcbe331c # v7.2.0
         with:
           p12-file-base64: ${{ env.APPLE_CERTIFICATE }}
           p12-password: ${{ env.APPLE_CERTIFICATE_PWD }}

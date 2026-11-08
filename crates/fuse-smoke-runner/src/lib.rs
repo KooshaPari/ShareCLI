@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! fuse-smoke-runner library — matrix types + executors.
 
 #![warn(missing_docs)]

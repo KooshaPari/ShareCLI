@@ -24,7 +24,7 @@ scenarios:
     timeout_secs: 15
 
   - name: config-show
-    command: ["sharecli", "config", "show", "--json"]
+    command: ["sharecli", "config", "show"]
     timeout_secs: 10
 
   - name: pool-status

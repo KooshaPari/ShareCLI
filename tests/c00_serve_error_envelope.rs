@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C00 / FR-004 — unified HTTP error envelope for `sharecli serve`.
 //!
 //! Golden contract: `docs/ops/error-envelope.md`.

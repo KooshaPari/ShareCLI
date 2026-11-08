@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C00 L9 / FR-003 — SBOM embedded in release archives + CI emission gate.
 //!
 //! Evidence: `.github/workflows/release.yml`, `.github/workflows/sbom.yml`.

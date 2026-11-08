@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C05 L45+ soft gate - Pyroscope stub (T-710 Wave16)
 //! FR: FR-003
 //! Scope: stub only, no live push, no secrets.

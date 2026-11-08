@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Pure, actor-neutral admission predicates for the proposed global transaction contract.
 //!
 //! This module is intentionally not an OS effect broker or a durable ledger.
@@ -76,9 +77,10 @@ impl ReservationPool {
         if units == 0 {
             return Err(GuardError::InvalidUnits);
         }
-        let used = self.active.values().try_fold(0_u64, |sum, value| {
-            sum.checked_add(*value).ok_or(GuardError::Overflow)
-        })?;
+        let used = self
+            .active
+            .values()
+            .try_fold(0_u64, |sum, value| sum.checked_add(*value).ok_or(GuardError::Overflow))?;
         let next = used.checked_add(units).ok_or(GuardError::Overflow)?;
         if next > self.capacity {
             return Err(GuardError::InsufficientCapacity);

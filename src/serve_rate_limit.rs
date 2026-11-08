@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Sliding-window HTTP rate limiting for `sharecli serve` (C02 L25).
 
 use std::sync::Mutex;

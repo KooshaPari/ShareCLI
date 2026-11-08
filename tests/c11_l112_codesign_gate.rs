@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C11 L112 — codesign hard gate verification.
 //!
 //! Asserts that the macOS `codesign` toolchain is available and that the

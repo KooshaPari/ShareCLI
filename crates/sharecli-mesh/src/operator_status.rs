@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Operator-facing Maildir depth probes for `sharecli status` / thermal TUI (FR-010 / AC-010.11).
 
 use std::path::{Path, PathBuf};

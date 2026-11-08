@@ -1,0 +1,29 @@
+## Summary
+
+Fix the advisory and source-policy failures from run 38900313922. Remove stale RUSTSEC-2026-0049, document the existing PhenoShared allow entry, and explicitly allow the actual missing first-party source, PhenoInfra.git (manifest-pinned rev dd040ed1). Every retained advisory ignore now has a reason and a 2026-11-15 review/expiry comment.
+
+Add a temporary unsafe-libyaml RUSTSEC-2024-0449 exception matching the 30-day OSV deadline in #905. This does not remediate serde_yaml; #905 remains open. Comment deadlines require manual review and are not automatically enforced by cargo-deny.
+
+Scope/ownership: W3 owns deny.toml and audit/w3-deny receipts only. Existing overlapping PRs #896 and #899 were inspected; this PR has no Cargo.lock, Rust code, formatting sweep, or workflow changes. FR-002 (configuration policy); no functional requirement behavior changes.
+
+## Desk verification
+
+Hosted CI minutes are exhausted until November 1; desk receipts are the verification. No hosted CI success is claimed.
+
+- `cargo deny --version`: exit 0, cargo-deny 0.20.2 already installed.
+- Before `cargo deny check`: exit 9; four PhenoInfra source errors plus unsafe-libyaml; advisories FAILED, bans ok, licenses ok, sources FAILED.
+- First after `cargo deny check`: exit 0; advisories ok, bans ok, licenses ok, sources ok.
+- Final `cargo deny --offline check`: exit 0; advisories ok, bans ok, licenses ok, sources ok. Full output retained in after.log.
+- `cargo check --locked`: exit 0 with existing warnings.
+- Baseline `cargo fmt --all -- --check`: exit 1 on existing files outside this lane; no formatting gate success claimed.
+- `npx --yes prettier --check audit/w3-deny/README.md`: initially exit 1; `npx --yes prettier --write audit/w3-deny/README.md`: exit 0; recheck exit 0.
+- `git diff --check`: exit 0.
+- Clippy and behavioral tests were not run for this configuration-only change; full lint/test gates are not claimed.
+
+Full baseline and final offline deny output and exit-code receipts are in audit/w3-deny. The initial successful online output was overwritten by a later recheck; its exit 0 was observed directly. Subsequent online and environment-offline retries were stopped with exit -1 on the shared Cargo package-cache lock. Final verification uses `cargo deny --offline check` against already-fetched dependencies (see after.log/after.exit).
+
+## Risks
+
+The PhenoInfra allow entry deliberately expands the source allowlist to the exact first-party repository already pinned in the manifest. Existing exceptions and nonfatal warnings remain. unsafe-libyaml stays unmaintained pending #905; re-triage all exception deadlines on 2026-11-15. Revert the policy commit to roll back. Do not merge as part of this worker run.
+
+Additional check: `cargo deny --log-level warn --manifest-path ./Cargo.toml --all-features check` was terminated after over six minutes in Cargo resolution without a check result (captured exit -1). Only its verified W3 process tree was stopped. This is INCOMPLETE, not a passing all-features result; see all-features.exit.

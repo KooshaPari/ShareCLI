@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — one-shot `sharecli status --json` stderr silence (inverse of watch NDJSON companions)
 //! FR: FR-007
 //!

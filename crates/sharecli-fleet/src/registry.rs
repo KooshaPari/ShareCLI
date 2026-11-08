@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Device registry backed by NATS.io.
 //!
 //! The registry connects to a NATS broker and publishes [`DeviceRecord`]s to

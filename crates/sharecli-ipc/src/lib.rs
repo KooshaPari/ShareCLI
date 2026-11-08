@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `sharecli-ipc` — coalesce/debounce/queue tier of the sharecli OS-process hypervisor.
 //!
 //! # Lock-Wait-Cache pattern
@@ -615,18 +616,10 @@ mod tests {
         let lock_path = dir.path().join("held.lock");
         // Touch the file so a second open can flock it.
         fs::write(&lock_path, b"x").unwrap();
-        let holder = fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(&lock_path)
-            .unwrap();
+        let holder = fs::OpenOptions::new().read(true).write(true).open(&lock_path).unwrap();
         holder.lock_exclusive().unwrap();
 
-        let contender = fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(&lock_path)
-            .unwrap();
+        let contender = fs::OpenOptions::new().read(true).write(true).open(&lock_path).unwrap();
         let started = SystemTime::now();
         let err = acquire_lock_with_deadline(&contender, Duration::from_millis(200))
             .expect_err("must fail when another holder owns the lock");
@@ -640,10 +633,7 @@ mod tests {
             elapsed >= Duration::from_millis(200),
             "deadline must be honored; elapsed={elapsed:?}"
         );
-        assert!(
-            elapsed < Duration::from_secs(2),
-            "deadline should be tight; elapsed={elapsed:?}"
-        );
+        assert!(elapsed < Duration::from_secs(2), "deadline should be tight; elapsed={elapsed:?}");
     }
 
     // -----------------------------------------------------------------------
@@ -684,9 +674,8 @@ mod tests {
         thread::sleep(Duration::from_millis(200));
 
         let started = SystemTime::now();
-        let result: Result<CachedResult> = cache.with_lock(&key, || {
-            Ok(CachedResult { exit_code: 0, stdout: vec![], stderr: vec![] })
-        });
+        let result: Result<CachedResult> = cache
+            .with_lock(&key, || Ok(CachedResult { exit_code: 0, stdout: vec![], stderr: vec![] }));
         let elapsed = started.elapsed().unwrap_or(Duration::ZERO);
 
         // Don't assert hard on macOS — the test exists for Linux verification.
@@ -696,10 +685,7 @@ mod tests {
                 err.contains("could not acquire exclusive lock"),
                 "expected lock-deadline error, got: {err}"
             );
-            assert!(
-                elapsed < Duration::from_secs(45),
-                "with_lock took too long: {elapsed:?}"
-            );
+            assert!(elapsed < Duration::from_secs(45), "with_lock took too long: {elapsed:?}");
         }
 
         drop(holder);
