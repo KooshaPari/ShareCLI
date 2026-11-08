@@ -9,7 +9,7 @@ repository = "https://github.com/KooshaPari/phenotype-teamcomm"
 documentation = "https://docs.rs/teamcomm-daemon"
 keywords = ["phenotype", "teamcomm", "teamcomm"]
 categories = ["network-programming", "system"]
-authors = ["kooshapari"]
+authors = ["<REDACTED>"]
 
 [[bin]]
 name = "teamcomm-daemon"

@@ -1,4 +1,4 @@
-# /Users/kooshapari/CodeProjects/Phenotype/repos/phenotype-teamcomm/justfile
+# /Users/<REDACTED>/CodeProjects/Phenotype/repos/phenotype-teamcomm/justfile
 # phenotype-teamcomm — Phenotype-org standard task runner
 # See https://just.systems/man/en/
 

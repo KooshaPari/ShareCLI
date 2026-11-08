@@ -7,7 +7,7 @@ repository without stomping on each other: durable sessions, file-level
 reservations, an in-process inbox, a live state surface, and a hook event
 stream that downstream agents can subscribe to.
 
-[![AI slop inside](https://sladge.net/badge.svg)](https://sladge.net) [![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/KooshaPari/phenotype-teamcomm/total)](https://github.com/KooshaPari/phenotype-teamcomm/releases)
+[![AI slop inside](https://sladge.net/badge.svg)](https://sladge.net) [![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/<REDACTED>/phenotype-teamcomm/total)](https://github.com/KooshaPari/phenotype-teamcomm/releases)
 
 The project is a Cargo workspace with five crates:
 

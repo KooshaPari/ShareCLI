@@ -8,7 +8,7 @@ description = "teamcomm cli — Phenotype infrastructure crate (phenotype-teamco
 documentation = "https://docs.rs/teamcomm-cli"
 keywords = ["phenotype", "teamcomm", "teamcomm"]
 categories = ["network-programming", "command-line-utilities"]
-authors = ["kooshapari"]
+authors = ["<REDACTED>"]
 
 [[bin]]
 name = "teamcomm"

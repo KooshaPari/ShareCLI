@@ -8,7 +8,7 @@ repository = "https://github.com/KooshaPari/phenotype-teamcomm"
 documentation = "https://docs.rs/teamcomm-protocol"
 keywords = ["phenotype", "teamcomm", "teamcomm"]
 categories = ["network-programming"]
-authors = ["kooshapari"]
+authors = ["<REDACTED>"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

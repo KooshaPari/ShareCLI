@@ -9,7 +9,7 @@ Phenotype ecosystem — a multi-agent coordination layer (sessions, file
 reservations, inbox, live state, hook events) for AI-driven development.
 
 Do not apply parent shelf instructions
-(`/Users/kooshapari/CodeProjects/Phenotype/repos/AGENTS.md`) unless explicitly
+(`/Users/<REDACTED>/CodeProjects/Phenotype/repos/AGENTS.md`) unless explicitly
 referenced. Work from this directory and treat paths as local to
 `phenotype-teamcomm`.
 
@@ -62,7 +62,7 @@ phenotype-teamcomm/
 
 ## Canonical Surfaces
 
-- **Spec tracking:** AgilePlus at `/Users/kooshapari/CodeProjects/Phenotype/repos/AgilePlus`.
+- **Spec tracking:** AgilePlus at `/Users/<REDACTED>/CodeProjects/Phenotype/repos/AgilePlus`.
 - **Work audit:** `docs/worklogs/README.md` (to come).
 - **Build/test:** Cargo workspace — see `Key Commands` below.
 
@@ -147,5 +147,5 @@ When feature work is complete:
 ---
 
 **Parent contract:** See `AGENTS.md` at
-`/Users/kooshapari/CodeProjects/Phenotype/repos/AGENTS.md` for cross-project
+`/Users/<REDACTED>/CodeProjects/Phenotype/repos/AGENTS.md` for cross-project
 agent coordination and parent shelf governance.

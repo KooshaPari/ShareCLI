@@ -53,7 +53,7 @@
       "matchUpdateTypes": ["major"],
       "automerge": false,
       "labels": ["breaking-change", "dependencies"],
-      "assignees": ["kooshapari"]
+      "assignees": ["<REDACTED>"]
     },
     {
       "description": "Group GitHub Actions updates",

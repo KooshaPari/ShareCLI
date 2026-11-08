@@ -9,7 +9,7 @@ repository = "https://github.com/KooshaPari/phenotype-teamcomm"
 documentation = "https://docs.rs/teamcomm-mcp"
 keywords = ["phenotype", "teamcomm", "mcp"]
 categories = ["api-bindings", "network-programming"]
-authors = ["kooshapari"]
+authors = ["<REDACTED>"]
 
 [lib]
 name = "teamcomm_mcp"

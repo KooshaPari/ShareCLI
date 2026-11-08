@@ -28,7 +28,7 @@ Community leaders are responsible for clarifying and enforcing standards. They h
 
 ## Reporting
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the project owner: KooshaPari (https://github.com/KooshaPari).
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the project owner: <REDACTED> (https://github.com/KooshaPari).
 
 ## Attribution
 

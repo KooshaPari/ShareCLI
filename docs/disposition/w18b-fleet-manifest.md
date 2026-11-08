@@ -7,12 +7,12 @@
 
 ## Summary
 
-Manifest scan on `main`: **no** `KooshaPari/pheno` or `phenoShared` git/path dependencies in workspace `Cargo.toml` files. No manifest repoint PR required for W18b pheno gate.
+Manifest scan on `main`: **no** `<REDACTED>/pheno` or `phenoShared` git/path dependencies in workspace `Cargo.toml` files. No manifest repoint PR required for W18b pheno gate.
 
 ## Verification
 
 ```bash
-rg 'KooshaPari/pheno(\.git)?|phenoShared' --glob '*.toml' --glob 'go.mod'
+rg '<REDACTED>/pheno(\.git)?|phenoShared' --glob '*.toml' --glob 'go.mod'
 # (no matches in dependency manifests)
 ```
 
