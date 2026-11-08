@@ -1,0 +1,40 @@
+{
+  "binary": "/Users/kooshapari/CodeProjects/Phenotype/repos/sharecli-worktrees/fix-run-fail-closed-20261017/target/debug/sharecli",
+  "sha256": "017a0f32d4fdd688f2fb66dc7dcb854f9a6e35cb4403bd29406dbacd67730b2c",
+  "environment": "owned empty temporary HOME/XDG_CONFIG_HOME/PATH",
+  "runs": [
+    {
+      "argv": [
+        "run",
+        "node",
+        "synthetic-project"
+      ],
+      "exit": 1,
+      "stdout": "",
+      "stderr": "SHARECLI_ERROR_CODE=internal error: pooled run unavailable: no command execution backend is wired; no work was executed\n  caused by: pooled run unavailable: no command execution backend is wired; no work was executed\n",
+      "oracle_pass": true
+    },
+    {
+      "argv": [
+        "run",
+        "bun",
+        "synthetic-project"
+      ],
+      "exit": 1,
+      "stdout": "",
+      "stderr": "SHARECLI_ERROR_CODE=internal error: pooled run unavailable: no command execution backend is wired; no work was executed\n  caused by: pooled run unavailable: no command execution backend is wired; no work was executed\n",
+      "oracle_pass": true
+    },
+    {
+      "argv": [
+        "run",
+        "missing-backend",
+        "synthetic-project"
+      ],
+      "exit": 1,
+      "stdout": "",
+      "stderr": "SHARECLI_ERROR_CODE=internal error: pooled run unavailable: no command execution backend is wired; no work was executed\n  caused by: pooled run unavailable: no command execution backend is wired; no work was executed\n",
+      "oracle_pass": true
+    }
+  ]
+}

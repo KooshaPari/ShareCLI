@@ -2,7 +2,8 @@ pull_request_rules:
   - name: automatic merge on CI success
     conditions:
       - "#approved-reviews-by>=1"
-      - check-success=ci
+      - check-success=ci / test
+      - check-success=ci / lint
     actions:
       merge:
         method: squash
@@ -10,7 +11,8 @@ pull_request_rules:
   - name: automatic merge of dependabot PRs
     conditions:
       - author=dependabot[bot]
-      - check-success=ci
+      - check-success=ci / test
+      - check-success=ci / lint
       - "#check-success-or-neutral>=1"
     actions:
       merge:

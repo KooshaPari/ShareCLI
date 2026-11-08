@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! sharecli-fuse — IO-interception tier of the sharecli hypervisor.
 //!
 //! This crate implements a FUSE filesystem that sits between agent processes and

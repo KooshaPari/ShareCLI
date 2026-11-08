@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `sharecli cast …` — cross-machine text injection into registered panes.
 
 use std::fs;

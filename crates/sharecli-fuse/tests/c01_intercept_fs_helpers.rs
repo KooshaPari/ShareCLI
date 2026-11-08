@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR: FR-003
 
 //! FR-003 / C01 — InterceptFs no-mount helper coverage (Linux/macOS).

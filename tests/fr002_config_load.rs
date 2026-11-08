@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-002 — TOML Configuration Management (show / load / defaults)
 //! FR: FR-002
 //!

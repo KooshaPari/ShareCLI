@@ -1,0 +1,540 @@
+error: duplicate key
+  --> ..\..\.cargo\git\checkouts\phenoshared-e15052dca608b5ac\68beca2\crates\agile-plus\crates\agileplus-cache\Cargo.toml:15:2
+   |
+15 | [lib]
+   |  ^^^
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.47
+    Checking cfg-if v1.0.4
+   Compiling serde_core v1.0.229
+    Checking windows-link v0.2.1
+   Compiling serde v1.0.229
+    Checking typenum v1.20.1
+    Checking smallvec v1.16.1
+    Checking subtle v2.6.1
+   Compiling version_check v0.9.5
+    Checking itoa v1.0.18
+   Compiling parking_lot_core v0.9.12
+   Compiling thiserror v2.0.20
+    Checking memchr v2.8.3
+    Checking getrandom v0.2.17
+    Checking windows-sys v0.61.2
+    Checking pin-project-lite v0.2.17
+   Compiling getrandom v0.4.3
+    Checking scopeguard v1.2.0
+   Compiling find-msvc-tools v0.1.12
+   Compiling shlex v2.0.1
+    Checking const-oid v0.9.6
+    Checking once_cell v1.21.4
+    Checking rand_core v0.6.4
+    Checking lock_api v0.4.14
+    Checking log v0.4.34
+    Checking futures-core v0.3.34
+    Checking tracing-core v0.1.36
+   Compiling generic-array v0.14.9
+    Checking futures-sink v0.3.34
+   Compiling zerocopy v0.8.57
+    Checking base64ct v1.8.3
+    Checking stable_deref_trait v1.2.1
+    Checking cpufeatures v0.2.17
+    Checking futures-io v0.3.34
+   Compiling zmij v1.0.23
+    Checking futures-task v0.3.34
+    Checking slab v0.4.12
+   Compiling fs_extra v1.3.0
+    Checking pem-rfc7468 v0.7.0
+   Compiling serde_json v1.0.151
+   Compiling dunce v1.0.5
+   Compiling httparse v1.10.1
+   Compiling either v1.18.0
+   Compiling aws-lc-rs v1.18.1
+    Checking equivalent v1.0.2
+   Compiling glob v0.3.4
+    Checking foldhash v0.2.0
+    Checking allocator-api2 v0.2.21
+    Checking percent-encoding v2.3.2
+   Compiling anyhow v1.0.104
+    Checking rand_core v0.10.1
+   Compiling jobserver v0.1.35
+   Compiling libc v0.2.189
+    Checking writeable v0.6.4
+    Checking parking_lot v0.12.5
+   Compiling prettyplease v0.2.37
+   Compiling cc v1.4.5
+   Compiling clang-sys v1.9.1
+   Compiling getrandom v0.3.4
+    Checking litemap v0.8.3
+   Compiling icu_normalizer_data v2.3.0
+   Compiling regex-syntax v0.8.11
+   Compiling windows-link v0.1.3
+   Compiling icu_properties_data v2.3.0
+   Compiling libm v0.2.16
+    Checking utf8_iter v1.0.4
+   Compiling winapi v0.3.9
+    Checking untrusted v0.9.0
+    Checking socket2 v0.6.5
+    Checking mio v1.2.3
+    Checking bitflags v2.13.2
+   Compiling minimal-lexical v0.2.1
+   Compiling autocfg v1.5.1
+    Checking hashbrown v0.17.1
+   Compiling cmake v0.1.58
+   Compiling libloading v0.8.9
+   Compiling bindgen v0.72.1
+   Compiling nom v7.1.3
+   Compiling syn v2.0.119
+   Compiling syn v3.0.5
+    Checking ppv-lite86 v0.2.21
+   Compiling num-traits v0.2.19
+   Compiling regex-automata v0.4.18
+   Compiling rustls v0.23.46
+   Compiling heck v0.5.0
+    Checking base64 v0.22.1
+    Checking rand_chacha v0.3.1
+   Compiling aws-lc-sys v0.45.0
+   Compiling ring v0.17.14
+   Compiling itertools v0.13.0
+   Compiling shlex v1.3.0
+   Compiling semver v1.0.28
+   Compiling cexpr v0.6.0
+    Checking cpufeatures v0.3.1
+   Compiling rustc-hash v2.1.3
+   Compiling time-core v0.1.9
+   Compiling num-conv v0.2.2
+   Compiling rustc_version v0.4.1
+    Checking rand v0.8.8
+    Checking deranged v0.5.8
+   Compiling time-macros v0.2.32
+   Compiling windows-strings v0.4.2
+   Compiling windows-result v0.3.4
+    Checking form_urlencoded v1.2.2
+    Checking ryu v1.0.23
+    Checking powerfmt v0.2.0
+   Compiling regex v1.13.1
+   Compiling rustversion v1.0.23
+   Compiling curve25519-dalek v4.1.3
+    Checking futures-channel v0.3.34
+    Checking aho-corasick v1.1.5
+   Compiling synstructure v0.13.2
+    Checking windows-result v0.4.1
+    Checking windows-strings v0.5.1
+    Checking tower-service v0.3.3
+    Checking unicode-width v0.2.2
+    Checking data-encoding v2.11.1
+   Compiling ident_case v1.0.1
+   Compiling windows_x86_64_msvc v0.48.5
+    Checking static_assertions v1.1.0
+   Compiling strsim v0.11.1
+   Compiling darling_core v0.24.1
+   Compiling serde_derive v1.0.229
+   Compiling thiserror-impl v2.0.20
+   Compiling tokio-macros v2.7.2
+   Compiling futures-macro v0.3.34
+   Compiling zerovec-derive v0.11.6
+   Compiling displaydoc v0.2.7
+    Checking time v0.3.55
+   Compiling zeroize_derive v1.5.0
+   Compiling windows-implement v0.60.2
+   Compiling windows-interface v0.59.3
+   Compiling tracing-attributes v0.1.31
+   Compiling zerofrom-derive v0.1.7
+   Compiling yoke-derive v0.8.2
+    Checking zeroize v1.9.0
+    Checking futures-util v0.3.34
+   Compiling windows-core v0.61.2
+    Checking windows-core v0.62.2
+    Checking der v0.7.10
+    Checking rustls-pki-types v1.15.1
+    Checking zerofrom v0.1.8
+    Checking tracing v0.1.44
+    Checking crypto-common v0.1.6
+    Checking block-buffer v0.10.4
+    Checking yoke v0.8.3
+    Checking digest v0.10.7
+   Compiling curve25519-dalek-derive v0.1.1
+    Checking bytes v1.12.1
+    Checking zerovec v0.11.8
+    Checking zerotrie v0.2.5
+    Checking signature v2.2.0
+    Checking hmac v0.12.1
+    Checking sha2 v0.10.9
+    Checking rand_core v0.9.5
+    Checking try-lock v0.2.5
+    Checking spin v0.9.9
+   Compiling paste v1.0.15
+    Checking tokio v1.53.1
+    Checking http v1.5.0
+    Checking want v0.3.1
+    Checking lazy_static v1.5.0
+    Checking itertools v0.14.0
+    Checking spki v0.7.3
+    Checking rand_chacha v0.9.0
+    Checking castaway v0.2.4
+    Checking tinystr v0.8.4
+    Checking pkcs8 v0.10.2
+    Checking potential_utf v0.1.6
+   Compiling strum_macros v0.28.0
+    Checking hashbrown v0.16.1
+    Checking icu_collections v2.3.0
+   Compiling windows-threading v0.1.0
+    Checking ed25519 v2.2.3
+    Checking icu_locale_core v2.3.0
+    Checking sync_wrapper v1.0.2
+    Checking http-body v1.1.0
+    Checking ff v0.13.1
+    Checking hybrid-array v0.4.15
+    Checking base16ct v0.2.0
+    Checking httpdate v1.0.3
+    Checking unicode-segmentation v1.13.3
+   Compiling instability v0.3.13
+   Compiling winfsp-sys v0.12.1+winfsp-2.1
+    Checking tower-layer v0.3.3
+   Compiling darling_macro v0.24.1
+    Checking atomic-waker v1.1.2
+   Compiling convert_case v0.10.0
+    Checking sec1 v0.7.3
+    Checking group v0.13.0
+   Compiling darling v0.24.1
+    Checking kasuari v0.4.12
+    Checking unicode-truncate v2.0.1
+   Compiling windows-future v0.2.1
+    Checking compact_str v0.9.1
+    Checking rand v0.9.5
+    Checking windows-targets v0.48.5
+    Checking hkdf v0.12.4
+   Compiling windows-collections v0.2.0
+   Compiling windows-numerics v0.2.0
+    Checking crypto-bigint v0.5.5
+    Checking strum v0.28.0
+    Checking num-integer v0.1.47
+   Compiling async-trait v0.1.92
+    Checking chacha20 v0.10.2
+    Checking lru v0.18.4
+    Checking uuid v1.26.1
+    Checking windows-threading v0.2.1
+    Checking critical-section v1.2.0
+   Compiling indoc v2.0.7
+    Checking anstyle v1.0.14
+    Checking ipnet v2.12.2
+    Checking once_cell_polyfill v1.70.2
+    Checking utf8parse v0.2.2
+   Compiling portable-atomic v1.15.0
+    Checking rand v0.10.2
+    Checking anstyle-wincon v3.0.11
+    Checking ratatui-core v0.1.2
+    Checking windows-future v0.3.2
+    Checking anstyle-parse v1.0.0
+    Checking ed25519-dalek v2.2.0
+   Compiling windows v0.61.3
+    Checking windows-sys v0.48.0
+   Compiling derive_more-impl v2.1.1
+    Checking crypto-common v0.2.2
+    Checking block-buffer v0.12.1
+    Checking http-body-util v0.1.5
+    Checking webpki-roots v1.0.9
+    Checking opentelemetry v0.32.0
+    Checking windows-collections v0.3.2
+    Checking windows-numerics v0.3.1
+    Checking inout v0.1.4
+    Checking anstyle-query v1.1.5
+   Compiling bytemuck v1.25.2
+    Checking colorchoice v1.0.5
+   Compiling pkg-config v0.3.34
+   Compiling widestring v1.2.1
+    Checking option-ext v0.2.0
+   Compiling windows_x86_64_msvc v0.53.1
+   Compiling vcpkg v0.2.15
+   Compiling litrs v1.0.0
+    Checking icu_provider v2.3.1
+   Compiling ntapi v0.4.3
+    Checking const-oid v0.10.2
+    Checking is_terminal_polyfill v1.70.2
+    Checking anstream v1.0.0
+    Checking icu_normalizer v2.3.0
+    Checking digest v0.11.3
+    Checking dirs-sys v0.4.1
+    Checking windows v0.62.2
+   Compiling document-features v0.2.12
+    Checking derive_more v2.1.1
+    Checking cipher v0.4.4
+    Checking webpki-roots v0.26.11
+    Checking signatory v0.27.1
+    Checking rfc6979 v0.4.0
+    Checking universal-hash v0.5.1
+   Compiling pin-project-internal v1.1.13
+    Checking crossterm_winapi v0.9.1
+    Checking line-clipping v0.3.8
+    Checking schannel v0.1.29
+   Compiling libsqlite3-sys v0.38.2
+    Checking base64 v0.23.1
+    Checking opaque-debug v0.3.1
+    Checking winnow v1.0.4
+    Checking clap_lex v1.1.0
+   Compiling num-bigint-dig v0.8.6
+    Checking elliptic-curve v0.13.8
+   Compiling crossbeam-utils v0.8.23
+    Checking clap_builder v4.6.6
+    Checking pin-project v1.1.13
+    Checking toml_parser v1.1.3+spec-1.1.0
+    Checking rustls-native-certs v0.8.4
+   Compiling prost-derive v0.14.4
+    Checking polyval v0.6.2
+    Checking nkeys v0.4.5
+    Checking ratatui-widgets v0.3.2
+    Checking crossterm v0.29.0
+    Checking ecdsa v0.16.9
+    Checking primeorder v0.13.6
+    Checking dirs v5.0.1
+    Checking num-iter v0.1.46
+    Checking sharded-slab v0.1.7
+    Checking matchers v0.2.0
+    Checking futures-executor v0.3.34
+    Checking sha1 v0.10.7
+    Checking serde_nanos v0.1.4
+    Checking tracing-serde v0.2.0
+   Compiling serde_repr v0.1.21
+   Compiling clap_derive v4.6.4
+    Checking nuid v0.5.0
+   Compiling blake3 v1.8.7
+    Checking icu_properties v2.3.0
+    Checking winapi-util v0.1.11
+    Checking nu-ansi-term v0.50.3
+    Checking serde_spanned v1.1.1
+    Checking toml_datetime v1.1.1+spec-1.1.0
+    Checking tracing-log v0.2.0
+    Checking thread_local v1.1.10
+    Checking fastrand v2.5.0
+    Checking toml_writer v1.1.2+spec-1.1.0
+    Checking ratatui-macros v0.7.2
+    Checking prost v0.14.4
+    Checking tempfile v3.27.0
+    Checking same-file v1.0.6
+    Checking ratatui-crossterm v0.1.2
+    Checking tracing-subscriber v0.3.23
+    Checking tungstenite v0.29.0
+    Checking windows-targets v0.53.5
+    Checking ghash v0.5.1
+    Checking toml v1.1.6+spec-1.1.0
+    Checking aes v0.8.4
+    Checking ctr v0.9.2
+    Checking sha1 v0.11.0
+    Checking substrate-core v0.3.10 (https://github.com/KooshaPari/PhenoShared#68beca26)
+    Checking num-bigint v0.4.8
+   Compiling spawn-core-sys v0.8.0 (C:\Users\koosh\sharecli-wtrees\w3-deny\crates\spawn-core-sys)
+    Checking pkcs1 v0.7.5
+    Checking chrono v0.4.45
+    Checking aead v0.5.2
+    Checking hashlink v0.12.2
+    Checking clap v4.6.6
+    Checking arrayvec v0.7.8
+    Checking encode_unicode v1.0.0
+    Checking fallible-streaming-iterator v0.1.9
+    Checking mime v0.3.17
+    Checking fallible-iterator v0.3.0
+    Checking constant_time_eq v0.4.2
+    Checking rsa v0.9.10
+    Checking aes-gcm v0.10.3
+    Checking axum-core v0.5.6
+    Checking console v0.16.6
+    Checking crossbeam-channel v0.5.17
+    Checking rusqlite v0.40.2
+    Checking tungstenite v0.30.0
+    Checking windows-sys v0.60.2
+    Checking ratatui v0.30.2
+    Checking walkdir v2.5.0
+    Checking p256 v0.13.2
+    Checking idna_adapter v1.2.2
+    Checking p384 v0.13.1
+    Checking sharecli-mesh v0.8.0 (C:\Users\koosh\sharecli-wtrees\w3-deny\crates\sharecli-mesh)
+    Checking tokio-stream v0.1.19
+    Checking hyper v1.11.1
+    Checking tower v0.5.3
+    Checking idna v1.1.0
+    Checking tokio-util v0.7.19
+    Checking tryhard v0.5.2
+    Checking simple_asn1 v0.6.4
+    Checking command-group v5.0.1
+    Checking tokio-tungstenite v0.29.0
+    Checking pbkdf2 v0.12.2
+    Checking notify-types v2.1.0
+    Checking serde_urlencoded v0.7.1
+    Checking url v2.5.8
+    Checking pem v3.0.6
+    Checking indexmap v2.14.2
+    Checking serde_path_to_error v0.1.20
+    Checking roff v1.1.1
+    Checking matchit v0.8.4
+    Checking unit-prefix v0.5.2
+    Checking unsafe-libyaml v0.2.11
+    Checking symlink v0.1.0
+    Checking hex v0.4.3
+    Checking clap_mangen v0.3.3
+    Checking tracing-appender v0.2.5
+    Checking runtime-process v0.3.10 (https://github.com/KooshaPari/PhenoShared#68beca26)
+    Checking notify v8.2.0
+    Checking jsonwebtoken v11.0.0
+    Checking indicatif v0.18.6
+    Checking opentelemetry_sdk v0.32.1
+    Checking sharecli-session v0.8.0 (C:\Users\koosh\sharecli-wtrees\w3-deny\crates\sharecli-session)
+    Checking phenotype-crypto v0.2.0 (https://github.com/KooshaPari/PhenoInfra.git?rev=dd040ed1#dd040ed1)
+    Checking tokio-tungstenite v0.30.0
+    Checking phenotype-health v0.2.0 (https://github.com/KooshaPari/PhenoInfra.git?rev=dd040ed1#dd040ed1)
+    Checking phenotype-observability v0.2.0 (https://github.com/KooshaPari/PhenoInfra.git?rev=dd040ed1#dd040ed1)
+    Checking substrate v0.3.10 (https://github.com/KooshaPari/PhenoShared#68beca26)
+    Checking tracing-opentelemetry v0.33.0
+    Checking clap_complete v4.6.9
+    Checking sha2 v0.11.0
+    Checking phenotype-state-machine v0.2.0 (https://github.com/KooshaPari/PhenoInfra.git?rev=dd040ed1#dd040ed1)
+    Checking fs2 v0.4.3
+    Checking sharecli-sync v0.8.0 (C:\Users\koosh\sharecli-wtrees\w3-deny\crates\sharecli-sync)
+    Checking tower-http v0.6.11
+warning: constant `MAX_SURFACE_LINE_BYTES` is never used
+  --> crates\sharecli-session\src\rpc.rs:24:7
+   |
+24 | const MAX_SURFACE_LINE_BYTES: usize = 1024 * 1024;
+   |       ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+    Checking serde_yaml v0.9.34+deprecated
+warning: `sharecli-session` (lib) generated 1 warning
+    Checking hyper-util v0.1.20
+    Checking axum v0.8.9
+    Checking opentelemetry-proto v0.32.0
+    Checking sysinfo v0.39.6
+   Compiling winfsp v0.13.1+winfsp-2.1
+    Checking rustls-webpki v0.103.15
+    Checking tokio-rustls v0.26.5
+    Checking rustls-platform-verifier v0.7.0
+    Checking hyper-rustls v0.27.9
+    Checking tokio-websockets v0.10.1
+    Checking reqwest v0.13.5
+   Compiling sharecli-fuse v0.8.0 (C:\Users\koosh\sharecli-wtrees\w3-deny\crates\sharecli-fuse)
+    Checking async-nats v0.50.0
+warning: unused import: `std::sync::mpsc`
+ --> crates\sharecli-fuse\src\mount_smoke.rs:8:5
+  |
+8 | use std::sync::mpsc;
+  |     ^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unreachable expression
+  --> crates\sharecli-fuse\src\mount_smoke.rs:47:5
+   |
+45 |           return crate::winfsp_mount::force_unmount_winfsp(mountpoint);
+   |           ------------------------------------------------------------ any code following this expression is unreachable
+46 |       }
+47 | /     Err(std::io::Error::other(format!(
+48 | |         "sharecli-fuse: force_unmount failed for {}",
+49 | |         mountpoint.display()
+50 | |     )))
+   | |_______^ unreachable expression
+   |
+   = note: `#[warn(unreachable_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `record_global_neg_hit` is never used
+  --> crates\sharecli-fuse\src\neg_dentry.rs:51:15
+   |
+51 | pub(crate) fn record_global_neg_hit() {
+   |               ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `record_global_neg_miss` is never used
+  --> crates\sharecli-fuse\src\neg_dentry.rs:56:15
+   |
+56 | pub(crate) fn record_global_neg_miss() {
+   |               ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `map_attr_err` is never used
+   --> crates\sharecli-fuse\src\provenance.rs:152:4
+    |
+152 | fn map_attr_err(err: std::io::Error) -> std::io::Error {
+    |    ^^^^^^^^^^^^
+
+warning: method `mountpoint` is never used
+   --> crates\sharecli-fuse\src\winfsp_mount.rs:126:12
+    |
+ 76 | impl WinfspMountSession {
+    | ----------------------- method in this implementation
+...
+126 |     pub fn mountpoint(&self) -> &Path {
+    |            ^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> crates\sharecli-fuse\src\session_registry.rs:307:5
+    |
+307 | /     pub fn mount_background(
+308 | |         &self,
+309 | |         mountpoint: &Path,
+310 | |         backing: &Path,
+311 | |         session_id: &str,
+312 | |     ) -> anyhow::Result<()> {
+    | |___________________________^
+    |
+note: the lint level is defined here
+   --> crates\sharecli-fuse\src\lib.rs:26:9
+    |
+ 26 | #![warn(missing_docs)]
+    |         ^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> crates\sharecli-fuse\src\session_registry.rs:318:5
+    |
+318 | /     pub fn mount_foreground(
+319 | |         &self,
+320 | |         mountpoint: &Path,
+321 | |         backing: &Path,
+322 | |         session_id: &str,
+323 | |     ) -> anyhow::Result<()> {
+    | |___________________________^
+
+warning: missing documentation for a method
+   --> crates\sharecli-fuse\src\session_registry.rs:329:5
+    |
+329 | /     pub fn mount_background_with(
+330 | |         &self,
+331 | |         mountpoint: &Path,
+332 | |         backing: &Path,
+333 | |         opts: &FuseMountOptions,
+334 | |     ) -> anyhow::Result<()> {
+    | |___________________________^
+
+warning: missing documentation for a method
+   --> crates\sharecli-fuse\src\session_registry.rs:339:5
+    |
+339 | /     pub fn mount_foreground_with(
+340 | |         &self,
+341 | |         mountpoint: &Path,
+342 | |         backing: &Path,
+343 | |         opts: &FuseMountOptions,
+344 | |     ) -> anyhow::Result<()> {
+    | |___________________________^
+
+warning: missing documentation for a method
+   --> crates\sharecli-fuse\src\session_registry.rs:477:5
+    |
+477 | /     pub fn resolve_fs(
+478 | |         &self,
+479 | |         mountpoint: Option<&Path>,
+480 | |     ) -> anyhow::Result<std::sync::Arc<crate::CowMountHandle>> {
+    | |______________________________________________________________^
+
+warning: `sharecli-fuse` (lib) generated 11 warnings (run `cargo fix --lib -p sharecli-fuse` to apply 1 suggestion)
+    Checking opentelemetry-http v0.32.0
+    Checking opentelemetry-otlp v0.32.0
+    Checking sharecli-fleet v0.8.0 (C:\Users\koosh\sharecli-wtrees\w3-deny\crates\sharecli-fleet)
+warning: unused import: `Context`
+ --> crates\sharecli-fleet\src\resource_watch.rs:7:14
+  |
+7 | use anyhow::{Context, Result};
+  |              ^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sharecli-fleet` (lib) generated 1 warning
+    Checking sharecli-thermal-tui v0.8.0 (C:\Users\koosh\sharecli-wtrees\w3-deny\crates\sharecli-thermal-tui)
+    Checking sharecli v0.8.0 (C:\Users\koosh\sharecli-wtrees\w3-deny)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3m 43s

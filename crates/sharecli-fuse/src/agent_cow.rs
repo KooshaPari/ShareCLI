@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Per-agent CoW overlay store (Feb `harness-fuse --cow` parity).
 //!
 //! Staging lives under `{cow_root}/{agent}/` as independent [`WriteSerialize`]

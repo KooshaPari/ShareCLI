@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 /// Runtime backend negotiation for macFUSE on macOS.
 ///
 /// The backend only matters on macOS: macOS 15+ prefers the File System Kit

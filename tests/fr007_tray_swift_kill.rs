@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — Swift tray kill operator parity (AC-007.54)
 //! FR: FR-007
 //!

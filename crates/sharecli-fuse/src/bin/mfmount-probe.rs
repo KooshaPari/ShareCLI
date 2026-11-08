@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Opt-in macOS macFUSE MFMount negotiation probe.
 //!
 //! This intentionally does not implement a FUSE request loop. It only verifies

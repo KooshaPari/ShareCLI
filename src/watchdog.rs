@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Process watchdog with per-name restart cap.
 //!
 //! Tracks child process lifecycle: a process exits, the supervisor asks the

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Undo / restore support for sharecli (C09 L81.9).
 //!
 //! Provides a journal-backed undo model. Every mutating sharecli operation

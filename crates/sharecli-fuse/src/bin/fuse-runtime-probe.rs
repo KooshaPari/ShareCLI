@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Read-only runtime evidence for the optional FUSE interception tier.
 //!
 //! This probe never loads a kext, changes approval state, mounts a volume, or

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Per-path write serialization + staging CoW commit/discard (FR-009).
 //!
 //! Concurrent writes to the same path take a per-path mutex. Staging CoW

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Plugin registry: discover and call executable plugins from a directory.
 //!
 //! Wired into the binary via `util` demos / tests; keep the surface under

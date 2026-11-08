@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Mutating-flag (`nocache_args`) detection from the Feb agent-harness.
 //!
 //! Origin: `~/Downloads/files/rules.conf` + `harness` dispatcher —

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-001 — Managed Process Lifecycle
 //! FR: FR-001
 //!

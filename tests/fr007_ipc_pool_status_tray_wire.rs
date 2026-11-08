@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — tray wire parity for `pool.status` + `status.snapshot` (AC-007.68)
 //! FR: FR-007
 //!

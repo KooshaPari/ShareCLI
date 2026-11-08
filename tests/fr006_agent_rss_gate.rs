@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-006 × FR-011 — agent RSS samples tighten thermal spawn gate
 //! FR: FR-006, FR-011
 //!

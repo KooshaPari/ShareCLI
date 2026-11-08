@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `cast` subcommand — cross-machine text injection into registered panes.
 //!
 //! Adds `sharecli cast register <name> <address>`, `cast unregister <name>`,

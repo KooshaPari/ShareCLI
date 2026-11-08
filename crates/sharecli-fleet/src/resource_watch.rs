@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Host FD / network resource watch sampling (FR-007).
 //!
 //! Used by [`sharecli_core::Hypervisor::run`] for live watch signals and

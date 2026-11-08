@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 // Minimal TACACS+ packet parser (RFC 8907 — Terminal Access Controller
 // Access-Control Plus).
 //

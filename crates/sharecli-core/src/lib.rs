@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `sharecli-core` — hypervisor engine tier.
 //!
 //! This crate is the central entry point for spawning managed processes in the

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-001 — Stop filter behavior
 //! FR: FR-001
 //!

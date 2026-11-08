@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C05 L46 — MWMB burn-rate alerts + error budget policy (FR-003).
 //!
 //! FR: FR-003

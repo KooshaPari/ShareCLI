@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C07 L66 / FR-003 — property-based testing expand (config + cast registry + replay).
 //!
 //! Evidence: `docs/ops/config-proptest.md`, `proptest-regressions/`, `src/proptest_util.rs`.

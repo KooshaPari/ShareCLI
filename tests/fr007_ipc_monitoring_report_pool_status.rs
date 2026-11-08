@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — IPC `monitoring.report` embedded pool + status siblings (AC-007.72)
 //! FR: FR-007
 //!

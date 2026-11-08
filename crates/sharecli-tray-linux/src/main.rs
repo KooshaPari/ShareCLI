@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! sharecli-tray — Linux system-tray client for sharecli.
 //!
 //! Renders a StatusNotifierItem tray (via `ksni`, the KDE/freedesktop SNI
@@ -253,6 +254,7 @@ mod linux {
         }
     }
 
+    /// Launch the tray binary: configure tracing, spawn the SNI icon, and run the event loop.
     pub fn run() {
         tracing_subscriber::fmt()
             .with_env_filter(

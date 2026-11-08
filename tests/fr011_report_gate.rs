@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-011 / AC-011.6 — report + ps --all gate parity with status/TUI.
 //!
 //! AC-011.6: `sharecli report` and `sharecli ps --all` expose thermal+agent

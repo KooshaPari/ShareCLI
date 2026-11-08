@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Bounded, sequenced surface events for live terminal I/O.
 
 use std::collections::{HashMap, VecDeque};

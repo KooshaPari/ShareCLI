@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C11 L111 — soft auto-update probe (FR-003).
 //!
 //! FR: FR-003

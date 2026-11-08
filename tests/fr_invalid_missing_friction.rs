@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Unhappy-path friction suite — invalid / missing inputs per FR-001..005.
 //! FR: FR-001, FR-002, FR-003, FR-004, FR-005
 //!

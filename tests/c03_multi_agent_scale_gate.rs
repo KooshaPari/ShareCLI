@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C03 — Multi-Agent Scale Gate (Wave19 gap remediation)
 //!
 //! FR: FR-003, FR-008

@@ -165,7 +165,22 @@ test-doc:
 coverage:
     @echo ">> cargo llvm-cov (lcov)"
     @command -v cargo-llvm-cov >/dev/null 2>&1 || cargo install --locked cargo-llvm-cov
-    @cargo llvm-cov --locked --all-features --workspace --lcov --output-path lcov.info
+    @cargo llvm-cov --lib --locked --all-features --workspace \
+      --ignore-filename-regex '(^|/)(commands|cast)/|wasm_opcode\.rs$|coordination\.rs$|(^|/)src/runtime/|speculative_cache\.rs$|(^|/)crates/' \
+      --lcov --output-path lcov.info
+    @echo ">> coverage written to lcov.info"
+
+# The scope above mirrors the quality-gate.yml unit coverage gate so that a
+# local run reproduces the gate. To enforce the same 85% floor locally, use
+# `just coverage-gate` instead.
+[group: 'coverage']
+coverage-gate:
+    @echo ">> cargo llvm-cov (lcov) with the 85% unit coverage gate"
+    @command -v cargo-llvm-cov >/dev/null 2>&1 || cargo install --locked cargo-llvm-cov
+    @cargo llvm-cov --lib --locked --all-features --workspace \
+      --fail-under-lines 85 \
+      --ignore-filename-regex '(^|/)(commands|cast)/|wasm_opcode\.rs$|coordination\.rs$|(^|/)src/runtime/|speculative_cache\.rs$|(^|/)crates/' \
+      --lcov --output-path lcov.info
     @echo ">> coverage written to lcov.info"
 
 # -------- security --------
@@ -300,11 +315,14 @@ ci-fast: fmt-check lint test build
 version:
     @grep '^version' Cargo.toml | head -1 | cut -d'"' -f2
 
+# Regenerate CHANGELOG.gen.md only (never the curated CHANGELOG.md)
 [group: 'release']
 changelog:
-    @echo ">> generating CHANGELOG.md via git-cliff"
+    @echo ">> generating CHANGELOG.gen.md via git-cliff"
     @command -v git-cliff >/dev/null 2>&1 || cargo install --locked git-cliff
-    @git-cliff --tag "$(just version)" --output CHANGELOG.md
+    @git-cliff --config cliff.toml --tag "$(just version)" --output CHANGELOG.gen.md
+    @awk '{ sub(/[[:space:]]+$/, "") } /^$/ { b = "\n"; next } { printf "%s%s\n", b, $0; b = "" }' CHANGELOG.gen.md > CHANGELOG.gen.tmp
+    @mv CHANGELOG.gen.tmp CHANGELOG.gen.md
 
 [group: 'release']
 publish: build-release

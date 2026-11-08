@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 // FR:003 — Session layout round-trip + validation tests
 use std::time::{SystemTime, UNIX_EPOCH};
 

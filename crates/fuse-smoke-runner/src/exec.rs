@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Host probes and cell executors for the FUSE smoke matrix.
 
 use std::path::{Path, PathBuf};

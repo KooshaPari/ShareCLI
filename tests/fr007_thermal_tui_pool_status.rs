@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FR-007 — thermal TUI pool + proc-scan operator panels (AC-007.71)
 //! FR: FR-007
 //!

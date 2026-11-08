@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Cache-key modes from the Feb agent-harness (`harness::cache_key`).
 //!
 //! | Mode   | Inputs hashed                                      |

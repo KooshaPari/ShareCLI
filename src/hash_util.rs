@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 pub fn djb2(s: &str) -> u32 {
     let mut hash: u32 = 5381;
     for c in s.chars() {

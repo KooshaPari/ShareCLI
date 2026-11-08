@@ -4,6 +4,7 @@ This index lists the design notes, ADRs, and supporting documentation maintained
 
 ## Subdirectories
 
+- [`compete/`](compete/) — Compete (1 document)
 - [`journeys/`](journeys/) — Journeys (2 documents)
 - [`stories/`](stories/) — Stories (2 documents)
 - [`traceability/`](traceability/) — Traceability (1 document)

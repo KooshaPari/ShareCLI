@@ -346,7 +346,7 @@ The `configs/` directory contains hook snippets for lifecycle event bridging:
 
 ### 6.2 M2: MCP Tool-Call Surface
 
-- Full MCP server integration with the actual daemon backend
+- Full MCP server integration with the running daemon
 - Tool-call schemas synchronized with `mcp/manifest.json`
 - Support for MCP `initialize` handshake and capability negotiation
 

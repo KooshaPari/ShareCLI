@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! C01 L14 — thiserror domain errors + CLI exit codes (FR-003).
 //!
 //! FR: FR-003
