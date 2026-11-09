@@ -9,28 +9,19 @@ reason = "rsa Marvin-attack advisory covers every released version (introduced 0
 id = "RUSTSEC-2024-0436"
 reason = "Informational 'unmaintained' advisory for the paste crate. paste 1.0.15 is a stale Cargo.lock entry: no package in the workspace dependency graph references it (cargo tree -i paste is empty), so there is nothing to replace."
 
-# zbus family (zvariant / zbus_names / zvariant_derive) - two independent
-# paths reach zbus, and neither one is compiled into a macOS or Windows
-# sharecli artifact:
-#   (a) sharecli-tray-linux -> ksni -> zbus.
-#       crates/sharecli-tray-linux/Cargo.toml declares ksni under
-#       [target.'cfg(target_os = "linux")'.dependencies], so this path is
-#       Linux-only, and it is absent on FreeBSD.
-#   (b) sharecli feature "desktop-notifications" -> notify-rust 4.18.2 ->
-#       zbus. notify-rust 4.18.2 declares zbus under
-#       [target.'cfg(all(unix, not(target_os = "macos")))'.dependencies],
-#       which covers Linux, FreeBSD and the other BSDs and excludes macOS.
-#       On FreeBSD this is the only path to zbus.
-# zbus 5.x still re-exports the pre-merge crate names for source compat, but
-# RustSec has flagged each of them as unmaintained now that they're folded into
-# the monolithic `zbus` 6.x. All three are informational=unmaintained with
-# patched = [], so there is no patched release to upgrade to. sharecli does
-# not use these crates directly.
-# The advisories still fire because neither scanner resolves per-target: both
-# osv.yml and ci.yml pass --lockfile=Cargo.lock, and deny.yml runs bare `cargo
-# deny check` with no [graph] target filter in deny.toml. Both read the
-# target-agnostic root Cargo.lock, which lists zvariant, zbus_names and
-# zvariant_derive regardless of the build target.
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0449"
+reason = "unsafe-libyaml 0.2.11 is linked into the shipped binary via serde_yaml and is reachable from `sharecli proc-compose` and `sharecli soak` (serde_yaml::from_str at src/proc_compose.rs:134 and src/commands/soak.rs:162, both dispatched from src/main.rs). It parses only operator-supplied local YAML with no network surface. Upstream is archived (2024-03-25) with no safe upgrade; the maintained drop-in serde_yaml_ng still depends on unsafe-libyaml, so no replacement exists short of migrating to a pure-Rust parser. Tracked for removal when that migration lands."
+
+# gtk-rs 0.18 family (gtk/atk/gdk/glib/proc-macro-error) — Linux-only
+# transitive deps of the `tray-icon` crate's Linux backend, recorded in the
+# workspace Cargo.lock because Cargo resolves all target-specific deps. sharecli
+# ships a separate native Linux tray (`sharecli-tray-linux`) built on `ksni` (a
+# D-Bus StatusNotifierItem), so tray-icon's gtk backend is platform-gated dead
+# code that is never compiled into nor shipped from any sharecli artifact. The
+# Windows tray (the only consumer of tray-icon) compiles the `windows-sys`
+# backend exclusively; glib 0.18.5's patched version is 0.20.0, a breaking
+# release that gtk 0.18.2 does not accept, so there is no non-breaking upgrade.
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0370"
 reason = "zvariant unmaintained (folded into zbus 6.0.0 as zbus::wire); Two independent zbus paths reach it: (a) sharecli-tray-linux -> ksni -> zbus, gated by cfg(target_os = \"linux\") in crates/sharecli-tray-linux/Cargo.toml (Linux only, and absent on FreeBSD); (b) sharecli feature \"desktop-notifications\" -> notify-rust 4.18.2 -> zbus, gated by notify-rust's cfg(all(unix, not(target_os = \"macos\"))) target dep table, which covers Linux, FreeBSD and the other BSDs and excludes macOS - on FreeBSD notify-rust is the only path to zbus. macOS and Windows artifacts do not link zbus (cargo tree -i zbus --target aarch64-apple-darwin prints nothing). The advisory is still reported because both scanners read only the target-agnostic root Cargo.lock (osv.yml and ci.yml pass --lockfile=Cargo.lock; deny.yml runs bare cargo deny check and deny.toml has no [graph] target filter), which lists zvariant/zbus_names/zvariant_derive regardless of build target - neither scanner does per-target resolution. It is informational=unmaintained with patched = [], so no patched release exists to upgrade to."

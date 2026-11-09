@@ -51,8 +51,8 @@ serde_json = "1"
 toml = "1.1"
 
 # Process management (substrate SDK + adapter)
-substrate = { git = "https://github.com/KooshaPari/PhenoShared", default-features = false }
-runtime-process = { git = "https://github.com/KooshaPari/PhenoShared", package = "runtime-process" }
+substrate = { git = "https://github.com/KooshaPari/PhenoShared", rev = "ea27186296734f441813907eb98b052923c06f4f", default-features = false }
+runtime-process = { git = "https://github.com/KooshaPari/PhenoShared", rev = "ea27186296734f441813907eb98b052923c06f4f", package = "runtime-process" }
 sysinfo = "0.39"
 
 # Zig hot core: POSIX semaphore, posix_spawn, setpriority, waitpid
