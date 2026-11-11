@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! The sharecli hypervisor engine.
 //!
 //! Owns a [`CoalesceCache`] and routes every [`SpawnRequest`] through the

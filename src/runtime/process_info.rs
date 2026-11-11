@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `ProcessInfo` (the dashboard / IPC payload) plus platform-specific helpers
 //! for counting open file descriptors and threads per PID.
 //!

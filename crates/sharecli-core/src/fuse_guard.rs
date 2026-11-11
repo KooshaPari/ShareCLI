@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! FUSE IO-intercept guard.
 //!
 //! The hypervisor mounts a sharecli-fuse IO-intercept layer over the child's

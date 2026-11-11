@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `sharecli ps` and `sharecli status` operator commands (FR-007 / AC-007.43, 007.49, 007.25, 007.66).
 //!
 //! `ps` lists managed pool processes (with optional host-agent inventory under `--all`),

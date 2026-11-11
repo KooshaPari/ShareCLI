@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Spawn / stop audit emission and `ProcState` value type.
 //!
 //! `ProcState` is the stable, serialisable mapping of `sysinfo::ProcessStatus`

@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Process runtime management with shared pool support.
 //!
 //! Spawn/monitor/kill delegated to substrate [`ProcessPort`] (`runtime-process`);

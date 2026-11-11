@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `ThermalEvent` enum and pure pressure-parsing.
 //!
 //! `parse_pressure_level` is the single canonical mapping from a raw sysctl

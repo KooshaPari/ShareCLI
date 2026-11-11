@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `sharecli health` operator command (FR-007 / AC-007.44, 007.64, 007.77).
 //!
 //! Reports the shared runtime's health status, pool counts, and any current
