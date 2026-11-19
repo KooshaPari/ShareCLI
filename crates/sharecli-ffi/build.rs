@@ -63,7 +63,12 @@ fn dylib_name() -> &'static str {
     "libsharecli_ffi.so"
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[cfg(target_os = "windows")]
 fn dylib_name() -> &'static str {
-    compile_error!("sharecli-ffi integration tests are unix-only (macos, linux)")
+    "sharecli_ffi.dll"
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+fn dylib_name() -> &'static str {
+    compile_error!("sharecli-ffi integration tests are unsupported on this target")
 }
