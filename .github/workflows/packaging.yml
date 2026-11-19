@@ -85,26 +85,53 @@ jobs:
 
       # Install WiX toolset and build MSI
       - name: Package MSI with WiX
+        id: package_msi
+        shell: pwsh
         run: |
+          $ErrorActionPreference = "Continue"
+          $status = 0
           echo "::warning::WiX toolset not yet installed — MSI packaging is a TODO placeholder"
           echo "sharecli-msi payload staged at sharecli-msi/"
-          dir sharecli-msi\
+          Get-ChildItem sharecli-msi\
           if (Get-Command cargo-wix -ErrorAction SilentlyContinue) {
-            cargo wix --no-build --output sharecli.msi -p sharecli
+            & cargo wix --no-build --output sharecli.msi -p sharecli
+            if ($LASTEXITCODE -ne 0) { $status = $LASTEXITCODE }
           } else {
             echo "::notice::cargo-wix not available; skipping real MSI build"
           }
-        continue-on-error: true
+          "status=$status" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          # Do not fail here so artifact upload/final gate can run.
 
       - name: Upload MSI artifact
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        continue-on-error: true
         with:
           name: sharecli-msi-hard-${{ github.sha }}
           path: |
             sharecli-msi/**/*
             sharecli.msi
           retention-days: 14
+
+      - name: Fail if MSI packaging failed
+        if: always()
+        shell: pwsh
+        env:
+          PACKAGE_STATUS: ${{ steps.package_msi.outputs.status }}
+        run: |
+          $status = "$env:PACKAGE_STATUS"
+          if ([string]::IsNullOrEmpty($status)) {
+            Write-Error "MSI packaging step did not report status"
+            exit 1
+          }
+          if ([int]$status -ne 0) {
+            Write-Error "MSI packaging failed (exit $status)"
+            exit [int]$status
+          }
+          if (!(Test-Path "sharecli-msi/payload/sharecli.exe")) {
+            Write-Error "MSI payload missing"
+            exit 1
+          }
+          Write-Host "MSI packaging completed without command failure"
 
   linux-deb:
     name: Linux DEB (hard gate)
