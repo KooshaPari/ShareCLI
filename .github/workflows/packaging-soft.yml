@@ -44,7 +44,6 @@ jobs:
         run: bash scripts/packaging/build_deb.sh
       - name: Assert .deb artifact
         run: |
-          set -euo pipefail
           shopt -s nullglob
           debs=(dist/sharecli_*.deb)
           deb="${debs[0]:-}"

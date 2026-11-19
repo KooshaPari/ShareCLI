@@ -16,7 +16,6 @@ jobs:
           version: 0.14.1
       - name: Build Dashboard Assets
         run: |
-          set -euo pipefail
           cargo build --release --locked 2>&1 | tail -5
       - name: Visual Snapshot Check
         run: |

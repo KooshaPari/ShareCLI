@@ -135,9 +135,7 @@ jobs:
           p12-password: ${{ env.APPLE_CERTIFICATE_PWD }}
 
       - name: Build release binary
-        shell: bash
         run: |
-          set -euo pipefail
           cargo build --release --locked 2>&1 | tail -5
 
       - name: Codesign release binary

@@ -165,7 +165,6 @@ jobs:
 
       - name: Check FR annotations in new tests
         run: |
-          set -euo pipefail
           # Get changed test files
           set +e
           CHANGED_FILES=$(git diff --name-only origin/main...HEAD | grep -E '(_test\.rs|tests?/.*\.rs)$')

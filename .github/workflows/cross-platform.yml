@@ -56,7 +56,6 @@ jobs:
       - name: Build
         shell: bash
         run: |
-          set -euo pipefail
           cargo build --workspace --all-features --locked 2>&1 | tail -5
 
       - name: Test (lib)

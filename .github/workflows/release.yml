@@ -103,7 +103,6 @@ jobs:
         id: version
         shell: bash
         run: |
-          set -euo pipefail
           VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
           if [ -z "$VERSION" ]; then
             echo "::error::failed to determine version from Cargo.toml"

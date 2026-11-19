@@ -25,7 +25,6 @@ jobs:
       - name: Miri (harness-native lib tests)
         id: miri
         run: |
-          set -euo pipefail
           cd crates/harness-native
           set +e
           cargo miri test --locked --lib 2>&1 | tee miri.log
@@ -39,7 +38,6 @@ jobs:
       - name: Fail if miri failed
         if: always()
         run: |
-          set -euo pipefail
           status="${{ steps.miri.outputs.status }}"
           if [ -z "${status}" ]; then
             echo "::error::miri step did not report status"

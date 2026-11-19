@@ -52,7 +52,6 @@ jobs:
         env:
           CARGO_TERM_COLOR: never
         run: |
-          set -euo pipefail
           OUT=$(cargo test --locked --all-features --workspace -- --list)
           set +e
           COUNT=$(printf '%s\n' "$OUT" | grep -cE ': test$')

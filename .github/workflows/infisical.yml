@@ -33,7 +33,6 @@ jobs:
           INFISICAL_PROJECT_ID: ${{ vars.INFISICAL_PROJECT_ID || secrets.INFISICAL_PROJECT_ID || '8efe392e-56a6-4c3c-89f9-8141183dd7e8' }}
           INFISICAL_ENV: ${{ vars.INFISICAL_ENV || github.ref == 'refs/heads/main' && 'prod' || github.ref == 'refs/heads/staging' && 'staging' || 'dev' }}
         run: |
-          set -euo pipefail
           # Validate required secrets are present
           if [ -z "$INFISICAL_TOKEN" ]; then
             echo "::error::INFISICAL_TOKEN secret not configured in repo settings"

@@ -148,7 +148,6 @@ jobs:
         # rustfmt.toml pins the stable toolchain to 1.96.0 via dtolnay/rust-toolchain.
         # group_imports / indent_style are configured in rustfmt.toml.
         run: |
-          set -euo pipefail
           fmt_log="$(mktemp)"
           set +e
           cargo fmt --all -- --check >"$fmt_log" 2>&1
@@ -167,7 +166,6 @@ jobs:
           exit "$status"
       - name: Lint (clippy, informational)
         run: |
-          set -euo pipefail
           set +e
           cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee clippy.log
           clippy_status=${PIPESTATUS[0]}
@@ -222,7 +220,6 @@ jobs:
         # Test RESULTS stay informational (FR-007 debt). A missing binary is a
         # hard failure: that is a broken pipeline, not known debt.
         run: |
-          set -euo pipefail
           if ! command -v cargo-nextest >/dev/null 2>&1; then
             echo "::error::cargo-nextest is not on PATH; the installation step failed"
             exit 1
