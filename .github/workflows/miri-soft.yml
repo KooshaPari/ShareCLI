@@ -16,7 +16,6 @@ jobs:
   miri:
     name: cargo miri (soft)
     runs-on: ubuntu-24.04
-    continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Setup Rust nightly + miri
@@ -24,8 +23,28 @@ jobs:
         with:
           components: miri
       - name: Miri (harness-native lib tests)
+        id: miri
         run: |
           set -euo pipefail
           cd crates/harness-native
-          cargo miri test --locked --lib 2>&1 | tee miri.log || true
-          echo "soft miri finished (non-blocking)"
+          set +e
+          cargo miri test --locked --lib 2>&1 | tee miri.log
+          status=${PIPESTATUS[0]}
+          set -e
+          echo "status=${status}" >> "$GITHUB_OUTPUT"
+          if [ "$status" -ne 0 ]; then
+            echo "::error::cargo miri reported failures (exit ${status})"
+          fi
+          exit 0
+      - name: Fail if miri failed
+        if: always()
+        run: |
+          set -euo pipefail
+          status="${{ steps.miri.outputs.status }}"
+          if [ -z "${status}" ]; then
+            echo "::error::miri step did not report status"
+            exit 1
+          fi
+          if [ "${status}" -ne 0 ]; then
+            exit "${status}"
+          fi

@@ -36,7 +36,6 @@ jobs:
   native:
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    continue-on-error: true
     timeout-minutes: 25
     strategy:
       fail-fast: false
@@ -55,7 +54,10 @@ jobs:
         uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31  # v2
 
       - name: Build
-        run: cargo build --workspace --all-features --locked 2>&1 | tail -5
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --workspace --all-features --locked 2>&1 | tail -5
 
       - name: Test (lib)
         run: cargo test --workspace --lib --no-fail-fast
@@ -66,7 +68,6 @@ jobs:
   cross:
     name: cross / ${{ matrix.target }}
     runs-on: ubuntu-latest
-    continue-on-error: true
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -116,7 +117,6 @@ jobs:
   musl-test:
     name: musl-test (x86_64-unknown-linux-musl)
     runs-on: ubuntu-latest
-    continue-on-error: true
     timeout-minutes: 20
     steps:
       - name: Checkout

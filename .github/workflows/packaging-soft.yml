@@ -45,7 +45,13 @@ jobs:
       - name: Assert .deb artifact
         run: |
           set -euo pipefail
-          deb="$(ls -1 dist/sharecli_*.deb | head -1)"
+          shopt -s nullglob
+          debs=(dist/sharecli_*.deb)
+          deb="${debs[0]:-}"
+          if [ -z "$deb" ]; then
+            echo "::error::no .deb artifact found in dist/"
+            exit 1
+          fi
           test -s "$deb"
           dpkg-deb -c "$deb" | grep -q '/usr/bin/sharecli'
           dpkg-deb -c "$deb" | grep -q 'lib/systemd/system/sharecli.service'

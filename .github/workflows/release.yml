@@ -103,7 +103,12 @@ jobs:
         id: version
         shell: bash
         run: |
+          set -euo pipefail
           VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+          if [ -z "$VERSION" ]; then
+            echo "::error::failed to determine version from Cargo.toml"
+            exit 1
+          fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Releasing version: ${VERSION}"
 
@@ -261,7 +266,7 @@ jobs:
           STAGE=sharecli-desktop-macos
           mkdir -p "$STAGE"
           cp "$BIN" "$STAGE/ShareCLITray"
-          cp target/release/libsharecli_ffi.dylib "$STAGE/" 2>/dev/null || true
+          cp target/release/libsharecli_ffi.dylib "$STAGE/"
           ARCHIVE=sharecli-desktop-macos-aarch64.tar.gz
           tar -czf "$ARCHIVE" -C "$STAGE" .
           shasum -a 256 "$ARCHIVE" | tee "${ARCHIVE}.sha256"
@@ -414,6 +419,10 @@ jobs:
             echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
           else
             VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+            if [ -z "$VERSION" ]; then
+              echo "::error::failed to determine version from Cargo.toml"
+              exit 1
+            fi
             echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
           fi
 
@@ -428,7 +437,7 @@ jobs:
           ASSETS=(release-artifacts/*.tar.gz release-artifacts/*.zip release-artifacts/*.sha256)
           if [[ ${#ASSETS[@]} -eq 0 ]]; then
             echo "No release assets found under release-artifacts/"
-            ls -laR release-artifacts || true
+            ls -laR release-artifacts || echo "::warning::failed to list release-artifacts"
             exit 1
           fi
           if gh release view "${TAG}" >/dev/null 2>&1; then
@@ -470,7 +479,9 @@ jobs:
         run: |
           set -euo pipefail
           cd bin
-          ARCHIVE=$(ls *.tar.gz 2>/dev/null | head -1)
+          shopt -s nullglob
+          archives=( *.tar.gz )
+          ARCHIVE="${archives[0]:-}"
           if [ -n "${ARCHIVE}" ]; then
             tar -xzf "${ARCHIVE}"
             find . -maxdepth 2 -type f -name sharecli -not -name '*.sha256' -exec cp {} ./sharecli \;

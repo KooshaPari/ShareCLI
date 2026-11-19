@@ -86,7 +86,7 @@ jobs:
           STAGE=sharecli-desktop-macos
           mkdir -p "$STAGE"
           cp "$BIN" "$STAGE/ShareCLITray"
-          cp target/release/libsharecli_ffi.dylib "$STAGE/" 2>/dev/null || true
+          cp target/release/libsharecli_ffi.dylib "$STAGE/"
           tar -czf sharecli-desktop-macos-aarch64.tar.gz -C "$STAGE" .
           shasum -a 256 sharecli-desktop-macos-aarch64.tar.gz | tee sharecli-desktop-macos-aarch64.tar.gz.sha256
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

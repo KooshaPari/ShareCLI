@@ -165,8 +165,19 @@ jobs:
 
       - name: Check FR annotations in new tests
         run: |
+          set -euo pipefail
           # Get changed test files
-          CHANGED_FILES=$(git diff --name-only origin/main...HEAD | grep -E '(_test\.rs|tests?/.*\.rs)$' || true)
+          set +e
+          CHANGED_FILES=$(git diff --name-only origin/main...HEAD | grep -E '(_test\.rs|tests?/.*\.rs)$')
+          grep_rc=$?
+          set -e
+          if [ "$grep_rc" -gt 1 ]; then
+            echo "::error::failed to determine changed test files"
+            exit "$grep_rc"
+          fi
+          if [ "$grep_rc" -eq 1 ]; then
+            CHANGED_FILES=""
+          fi
 
           if [ -z "$CHANGED_FILES" ]; then
             echo "No test files changed"
