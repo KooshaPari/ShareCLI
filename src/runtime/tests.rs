@@ -537,4 +537,68 @@ mod tests {
         assert_eq!(format!("{:?}", proj), "ByProject(\"x\")");
         assert_eq!(format!("{:?}", harness), "ByHarness(\"y\")");
     }
+
+    #[tokio::test]
+    async fn admission_permit_covers_child_process_lifetime() {
+        use std::sync::Arc;
+        use tokio::time::{sleep, timeout, Duration};
+
+        let policy = Arc::new(crate::spawn_policy::SpawnPolicy::new(
+            crate::config::SpawnPolicyConfig {
+                max_concurrent_builds: 1,
+                nice_level: 0,
+                use_sccache: false,
+            },
+        ));
+        let pool = Arc::new(ProcessPool::with_spawn_policy(policy));
+
+        #[cfg(unix)]
+        let (cmd, args) = ("sleep", vec!["2".to_string()]);
+        #[cfg(windows)]
+        let (cmd, args) = (
+            "cmd",
+            vec!["/C".into(), "ping".into(), "127.0.0.1".into(), "-n".into(), "3".into()],
+        );
+
+        let first = pool
+            .spawn(cmd, &args, None, None, Some("cargo".into()))
+            .await
+            .expect("first spawn");
+
+        let pool_for_second = Arc::clone(&pool);
+        let cmd2 = cmd.to_string();
+        let args2 = args.clone();
+        let second = tokio::spawn(async move {
+            pool_for_second
+                .spawn(&cmd2, &args2, None, None, Some("cargo".into()))
+                .await
+        });
+
+        sleep(Duration::from_millis(250)).await;
+        assert!(
+            !second.is_finished(),
+            "second spawn acquired admission while first process still running"
+        );
+
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        loop {
+            pool.refresh().await;
+            if !pool.processes.read().await.contains_key(&first.pid) {
+                break;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "first process was not reaped after exit"
+            );
+            sleep(Duration::from_millis(50)).await;
+        }
+
+        let second_result = timeout(Duration::from_secs(5), second)
+            .await
+            .expect("second spawn should complete after first exits and is reaped")
+            .expect("second spawn task join");
+        assert!(second_result.is_ok(), "second spawn failed: {:?}", second_result.err());
+
+        let _ = pool.kill_all().await;
+    }
 }
