@@ -49,7 +49,7 @@ jobs:
             --projectId "$INFISICAL_PROJECT_ID" \
             --env "$INFISICAL_ENV" \
             --token "$INFISICAL_TOKEN" \
-            -- bash -euo pipefail -c 'echo "Secrets loaded into env successfully" && env | cut -d= -f1 | sort | sed -n 1,20p'
+            -- bash -euo pipefail -c 'echo "Secrets loaded into env successfully"; env | cut -d= -f1 | wc -l | sed "s/^/variables present: /"'
 
       - name: Upload secrets as artifact (debug only, never published)
         if: failure()
