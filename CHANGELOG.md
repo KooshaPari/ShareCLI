@@ -858,10 +858,24 @@ Release commit: `a290e3a` — *chore(release): bump version to 1.0.0*
 
 ---
 
-## [0.8.0] - 2026-09-12
+## [0.8.1] - 2026-11-20
 
-Release tagged `v0.8.0` (`1c4d3ff`). Version drift fix aligning canonical
-version across Cargo.toml, Info.plist, and all workspace crates.
+**Release status:** `0.8.0` is recorded in-repo but was **never tagged or released**. `0.8.1` is the first release since `v0.3.0` (2026-07-05).
+
+### Changed
+- **Release hygiene** — corrected the unreleased `0.8.0` version line and prepared `0.8.1` as the next publishable release.
+
+### Fixed
+- **Dead dependency removal** — dropped unreachable `PhenoInfra` pins.
+- **CI honesty** — removed failure-masking constructs so CI results reflect actual failures.
+- **FFI Windows build gate** — allowed the workspace to build on Windows without the unix-only test target.
+- **Resilience test repair** — repaired resilience tests so they run as intended.
+
+---
+
+## [0.8.0] - 2026-09-12 (never released)
+
+Recorded in-repo but **never tagged or released** (`v0.8.0` tag does not exist; last published release is `v0.3.0`). Version drift fix aligning canonical version across Cargo.toml, Info.plist, and all workspace crates. Superseded for release purposes by `0.8.1`.
 
 ### Added
 - **T-70 appcast pipeline** — release notes for Sparkle appcast generation.
@@ -1130,11 +1144,13 @@ Initial development predating the first tagged release.
 | Tag      | Commit    | Date       | Notes                                            |
 |----------|-----------|------------|--------------------------------------------------|
 | `v1.0.0` | `a290e3a` | 2026-08-31 | First stable major release. Wave 20 spec ships.  |
-| `v0.8.0` | `1c4d3ff` | 2026-09-12 | Version drift fix + T-70 appcast pipeline.        |
+| `v0.8.1` | (pending) | 2026-11-20 | Build-and-release-hygiene release; first since `v0.3.0`. |
+| `v0.8.0` | — (never released) | 2026-09-12 | Recorded in-repo only; never tagged/released. Superseded by `0.8.1`. |
 | `v0.3.0` | `c203265` | 2026-07-04 | Mid-summer lift to overall ~64 % C.              |
 | `v0.1.0` | `464e737` | 2026-07-02 | First tagged public release (`health_beat` T54). |
 
-[Unreleased]: https://github.com/KooshaPari/sharecli/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/KooshaPari/sharecli/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/KooshaPari/sharecli/releases/tag/v0.8.1
 [0.8.0]: https://github.com/KooshaPari/sharecli/releases/tag/v0.8.0
 [1.0.0]: https://github.com/KooshaPari/sharecli/releases/tag/v1.0.0
 [0.3.0]: https://github.com/KooshaPari/sharecli/releases/tag/v0.3.0
