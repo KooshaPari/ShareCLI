@@ -13,7 +13,9 @@ pull_request_rules:
       - author=dependabot[bot]
       - check-success=ci / test
       - check-success=ci / lint
-      - "#check-success-or-neutral>=1"
+      - or:
+          - "#check-success>=1"
+          - "#check-neutral>=1"
     actions:
       merge:
         method: squash
