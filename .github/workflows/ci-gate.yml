@@ -1,15 +1,14 @@
 # =============================================================================
 # Branch protection on main requires check contexts `ci / lint` and `ci / test`.
-# The legacy `CI` workflow (name: CI) does not define `lint`/`test` jobs, so
-# those contexts can never resolve and no PR can satisfy the gate.
+# The legacy `CI` workflow (name: CI) did not define `lint`/`test` jobs, so
+# those contexts could not resolve; this workflow provides them.
 #
 # This workflow makes the required contexts resolvable AND honest:
-#   - `cargo fmt --check` and `cargo check --all-targets` are hard gates
-#     (both are green on main today).
-#   - clippy / nextest are reported as informational `::warning::` steps until
-#     the pre-existing main debt (FR-007 clippy warnings, dashboard/jwt test
-#     failures) is resolved - they are named `* (informational)` so the status
-#     rollup makes their non-gating nature explicit.
+#   - `cargo fmt --check` and `cargo check --all-targets` are hard gates.
+#   - `cargo clippy` and `cargo nextest` are hard gates: a non-zero exit fails
+#     the required check (no `|| true`, no warning-only swallow). Pre-existing
+#     debt must be fixed or tracked by an explicit, bounded allowlist naming
+#     exact test ids - never by hiding failures.
 # =============================================================================
 #
 # Sole-CI declaration (2026-10-17, corrected 2026-10-31): the legacy
@@ -24,8 +23,8 @@
 #
 #   detect             -> not needed; this workflow has no path-detection
 #                         fan-out (it is Rust-only by contract).
-#   rust (fmt/clippy)  -> `ci-lint` (hard `cargo fmt --check`; clippy stays
-#                         informational pending FR-007 debt).
+#   rust (fmt/clippy)  -> `ci-lint` (hard `cargo fmt --check` and hard
+#                         `cargo clippy -- -D warnings`).
 #   rust (cargo test)  -> `ci-test` (nextest).
 #   guardrail (nextest)-> `ci-test`. NOTE: `ci.yml` was also what installed
 #                         cargo-nextest. The install now lives in `ci-test`
@@ -164,15 +163,9 @@ jobs:
           cat "$fmt_log"
           echo "::error::cargo fmt --check failed with exit code ${status}"
           exit "$status"
-      - name: Lint (clippy, informational)
+      - name: Lint (clippy)
         run: |
-          set +e
           cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee clippy.log
-          clippy_status=${PIPESTATUS[0]}
-          set -e
-          if [ "$clippy_status" -ne 0 ] || grep -q '^error' clippy.log; then
-            echo "::warning::cargo clippy reported errors (informational, tracked in FR-007 debt; status=${clippy_status})"
-          fi
       - name: Post legacy commit-status for merge gate
         # GitHub's merge API polls the legacy /statuses endpoint under
         # strict branch protection. Re-publish the modern check-run
@@ -216,21 +209,15 @@ jobs:
           tool: nextest
       - name: Build all targets
         run: cargo check --workspace --all-targets
-      - name: Unit tests (nextest, informational)
-        # Test RESULTS stay informational (FR-007 debt). A missing binary is a
-        # hard failure: that is a broken pipeline, not known debt.
+      - name: Unit tests (nextest)
+        # A missing binary is a hard failure (broken pipeline). Test results are
+        # also hard gates: no swallowed exit status; any failure fails this job.
         run: |
           if ! command -v cargo-nextest >/dev/null 2>&1; then
             echo "::error::cargo-nextest is not on PATH; the installation step failed"
             exit 1
           fi
-          set +e
           cargo nextest run --workspace 2>&1 | tee nextest.log
-          nextest_status=${PIPESTATUS[0]}
-          set -e
-          if [ "$nextest_status" -ne 0 ] || grep -qiE 'FAIL|error\[|panicked' nextest.log; then
-            echo "::warning::cargo nextest reported failures or a non-zero exit (informational, tracked in FR-007 debt; status=${nextest_status})"
-          fi
       - name: Post legacy commit-status for merge gate
         # Mirror ci / lint step: publish the modern check-run result as a
         # legacy commit-status so GraphQL mergePullRequest sees ci / test.
