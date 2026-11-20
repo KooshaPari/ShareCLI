@@ -39,9 +39,10 @@ jobs:
         set -euo pipefail
         cargo build --release --locked --workspace --all-targets
         mkdir -p release-artifacts
-        if ! find target/release -maxdepth 1 -type f -executable \
-          -exec cp -t release-artifacts/ {} + 2>/dev/null; then
-          echo "::error::failed to copy release executables from target/release"
+        find target/release -maxdepth 1 -type f -executable \
+          -exec cp -t release-artifacts/ {} +
+        if [ -z "$(ls -A release-artifacts)" ]; then
+          echo "::error::no executables copied"
           exit 1
         fi
         tar \

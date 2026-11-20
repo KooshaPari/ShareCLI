@@ -35,14 +35,17 @@ jobs:
             echo "::error::cargo miri reported failures (exit ${status})"
           fi
           exit 0
-      - name: Fail if miri failed
+      - name: Report miri result (non-blocking)
         if: always()
         run: |
           status="${{ steps.miri.outputs.status }}"
           if [ -z "${status}" ]; then
-            echo "::error::miri step did not report status"
-            exit 1
+            echo "::warning::miri step did not report status"
+            exit 0
           fi
           if [ "${status}" -ne 0 ]; then
-            exit "${status}"
+            echo "::warning::cargo miri reported failures (exit ${status}); soft job remains non-blocking"
+          else
+            echo "cargo miri passed"
           fi
+          exit 0

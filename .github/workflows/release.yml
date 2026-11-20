@@ -266,6 +266,14 @@ jobs:
           mkdir -p "$STAGE"
           cp "$BIN" "$STAGE/ShareCLITray"
           cp target/release/libsharecli_ffi.dylib "$STAGE/"
+          # Make the packaged binary relocatable: replace any absolute/workspace
+          # libsharecli_ffi load path with @executable_path so the archive runs
+          # outside the runner build directory.
+          DYLIB_REF=$(otool -L "$STAGE/ShareCLITray" | awk '/libsharecli_ffi\.dylib/ {print $1; exit}')
+          if [ -n "${DYLIB_REF}" ] && [ "${DYLIB_REF}" != "@executable_path/libsharecli_ffi.dylib" ]; then
+            install_name_tool -change "${DYLIB_REF}" "@executable_path/libsharecli_ffi.dylib" "$STAGE/ShareCLITray"
+          fi
+          install_name_tool -id "@executable_path/libsharecli_ffi.dylib" "$STAGE/libsharecli_ffi.dylib" || true
           ARCHIVE=sharecli-desktop-macos-aarch64.tar.gz
           tar -czf "$ARCHIVE" -C "$STAGE" .
           shasum -a 256 "$ARCHIVE" | tee "${ARCHIVE}.sha256"

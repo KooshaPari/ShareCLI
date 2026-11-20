@@ -110,14 +110,14 @@ jobs:
       - name: Build image
         id: build_image
         if: ${{ hashFiles('Dockerfile') != '' }}
-        run: docker build -t ${{ github.event.repository.name }}:scan .
+        run: docker build -t sharecli:scan .
 
       - name: Run Trivy vulnerability scanner
         id: trivy_scan
         if: ${{ hashFiles('Dockerfile') != '' }}
         uses: aquasecurity/trivy-action@38b337fff0a2f984d5be173c99e3f633438167ec
         with:
-          image-ref: '${{ github.event.repository.name }}:scan'
+          image-ref: 'sharecli:scan'
           format: 'sarif'
           output: 'trivy-results.sarif'
 
