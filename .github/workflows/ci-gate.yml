@@ -164,6 +164,7 @@ jobs:
           echo "::error::cargo fmt --check failed with exit code ${status}"
           exit "$status"
       - name: Lint (clippy)
+        shell: bash
         run: |
           cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee clippy.log
       - name: Post legacy commit-status for merge gate
@@ -212,6 +213,7 @@ jobs:
       - name: Unit tests (nextest)
         # A missing binary is a hard failure (broken pipeline). Test results are
         # also hard gates: no swallowed exit status; any failure fails this job.
+        shell: bash
         run: |
           if ! command -v cargo-nextest >/dev/null 2>&1; then
             echo "::error::cargo-nextest is not on PATH; the installation step failed"

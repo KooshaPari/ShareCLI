@@ -273,7 +273,11 @@ jobs:
           if [ -n "${DYLIB_REF}" ] && [ "${DYLIB_REF}" != "@executable_path/libsharecli_ffi.dylib" ]; then
             install_name_tool -change "${DYLIB_REF}" "@executable_path/libsharecli_ffi.dylib" "$STAGE/ShareCLITray"
           fi
-          install_name_tool -id "@executable_path/libsharecli_ffi.dylib" "$STAGE/libsharecli_ffi.dylib" || true
+          install_name_tool -id "@executable_path/libsharecli_ffi.dylib" "$STAGE/libsharecli_ffi.dylib"
+          # install_name_tool invalidates Mach-O signatures on arm64; re-sign ad-hoc.
+          codesign --force --sign - "$STAGE/libsharecli_ffi.dylib"
+          codesign --force --sign - "$STAGE/ShareCLITray"
+          codesign --verify --strict "$STAGE/ShareCLITray"
           ARCHIVE=sharecli-desktop-macos-aarch64.tar.gz
           tar -czf "$ARCHIVE" -C "$STAGE" .
           shasum -a 256 "$ARCHIVE" | tee "${ARCHIVE}.sha256"
