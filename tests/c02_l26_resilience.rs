@@ -146,16 +146,27 @@ fn fr003_linear_backoff_no_overflow_at_u32_max() {
 
 #[test]
 fn fr003_healthz_readyz_split_is_observable() {
-    // AC-L26.11: /healthz and /readyz MUST be distinct routes, both returning
+    // AC-L26.11: /healthz and /readyz MUST be distinct probes, both returning
     // JSON, with /readyz able to surface 503 during shutdown.
-    let serve_rs = std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands/serve.rs"),
-    )
-    .expect("read serve.rs");
-    assert!(serve_rs.contains(r#".route("/healthz""#), "/healthz route MUST be wired");
-    assert!(serve_rs.contains(r#".route("/readyz""#), "/readyz route MUST be wired");
-    assert!(serve_rs.contains("readyz_response"), "readyz handler MUST be implemented");
-    assert!(serve_rs.contains("healthz_json"), "healthz handler MUST be implemented");
+    use sharecli::commands::serve::{healthz_json, readyz_response};
+
+    let health = healthz_json();
+    assert_eq!(health["status"], "ok", "/healthz probe MUST return status ok");
+
+    let (ready_status, ready_body) = readyz_response(false);
+    assert_eq!(ready_status.as_u16(), 200, "/readyz MUST return 200 while serving");
+    assert_eq!(ready_body["status"], "ok", "/readyz MUST return status ok while serving");
+
+    let (shutdown_status, shutdown_body) = readyz_response(true);
+    assert_eq!(shutdown_status.as_u16(), 503, "/readyz MUST return 503 when shutdown is requested");
+    assert_eq!(
+        shutdown_body["status"], "unavailable",
+        "/readyz MUST report unavailable during shutdown"
+    );
+    assert_ne!(
+        health, shutdown_body,
+        "liveness (/healthz) and readiness (/readyz) MUST be distinct under shutdown"
+    );
 }
 
 #[test]
