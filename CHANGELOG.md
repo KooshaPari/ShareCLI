@@ -37,9 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.0.0] - 2026-08-31
+## 1.0.0 - 2026-08-31 (never released)
 
-The first stable major release. Lifts the scorecard to **A+ (99.1 %)** and ships
+**Release status:** the `1.0.0` version bump was recorded in-repo but was
+**never tagged or published**; `v1.0.0` does not exist on `origin`. The
+published history is `v0.3.0` (2026-07-04) and then `v0.8.1`.
+
+Recorded the first stable major version. Lifts the scorecard to **A+ (99.1 %)** and ships
 **Wave 17 / Wave 18 / Wave 19 / Wave 20** work as top-level entries.
 
 Release commit: `a290e3a` — *chore(release): bump version to 1.0.0*
@@ -105,8 +109,8 @@ Release commit: `a290e3a` — *chore(release): bump version to 1.0.0*
 
 ### Release engineering
 
-- **Version bump `0.3.0 → 1.0.0`** with intermediate `v0.4.0` release artifact
-  (`a290e3a`, `Formula/sharecli.rb`).
+- **Version bump `0.3.0 → 1.0.0`** with an intermediate `v0.4.0` version artifact
+  that was also never tagged (`a290e3a`, `Formula/sharecli.rb`).
 - **Dependency refresh** — `substrate` and `runtime-process` bumped to
   `3e93ff5` (#808, #809, `be042e2`, `2676dab`).
 - **`uuid` 1.24.1 → 1.26.0** in the `cargo-minor` group (#807, `4c8450b`).
@@ -870,10 +874,16 @@ Release commit: `a290e3a` — *chore(release): bump version to 1.0.0*
 - **CI honesty** — removed failure-masking constructs so CI results reflect actual failures.
 - **FFI Windows build gate** — allowed the workspace to build on Windows without the unix-only test target.
 - **Resilience test repair** — repaired resilience tests so they run as intended.
+- **FFI dylib discovery** — integration tests locate the freshly built
+  `libsharecli_ffi` dylib through generated debug/release paths.
+- **E2E test repair** — repaired the `e2e_serve_healthz` suite so it runs against
+  the current server surface.
+- **Dependabot batches** — landed accumulated dependency bumps (`jsdom`,
+  `playwright`, and related).
 
 ---
 
-## [0.8.0] - 2026-09-12 (never released)
+## 0.8.0 - 2026-09-12 (never released)
 
 Recorded in-repo but **never tagged or released** (`v0.8.0` tag does not exist; last published release is `v0.3.0`). Version drift fix aligning canonical version across Cargo.toml, Info.plist, and all workspace crates. Superseded for release purposes by `0.8.1`.
 
@@ -1143,7 +1153,7 @@ Initial development predating the first tagged release.
 
 | Tag      | Commit    | Date       | Notes                                            |
 |----------|-----------|------------|--------------------------------------------------|
-| `v1.0.0` | `a290e3a` | 2026-08-31 | First stable major release. Wave 20 spec ships.  |
+| `v1.0.0` | — (never tagged)  | 2026-08-31 | Recorded in-repo only; never tagged or published. |
 | `v0.8.1` | (pending) | 2026-11-20 | Build-and-release-hygiene release; first since `v0.3.0`. |
 | `v0.8.0` | — (never released) | 2026-09-12 | Recorded in-repo only; never tagged/released. Superseded by `0.8.1`. |
 | `v0.3.0` | `c203265` | 2026-07-04 | Mid-summer lift to overall ~64 % C.              |
@@ -1151,7 +1161,5 @@ Initial development predating the first tagged release.
 
 [Unreleased]: https://github.com/KooshaPari/sharecli/compare/v0.8.1...HEAD
 [0.8.1]: https://github.com/KooshaPari/sharecli/releases/tag/v0.8.1
-[0.8.0]: https://github.com/KooshaPari/sharecli/releases/tag/v0.8.0
-[1.0.0]: https://github.com/KooshaPari/sharecli/releases/tag/v1.0.0
 [0.3.0]: https://github.com/KooshaPari/sharecli/releases/tag/v0.3.0
 [0.1.0]: https://github.com/KooshaPari/sharecli/releases/tag/v0.1.0
