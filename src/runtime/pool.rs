@@ -69,10 +69,26 @@ impl ProcessPool {
         }
     }
 
-    /// Refresh system process information
+    /// Refresh system process information and reap exited managed processes so
+    /// any admission permit held for their lifetime is released.
     pub async fn refresh(&self) {
         let mut sys = self.system.write().await;
         sys.refresh_all();
+        let exited: Vec<u32> = {
+            let procs = self.processes.read().await;
+            procs
+                .keys()
+                .copied()
+                .filter(|pid| sys.process(Pid::from_u32(*pid)).is_none())
+                .collect()
+        };
+        drop(sys);
+        if !exited.is_empty() {
+            let mut procs = self.processes.write().await;
+            for pid in exited {
+                procs.remove(&pid);
+            }
+        }
     }
 
     /// Get all managed processes
@@ -98,10 +114,8 @@ impl ProcessPool {
     /// When a `SpawnPolicy` is configured and the harness is a recognised build
     /// harness (cargo/rustc/make/…), this method:
     /// 1. Acquires a semaphore permit — queuing if `max_concurrent_builds` slots
-    ///    are already taken (released automatically when the permit is dropped at
-    ///    the end of this call; callers that want to hold the slot for the full
-    ///    build duration should use `ProcessPool::with_spawn_policy` and
-    ///    `SpawnPolicy::acquire_build_permit` directly).
+    ///    are already taken. The permit is stored in `ManagedProcess` and held for
+    ///    the child process lifetime, released when the process is reaped/removed.
     /// 2. Wraps the command with `taskpolicy -b` on macOS when `nice_level > 0`.
     /// 3. Injects `CARGO_BUILD_JOBS` and optionally `RUSTC_WRAPPER=sccache`.
     pub async fn spawn(
@@ -117,25 +131,24 @@ impl ProcessPool {
             harness.as_deref().map(is_build_harness).unwrap_or_else(|| is_build_harness(cmd));
 
         // Apply policy when present and harness is a build harness.
-        let _permit;
-        let (effective_cmd, effective_args, extra_env): (
+        let (effective_cmd, effective_args, extra_env, admission_permit): (
             String,
             Vec<String>,
             Vec<(String, String)>,
+            Option<crate::spawn_policy::BuildPermit>,
         ) = if is_build {
             if let Some(ref policy) = self.spawn_policy {
-                // Acquire build slot (queues if at cap).
-                _permit = Some(policy.acquire_build_permit().await?);
+                // Acquire build slot (queues if at cap). Held for the process lifetime
+                // via ManagedProcess and released on reap/kill removal.
+                let permit = policy.acquire_build_permit().await?;
                 let (prog, shaped_args) = policy.apply_taskpolicy(cmd, args);
                 let env = policy.build_env_overrides();
-                (prog, shaped_args, env)
+                (prog, shaped_args, env, Some(permit))
             } else {
-                _permit = None;
-                (cmd.to_string(), args.to_vec(), vec![])
+                (cmd.to_string(), args.to_vec(), vec![], None)
             }
         } else {
-            _permit = None;
-            (cmd.to_string(), args.to_vec(), vec![])
+            (cmd.to_string(), args.to_vec(), vec![], None)
         };
 
         let mut extra_env = extra_env;
@@ -203,7 +216,7 @@ impl ProcessPool {
             thread_count: None,
         };
 
-        let managed = ManagedProcess { info: info.clone(), handle };
+        let managed = ManagedProcess { info: info.clone(), handle, admission_permit };
 
         let mut procs = self.processes.write().await;
         procs.insert(pid, managed);
