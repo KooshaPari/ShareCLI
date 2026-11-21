@@ -1,0 +1,16 @@
+# Vendored third-party crates.
+#
+# These crates are path dependencies (excluded from the workspace member list),
+# but `cargo fmt --all` still formats local path dependencies. They are consumed
+# verbatim from upstream and are not formatted with the repo's
+# `use_small_heuristics = "Max"` profile, so this file pins them to rustfmt
+# defaults instead. Vendored source must stay byte-identical to upstream; do not
+# reformat it to satisfy the workspace profile.
+edition = "2021"
+max_width = 100
+tab_spaces = 4
+hard_tabs = false
+newline_style = "Unix"
+reorder_imports = true
+reorder_modules = true
+match_block_trailing_comma = true  
