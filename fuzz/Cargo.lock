@@ -4026,7 +4026,7 @@ dependencies = [
 
 [[package]]
 name = "sharecli"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -4077,7 +4077,7 @@ dependencies = [
 
 [[package]]
 name = "sharecli-fleet"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "anyhow",
  "async-nats",
@@ -4093,7 +4093,7 @@ dependencies = [
 
 [[package]]
 name = "sharecli-fuse"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "anyhow",
  "fuser",
@@ -4118,7 +4118,7 @@ dependencies = [
 
 [[package]]
 name = "sharecli-mesh"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "anyhow",
  "dirs",
@@ -4130,7 +4130,7 @@ dependencies = [
 
 [[package]]
 name = "sharecli-session"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -4144,14 +4144,14 @@ dependencies = [
 
 [[package]]
 name = "sharecli-sync"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "loom",
 ]
 
 [[package]]
 name = "sharecli-thermal-tui"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "anyhow",
  "crossterm",
@@ -4286,7 +4286,7 @@ dependencies = [
 
 [[package]]
 name = "spawn-core-sys"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "anyhow",
 ]

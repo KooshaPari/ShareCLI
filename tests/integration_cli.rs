@@ -52,7 +52,7 @@ fn cli_short_version_flag_prints_version() {
     assert!(out.status.success(), "-V should exit 0; stderr: {}", stderr(&out));
     let s = stdout(&out);
     assert!(
-        s.contains("sharecli") && s.contains("0.8.0"),
+        s.contains("sharecli") && s.contains("0.8.1"),
         "-V should print 'sharecli <version>'; got: {s}"
     );
 }
@@ -64,7 +64,7 @@ fn cli_version_subcommand_prints_splash_and_version() {
     let s = stdout(&out);
     // ASCII-art splash contains the brand letters; the version string follows.
     assert!(s.contains("sharecli"), "version output should mention sharecli; got: {s}");
-    assert!(s.contains("0.8.0"), "version output should print 0.8.0; got: {s}");
+    assert!(s.contains("0.8.1"), "version output should print 0.8.1; got: {s}");
 }
 
 #[test]
