@@ -1,0 +1,6 @@
+# Vendored third-party source is copied verbatim from
+# KooshaPari/PhenoShared @ 9777b92e. It is not authored here, so it is out of
+# review scope; upstream is the place to review it.
+reviews:
+  path_filters:
+    - "!vendor/**"
