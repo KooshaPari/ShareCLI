@@ -94,8 +94,15 @@ fn batch_strategy_reports_contract_error() {
         agent_name: "test",
     });
 
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("batch strategy"));
+    let err = result.expect_err("batch strategy must surface execution failure");
+    assert!(
+        err.starts_with("batch strategy execution failed:"),
+        "batch strategy contract error must identify strategy and failure, got: {err}"
+    );
+    assert!(
+        err.contains("hypervisor") || err.contains("No such file") || err.contains("not found"),
+        "batch strategy contract error must include underlying execution failure, got: {err}"
+    );
 }
 
 #[test]

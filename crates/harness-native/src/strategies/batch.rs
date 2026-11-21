@@ -12,4 +12,5 @@ pub fn run(
     opts: &RuleOpts,
 ) -> Result<i32, String> {
     process::run_status(harness_home, real_cmd, args, opts)
+        .map_err(|e| format!("batch strategy execution failed: {e}"))
 }
