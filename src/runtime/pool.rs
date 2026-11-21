@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `ProcessPool` — the metadata+handle pool that owns spawn / kill / list /
 //! find operations. The actual process control is delegated to a
 //! `runtime_process::CommandGroupProcess` (substrate `ProcessPort` impl).

@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `start` / `stop` / `run_pool` / `set_limits` / `check_limits` operator commands.
 //!
 //! These are the per-process CRUD-style operations exposed under
@@ -17,10 +16,10 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::commands::runtime_helpers::get_project_resources;
+use crate::commands::runtime_helpers::{get_project_resources, get_shared_runtime};
 use crate::config::Config;
 use crate::progress::StepProgress;
-use crate::runtime::{ProcessFilter, ProcessPool, ProjectLimits, SharedRuntime};
+use crate::runtime::{ProcessFilter, ProcessPool, ProjectLimits};
 use crate::spawn_policy::SpawnPolicy;
 
 /// When `force` is set, destructive SIGKILL requires explicit `--yes` (C09 L81.6).
@@ -144,14 +143,13 @@ pub async fn stop(
     Ok(())
 }
 
-/// Reject pooled execution until a real command/worker protocol is available.
-///
-/// Returns the typed domain error (not `anyhow`) so `main` reports the stable
-/// `SHARECLI_ERROR_CODE=io` / `EXIT_IO` classification: an unavailable backend
-/// is an expected condition, not an internal failure. Wrapping this in
-/// `anyhow` erases the type, and `main`'s fallback then reports `internal`.
-pub async fn run_pool(_harness_type: &str, _project: &str) -> crate::error::Result<()> {
-    Err(SharedRuntime::execution_unavailable().into())
+/// Run using pooled runtime
+pub async fn run_pool(harness_type: &str, project: &str) -> Result<()> {
+    let runtime = get_shared_runtime();
+    let result = runtime.run_with_pool(harness_type, project, "").await?;
+    println!("Pooled {} process {} for project {}", harness_type, result.0, project);
+    println!("Output: {}", result.1);
+    Ok(())
 }
 
 /// Set project limits

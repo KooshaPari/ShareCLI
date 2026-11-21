@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! CLI commands for sharecli.
 //!
 //! Module structure (post-decomposition):

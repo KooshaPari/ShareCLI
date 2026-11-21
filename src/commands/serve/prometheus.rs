@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Prometheus text-exposition rendering for sharecli process metrics.
 //!
 //! `render_prometheus_metrics` is a pure function: it takes the

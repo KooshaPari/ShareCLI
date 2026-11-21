@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Text / CSV renderers for `sharecli proc` (FR-006).
 //!
 //! - [`render_agent_inventory`] / [`render_agent_tree`] /

@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! `sharecli proc` CLI entry point and dispatch (FR-006).
 //!
 //! - [`render_pid_detail_once`] / [`render_pid_detail`] drive the `--pid N`

@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Thermal gate — pre-spawn back-pressure seam for the hypervisor.
 //!
 //! The hypervisor queries a [`ThermalGate`] before every spawn to decide whether
