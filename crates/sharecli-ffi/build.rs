@@ -6,6 +6,7 @@
 //! under `cargo test`, even when `CARGO_TARGET_DIR` is set or artifacts live
 //! in the profile root rather than `deps/`.
 
+use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -14,8 +15,7 @@ fn main() {
     println!("cargo:rerun-if-changed=Cargo.toml");
 
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR set by cargo"));
-    let profile_dir = out_dir.ancestors().nth(3).map(Path::to_path_buf);
-    let target_dir = out_dir.ancestors().nth(4).map(Path::to_path_buf);
+    let (profile_dir, target_dir) = ancestor_dirs(&out_dir);
 
     // Fallback: derive <workspace>/target from manifest layout when OUT_DIR
     // doesn't give us a usable profile dir (unexpected, but defensive).
@@ -103,6 +103,25 @@ pub fn resolve_dylib() -> Option<std::path::PathBuf> {{
         target_dir_s = target_dir_s,
     );
     fs::write(&gen, body).expect("write generated dylib_path.rs");
+}
+
+/// Derives `(profile_dir, target_dir)` from `OUT_DIR` without magic ancestor
+/// counts. Cargo lays build scripts out as
+/// `<target>/<triple?>/<profile>/build/<crate>-<hash>/out`, so anchoring on
+/// the `build` component keeps working if the layout gains or loses levels
+/// (e.g. `--target <triple>` adds one, future cargo layouts may differ).
+/// Falls back to `CARGO_TARGET_DIR` when no `build` component is present;
+/// `CARGO_PROFILE_DIR` is not a cargo-provided build-script variable.
+fn ancestor_dirs(out_dir: &Path) -> (Option<PathBuf>, Option<PathBuf>) {
+    for anc in out_dir.ancestors() {
+        if anc.file_name() == Some(OsStr::new("build")) {
+            let profile = anc.parent().map(Path::to_path_buf);
+            let target = profile.as_ref().and_then(|p| p.parent()).map(Path::to_path_buf);
+            return (profile, target);
+        }
+    }
+    let target = std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from);
+    (None, target)
 }
 
 fn path_str(p: &Path) -> String {
