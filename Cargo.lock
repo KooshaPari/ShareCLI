@@ -4726,7 +4726,6 @@ dependencies = [
 [[package]]
 name = "runtime-process"
 version = "0.3.10"
-source = "git+https://github.com/KooshaPari/PhenoShared#8b8eb9cc3e80c8b3dc5d8105a9f420c1ee7648a4"
 dependencies = [
  "async-trait",
  "command-group",
@@ -5631,7 +5630,6 @@ dependencies = [
 [[package]]
 name = "substrate"
 version = "0.3.10"
-source = "git+https://github.com/KooshaPari/PhenoShared#8b8eb9cc3e80c8b3dc5d8105a9f420c1ee7648a4"
 dependencies = [
  "substrate-core",
 ]
@@ -5639,7 +5637,6 @@ dependencies = [
 [[package]]
 name = "substrate-core"
 version = "0.3.10"
-source = "git+https://github.com/KooshaPari/PhenoShared#8b8eb9cc3e80c8b3dc5d8105a9f420c1ee7648a4"
 dependencies = [
  "async-trait",
  "serde",

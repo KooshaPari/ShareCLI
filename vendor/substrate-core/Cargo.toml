@@ -1,0 +1,18 @@
+[package]
+name = "substrate-core"
+version = "0.3.10"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/KooshaPari/PhenoShared"
+rust-version = "1.82"
+description = "Hexagonal core contracts (domain + ports) for substrate. Depends on nothing but serde/thiserror/uuid/async-trait."
+readme = "README.md"
+keywords = ["agent", "hexagonal", "ports", "dispatch", "substrate"]
+categories = ["development-tools"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+uuid = { version = "1.11", features = ["v4", "serde"] }
+async-trait = "0.1"

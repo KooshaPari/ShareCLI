@@ -1,0 +1,18 @@
+[package]
+name = "engine-spec"
+version = "0.3.10"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/KooshaPari/PhenoShared"
+rust-version = "1.82"
+description = "Provider-agnostic TaskSpec -> argv contract."
+readme = "README.md"
+keywords = ["agent", "argv", "task", "substrate"]
+categories = ["development-tools"]
+
+[dependencies]
+substrate-core = { version = "0.3.8", path = "../substrate-core" }
+serde = { version = "1.0", features = ["derive"] }
+
+[package.metadata.cargo-machete]
+ignored = ["substrate-core"]
