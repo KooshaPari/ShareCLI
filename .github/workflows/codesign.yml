@@ -135,7 +135,10 @@ jobs:
           p12-password: ${{ env.APPLE_CERTIFICATE_PWD }}
 
       - name: Build release binary
-        run: cargo build --release --locked 2>&1 | tail -5
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --release --locked 2>&1 | tail -5
 
       - name: Codesign release binary
         run: codesign --force --sign "-" target/release/sharecli
@@ -169,7 +172,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build release binary
-        run: cargo build --release --locked 2>&1 | tail -5
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --release --locked 2>&1 | tail -5
 
       - name: Sign Windows binary (Azure Key Vault)
         if: env.AZURE_KEY_VAULT_URL != ''

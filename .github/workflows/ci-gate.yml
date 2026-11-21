@@ -148,17 +148,38 @@ jobs:
         # rustfmt.toml pins the stable toolchain to 1.96.0 via dtolnay/rust-toolchain.
         # group_imports / indent_style are configured in rustfmt.toml.
         run: |
+          fmt_log="$(mktemp)"
           set +e
-          cargo fmt --all -- --check > /tmp/fmt.log 2>/dev/null || true
-          if grep -q '^Diff in ' /tmp/fmt.log; then
-            cargo fmt --all -- --check > /tmp/fmt.log 2>&1
-            cat /tmp/fmt.log
-            exit 1
-          else
-            echo "rustfmt OK (stable 1.96.0; no real diffs)"
+          cargo fmt --all -- --check >"$fmt_log" 2>&1
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "rustfmt OK"
+            exit 0
           fi
+          if grep -q '^Diff in ' "$fmt_log"; then
+            cat "$fmt_log"
+            exit 1
+          fi
+          cat "$fmt_log"
+          echo "::error::cargo fmt --check failed with exit code ${status}"
+          exit "$status"
+      # TEMPORARY (tracked): clippy is informational here on purpose. This
+      # branch only removes failure-masking constructs; it does not claim the
+      # workspace is clippy-clean. This flips to a hard gate
+      # (`cargo clippy -- -D warnings` failing the required check) in the
+      # follow-up PR fix/ci-honesty-hard-gates, once the known clippy debt is
+      # repaired. Do not make this blocking in this branch.
       - name: Lint (clippy, informational)
-        run: cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee clippy.log; if grep -q '^error' clippy.log; then echo "::warning::cargo clippy reported errors (informational, tracked in FR-007 debt)"; fi
+        shell: bash
+        run: |
+          set +e
+          cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee clippy.log
+          clippy_status=${PIPESTATUS[0]}
+          set -e
+          if [ "$clippy_status" -ne 0 ] || grep -qE '^[[:space:]]*error(\[|:)' clippy.log; then
+            echo "::warning::cargo clippy reported errors (informational, tracked in FR-007 debt; status=${clippy_status})"
+          fi
       - name: Post legacy commit-status for merge gate
         # GitHub's merge API polls the legacy /statuses endpoint under
         # strict branch protection. Re-publish the modern check-run
@@ -202,16 +223,28 @@ jobs:
           tool: nextest
       - name: Build all targets
         run: cargo check --workspace --all-targets
+      # TEMPORARY (tracked): nextest results are informational here on purpose.
+      # 24 pre-existing tests fail on main and are being repaired separately, so
+      # this branch must not turn the suite into a required gate yet. This flips
+      # to a hard gate (`cargo nextest run --workspace` failing the required
+      # check) in the follow-up PR fix/ci-honesty-hard-gates. A missing nextest
+      # binary stays a hard failure here: that is a broken pipeline, not debt.
       - name: Unit tests (nextest, informational)
         # Test RESULTS stay informational (FR-007 debt). A missing binary is a
         # hard failure: that is a broken pipeline, not known debt.
+        shell: bash
         run: |
           if ! command -v cargo-nextest >/dev/null 2>&1; then
             echo "::error::cargo-nextest is not on PATH; the installation step failed"
             exit 1
           fi
-          cargo nextest run --workspace 2>&1 | tee nextest.log || true
-          if grep -qiE 'FAIL|error\[|panicked' nextest.log; then echo "::warning::cargo nextest reported failures (informational, tracked in FR-007 debt)"; fi
+          set +e
+          cargo nextest run --workspace 2>&1 | tee nextest.log
+          nextest_status=${PIPESTATUS[0]}
+          set -e
+          if [ "$nextest_status" -ne 0 ] || grep -qiE 'FAIL|error\[|panicked' nextest.log; then
+            echo "::warning::cargo nextest reported failures or a non-zero exit (informational, tracked in FR-007 debt; status=${nextest_status})"
+          fi
       - name: Post legacy commit-status for merge gate
         # Mirror ci / lint step: publish the modern check-run result as a
         # legacy commit-status so GraphQL mergePullRequest sees ci / test.

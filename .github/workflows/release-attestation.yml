@@ -40,7 +40,11 @@ jobs:
         cargo build --release --locked --workspace --all-targets
         mkdir -p release-artifacts
         find target/release -maxdepth 1 -type f -executable \
-          -exec cp -t release-artifacts/ {} + 2>/dev/null || true
+          -exec cp -t release-artifacts/ {} +
+        if [ -z "$(ls -A release-artifacts)" ]; then
+          echo "::error::no executables copied"
+          exit 1
+        fi
         tar \
           --exclude='./target' \
           --exclude='./.git' \

@@ -57,17 +57,27 @@ jobs:
         run: |
           set -uo pipefail
 
-          merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA" 2>/dev/null || true)"
+          set +e
+          merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA" 2>/dev/null)"
+          merge_base_rc=$?
+          set -e
 
-          # Empty merge-base == no shared history == orphaned by a rewrite.
-          if [ -z "$merge_base" ]; then
+          # merge-base exits 1 when commits have no common ancestor.
+          if [ "$merge_base_rc" -eq 1 ] && [ -z "$merge_base" ]; then
             echo "ORPHANED=1" >> "$GITHUB_ENV"
             echo "::error title=Orphaned PR history::PR head ($HEAD_SHA) shares no common ancestor with base ($BASE_SHA). This branch was likely orphaned by a history rewrite on main and can never merge as-is. Recreate the PR from the current main (or rebase onto a shared ancestor)."
-            gh pr edit "$PR_NUMBER" --add-label "orphaned-history" >/dev/null 2>&1 || true
+            if ! gh pr edit "$PR_NUMBER" --add-label "orphaned-history" >/dev/null 2>&1; then
+              echo "::warning::failed to add orphaned-history label to PR #$PR_NUMBER"
+            fi
             exit 1
           fi
 
-          behind="$(git rev-list --count "$HEAD_SHA".."$BASE_SHA" 2>/dev/null || echo 0)"
+          if [ "$merge_base_rc" -ne 0 ]; then
+            echo "::error::git merge-base failed with exit code ${merge_base_rc}"
+            exit "$merge_base_rc"
+          fi
+
+          behind="$(git rev-list --count "$HEAD_SHA".."$BASE_SHA")"
           echo "BEHIND=$behind" >> "$GITHUB_ENV"
 
           if [ "$behind" -gt "$BEHIND_LIMIT" ]; then
