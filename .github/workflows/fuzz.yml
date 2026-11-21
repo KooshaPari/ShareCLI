@@ -41,5 +41,7 @@ jobs:
         with:
           version: 0.14.1
       - name: Fuzz ${{ matrix.target }} (60s)
+        shell: bash
         run: |
+          set -euo pipefail
           cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=60 2>&1 | tail -40

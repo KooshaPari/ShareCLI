@@ -16,6 +16,12 @@ jobs:
   miri:
     name: cargo miri (soft)
     runs-on: ubuntu-24.04
+    # Intentional informational gate, same class as the clippy/nextest
+    # informational steps in ci-gate.yml: a miri failure is reported as an
+    # error/warning annotation on every run, but this non-required workflow
+    # does not fail the job. This is not failure-masking (the previous
+    # `|| true` hid the result entirely). Promoting miri to a required gate
+    # is tracked separately.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Setup Rust nightly + miri

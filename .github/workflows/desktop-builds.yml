@@ -87,6 +87,18 @@ jobs:
           mkdir -p "$STAGE"
           cp "$BIN" "$STAGE/ShareCLITray"
           cp target/release/libsharecli_ffi.dylib "$STAGE/"
+          # Make the packaged binary relocatable: replace any absolute/workspace
+          # libsharecli_ffi load path with @executable_path so the archive runs
+          # outside the runner build directory.
+          DYLIB_REF=$(otool -L "$STAGE/ShareCLITray" | awk '/libsharecli_ffi\.dylib/ {print $1; exit}')
+          if [ -n "${DYLIB_REF}" ] && [ "${DYLIB_REF}" != "@executable_path/libsharecli_ffi.dylib" ]; then
+            install_name_tool -change "${DYLIB_REF}" "@executable_path/libsharecli_ffi.dylib" "$STAGE/ShareCLITray"
+          fi
+          install_name_tool -id "@executable_path/libsharecli_ffi.dylib" "$STAGE/libsharecli_ffi.dylib"
+          # install_name_tool invalidates Mach-O signatures on arm64; re-sign ad-hoc.
+          codesign --force --sign - "$STAGE/libsharecli_ffi.dylib"
+          codesign --force --sign - "$STAGE/ShareCLITray"
+          codesign --verify --strict "$STAGE/ShareCLITray"
           tar -czf sharecli-desktop-macos-aarch64.tar.gz -C "$STAGE" .
           shasum -a 256 sharecli-desktop-macos-aarch64.tar.gz | tee sharecli-desktop-macos-aarch64.tar.gz.sha256
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

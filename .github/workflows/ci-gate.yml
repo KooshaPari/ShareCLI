@@ -177,7 +177,7 @@ jobs:
           cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee clippy.log
           clippy_status=${PIPESTATUS[0]}
           set -e
-          if [ "$clippy_status" -ne 0 ] || grep -q '^error' clippy.log; then
+          if [ "$clippy_status" -ne 0 ] || grep -qE '^[[:space:]]*error(\[|:)' clippy.log; then
             echo "::warning::cargo clippy reported errors (informational, tracked in FR-007 debt; status=${clippy_status})"
           fi
       - name: Post legacy commit-status for merge gate

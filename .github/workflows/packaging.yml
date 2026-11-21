@@ -97,7 +97,8 @@ jobs:
             & cargo wix --no-build --output sharecli.msi -p sharecli
             if ($LASTEXITCODE -ne 0) { $status = $LASTEXITCODE }
           } else {
-            echo "::notice::cargo-wix not available; skipping real MSI build"
+            echo "::error::cargo-wix is not available; the MSI hard gate cannot produce an installer"
+            $status = 1
           }
           "status=$status" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           # Do not fail here so artifact upload/final gate can run.
@@ -127,8 +128,13 @@ jobs:
             Write-Error "MSI packaging failed (exit $status)"
             exit [int]$status
           }
-          if (!(Test-Path "sharecli-msi/payload/sharecli.exe")) {
+          if (!(Test-Path "sharecli-msi\payload\sharecli.exe")) {
             Write-Error "MSI payload missing"
+            exit 1
+          }
+          $msi = Get-Item -LiteralPath "sharecli.msi" -ErrorAction SilentlyContinue
+          if (-not $msi -or $msi.Length -le 0) {
+            Write-Error "sharecli.msi missing or empty; the MSI hard gate requires a built installer"
             exit 1
           }
           Write-Host "MSI packaging completed without command failure"
