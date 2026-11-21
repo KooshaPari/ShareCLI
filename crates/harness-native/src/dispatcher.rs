@@ -378,7 +378,15 @@ fn main() {
         agent_name: &agent_name,
     }) {
         Ok(code) => std::process::exit(code),
-        Err(_) => exec_bash_harness(&harness_home, &invoked, &args),
+        Err(e) => {
+            warn!(
+                cmd = %invoked,
+                strategy = %strategy,
+                error = %e,
+                "harness strategy failed; delegating to bash harness"
+            );
+            exec_bash_harness(&harness_home, &invoked, &args);
+        }
     }
 }
 
