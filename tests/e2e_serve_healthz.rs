@@ -5,7 +5,7 @@
 use std::io::Read;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 fn bin() -> Command {
@@ -17,15 +17,40 @@ fn pick_port() -> u16 {
     19_000 + (std::process::id() % 800) as u16
 }
 
+/// Cap on captured serve output per stream. Diagnostics only need the head of
+/// the log; an unbounded buffer can balloon test-process memory if `serve`
+/// logs aggressively while we poll for readiness.
+const CAPTURE_LIMIT: usize = 256 * 1024;
+const TRUNCATED_MARKER: &[u8] = b"\n...[output truncated]...\n";
+
 struct ServeChild {
     child: Option<Child>,
     port: u16,
     stdout_buf: Arc<Mutex<Vec<u8>>>,
     stderr_buf: Arc<Mutex<Vec<u8>>>,
+    readers: Vec<JoinHandle<()>>,
     _lock_dir: tempfile::TempDir,
 }
 
-fn spawn_reader<R: Read + Send + 'static>(mut reader: R, buf: Arc<Mutex<Vec<u8>>>) {
+fn append_capped(buf: &mut Vec<u8>, chunk: &[u8]) {
+    if buf.len() >= CAPTURE_LIMIT {
+        if !buf.ends_with(TRUNCATED_MARKER) {
+            buf.extend_from_slice(TRUNCATED_MARKER);
+        }
+        return;
+    }
+    let remaining = CAPTURE_LIMIT - buf.len();
+    let take = remaining.min(chunk.len());
+    buf.extend_from_slice(&chunk[..take]);
+    if take < chunk.len() {
+        buf.extend_from_slice(TRUNCATED_MARKER);
+    }
+}
+
+fn spawn_reader<R: Read + Send + 'static>(
+    mut reader: R,
+    buf: Arc<Mutex<Vec<u8>>>,
+) -> JoinHandle<()> {
     thread::spawn(move || {
         let mut chunk = [0u8; 4096];
         loop {
@@ -33,12 +58,12 @@ fn spawn_reader<R: Read + Send + 'static>(mut reader: R, buf: Arc<Mutex<Vec<u8>>
                 Ok(0) | Err(_) => break,
                 Ok(n) => {
                     if let Ok(mut guard) = buf.lock() {
-                        guard.extend_from_slice(&chunk[..n]);
+                        append_capped(&mut guard, &chunk[..n]);
                     }
                 }
             }
         }
-    });
+    })
 }
 
 impl ServeChild {
@@ -54,14 +79,15 @@ impl ServeChild {
 
         let stdout_buf = Arc::new(Mutex::new(Vec::new()));
         let stderr_buf = Arc::new(Mutex::new(Vec::new()));
+        let mut readers = Vec::new();
         if let Some(out) = child.stdout.take() {
-            spawn_reader(out, Arc::clone(&stdout_buf));
+            readers.push(spawn_reader(out, Arc::clone(&stdout_buf)));
         }
         if let Some(err) = child.stderr.take() {
-            spawn_reader(err, Arc::clone(&stderr_buf));
+            readers.push(spawn_reader(err, Arc::clone(&stderr_buf)));
         }
 
-        Self { child: Some(child), port, stdout_buf, stderr_buf, _lock_dir: lock_dir }
+        Self { child: Some(child), port, stdout_buf, stderr_buf, readers, _lock_dir: lock_dir }
     }
 
     fn child_mut(&mut self) -> &mut Child {
@@ -91,8 +117,18 @@ impl ServeChild {
             let _ = child.kill();
             let _ = child.wait();
         }
-        // Give reader threads a moment to flush buffered bytes.
-        thread::sleep(Duration::from_millis(50));
+        // The readers hit EOF once the child's pipe write ends close, so join
+        // them instead of guessing at a sleep. Bound the wait so a grandchild
+        // that inherited the pipe cannot hang the harness.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline && self.readers.iter().any(|h| !h.is_finished()) {
+            thread::sleep(Duration::from_millis(10));
+        }
+        for handle in std::mem::take(&mut self.readers) {
+            if handle.is_finished() {
+                let _ = handle.join();
+            }
+        }
     }
 }
 

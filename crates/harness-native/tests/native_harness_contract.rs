@@ -96,12 +96,8 @@ fn batch_strategy_reports_contract_error() {
 
     let err = result.expect_err("batch strategy must surface execution failure");
     assert!(
-        err.starts_with("batch strategy execution failed:"),
-        "batch strategy contract error must identify strategy and failure, got: {err}"
-    );
-    assert!(
-        err.contains("hypervisor") || err.contains("No such file") || err.contains("not found"),
-        "batch strategy contract error must include underlying execution failure, got: {err}"
+        err.starts_with("batch strategy execution failed: harness process: hypervisor:"),
+        "batch strategy contract error must name strategy, stage, and failure, got: {err}"
     );
 }
 
