@@ -83,28 +83,51 @@ static FFI: OnceLock<Result<Ffi, String>> = OnceLock::new();
 
 fn ffi() -> &'static Ffi {
     FFI.get_or_init(|| {
-        let path = resolve_dylib()
-            .ok_or_else(|| format!("sharecli_ffi dylib not found; looked at:\n  {DEBUG_DYLIB_PATH}\n  {RELEASE_DYLIB_PATH}"))?;
+        let path = resolve_dylib().ok_or_else(|| {
+            let searched = searched_dylib_paths()
+                .into_iter()
+                .map(|p| format!("  {}", p.display()))
+                .collect::<Vec<_>>()
+                .join("\n");
+            format!("sharecli_ffi dylib not found; looked at:\n{searched}")
+        })?;
         // SAFETY: Loading a cdylib at runtime; we never unload it.
-        let lib = unsafe { Library::new(&path) }
-            .map_err(|e| format!("dlopen {path:?} failed: {e}"))?;
+        let lib =
+            unsafe { Library::new(&path) }.map_err(|e| format!("dlopen {path:?} failed: {e}"))?;
         // SAFETY: Each symbol is `#[no_mangle] pub extern "C" fn ...`
         // declared in `src/lib.rs`; the type assertion below would panic
         // immediately at startup if the Rust-side signature ever drifts
         // from the C-ABI one.
-        let ipc_start = *unsafe { lib.get::<unsafe extern "C" fn() -> c_int>(b"sharecli_ipc_start") }
-            .map_err(|e| format!("get sharecli_ipc_start: {e}"))?;
-        let ipc_socket_path = *unsafe { lib.get::<unsafe extern "C" fn() -> *mut c_char>(b"sharecli_ipc_socket_path") }
-            .map_err(|e| format!("get sharecli_ipc_socket_path: {e}"))?;
-        let free_string = *unsafe { lib.get::<unsafe extern "C" fn(*mut c_char)>(b"sharecli_free_string") }
-            .map_err(|e| format!("get sharecli_free_string: {e}"))?;
-        let health_json = *unsafe { lib.get::<unsafe extern "C" fn() -> *mut c_char>(b"sharecli_health_json") }
-            .map_err(|e| format!("get sharecli_health_json: {e}"))?;
-        let request = *unsafe { lib.get::<unsafe extern "C" fn(*const c_char) -> *mut c_char>(b"sharecli_request") }
-            .map_err(|e| format!("get sharecli_request: {e}"))?;
-        let serve_get = *unsafe { lib.get::<unsafe extern "C" fn(*const c_char) -> *mut c_char>(b"sharecli_serve_get") }
-            .map_err(|e| format!("get sharecli_serve_get: {e}"))?;
-        Ok(Ffi { _lib: lib, ipc_start, ipc_socket_path, free_string, health_json, request, serve_get })
+        let ipc_start =
+            *unsafe { lib.get::<unsafe extern "C" fn() -> c_int>(b"sharecli_ipc_start") }
+                .map_err(|e| format!("get sharecli_ipc_start: {e}"))?;
+        let ipc_socket_path = *unsafe {
+            lib.get::<unsafe extern "C" fn() -> *mut c_char>(b"sharecli_ipc_socket_path")
+        }
+        .map_err(|e| format!("get sharecli_ipc_socket_path: {e}"))?;
+        let free_string =
+            *unsafe { lib.get::<unsafe extern "C" fn(*mut c_char)>(b"sharecli_free_string") }
+                .map_err(|e| format!("get sharecli_free_string: {e}"))?;
+        let health_json =
+            *unsafe { lib.get::<unsafe extern "C" fn() -> *mut c_char>(b"sharecli_health_json") }
+                .map_err(|e| format!("get sharecli_health_json: {e}"))?;
+        let request = *unsafe {
+            lib.get::<unsafe extern "C" fn(*const c_char) -> *mut c_char>(b"sharecli_request")
+        }
+        .map_err(|e| format!("get sharecli_request: {e}"))?;
+        let serve_get = *unsafe {
+            lib.get::<unsafe extern "C" fn(*const c_char) -> *mut c_char>(b"sharecli_serve_get")
+        }
+        .map_err(|e| format!("get sharecli_serve_get: {e}"))?;
+        Ok(Ffi {
+            _lib: lib,
+            ipc_start,
+            ipc_socket_path,
+            free_string,
+            health_json,
+            request,
+            serve_get,
+        })
     })
     .as_ref()
     .expect("sharecli_ffi dylib failed to load; see error above")
