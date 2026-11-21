@@ -5,7 +5,6 @@ permissions:
 jobs:
   visual:
     runs-on: ubuntu-24.04
-    continue-on-error: true  # Zig download mirrors are transient; promote to hard gate when infra stabilizes
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Setup Rust
@@ -15,7 +14,8 @@ jobs:
         with:
           version: 0.14.1
       - name: Build Dashboard Assets
-        run: cargo build --release --locked 2>&1 | tail -5
+        run: |
+          cargo build --release --locked 2>&1 | tail -5
       - name: Visual Snapshot Check
         run: |
           # Verify dashboard assets are consistent

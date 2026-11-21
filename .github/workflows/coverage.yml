@@ -52,9 +52,16 @@ jobs:
         env:
           CARGO_TERM_COLOR: never
         run: |
-          set -euo pipefail
           OUT=$(cargo test --locked --all-features --workspace -- --list)
-          COUNT=$(printf '%s\n' "$OUT" | grep -cE ': test$' || true)
+          set +e
+          COUNT=$(printf '%s\n' "$OUT" | grep -cE ': test$')
+          grep_rc=$?
+          set -e
+          if [ "$grep_rc" -gt 1 ]; then
+            echo "::error::failed to parse cargo test --list output"
+            exit "$grep_rc"
+          fi
+          COUNT=${COUNT:-0}
           echo "Discovered tests: $COUNT"
           if [ "${COUNT:-0}" -le 0 ]; then
             echo "No tests discovered (cargo test -- --list). Failing coverage job."

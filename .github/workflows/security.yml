@@ -100,7 +100,6 @@ jobs:
   container:
     name: Container Scan
     runs-on: ubuntu-24.04
-    continue-on-error: true  # Zig mirror transient failures; promote when infra stabilizes
     permissions:
       contents: read
       security-events: write
@@ -109,19 +108,43 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Build image
+        id: build_image
         if: ${{ hashFiles('Dockerfile') != '' }}
-        run: docker build -t ${{ github.event.repository.name }}:scan .
+        run: docker build -t sharecli:scan .
 
       - name: Run Trivy vulnerability scanner
+        id: trivy_scan
         if: ${{ hashFiles('Dockerfile') != '' }}
         uses: aquasecurity/trivy-action@38b337fff0a2f984d5be173c99e3f633438167ec
         with:
-          image-ref: '${{ github.event.repository.name }}:scan'
+          image-ref: 'sharecli:scan'
           format: 'sarif'
           output: 'trivy-results.sarif'
 
       - name: Upload Trivy results
-        if: ${{ hashFiles('Dockerfile') != '' }}
+        if: ${{ always() && hashFiles('Dockerfile') != '' }}
         uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066
         with:
           sarif_file: 'trivy-results.sarif'
+
+      - name: Fail if container scan failed
+        if: ${{ always() && hashFiles('Dockerfile') != '' }}
+        env:
+          BUILD_RESULT: ${{ steps.build_image.outcome }}
+          TRIVY_RESULT: ${{ steps.trivy_scan.outcome }}
+        run: |
+          set -euo pipefail
+          failed=0
+          for pair in "build-image:${BUILD_RESULT}" "trivy-scan:${TRIVY_RESULT}"; do
+            name="${pair%%:*}"
+            result="${pair#*:}"
+            case "$result" in
+              success|skipped) echo "  ok  $name: $result" ;;
+              *) echo "  FAIL $name: $result"; failed=$((failed + 1)) ;;
+            esac
+          done
+          if [ "$failed" -gt 0 ]; then
+            echo "::error::$failed container scan step(s) failed"
+            exit 1
+          fi
+          echo "Container scan steps passed"

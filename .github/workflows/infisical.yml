@@ -44,11 +44,12 @@ jobs:
           fi
 
           # Pull all secrets from the configured env into .env
+          # Print only variable names (never values) to avoid leaking unmasked secrets.
           infisical run \
             --projectId "$INFISICAL_PROJECT_ID" \
             --env "$INFISICAL_ENV" \
             --token "$INFISICAL_TOKEN" \
-            -- bash -c 'echo "Secrets loaded into env successfully" && env | grep -E "^[A-Z_]+=" | grep -v -E "^(PATH|HOME|PWD|SHELL|HOSTNAME|TERM|GITHUB_|RUNNER_|CARGO_|DEPLOY_|INPUT_|IMAGE_|ACTIONS_|STEP_|BOOT_|GRUB_|LS_COLORS|INVOCATION_ID|JOURNAL_)" | head -20'
+            -- bash -euo pipefail -c 'echo "Secrets loaded into env successfully"; env | cut -d= -f1 | wc -l | sed "s/^/variables present: /"'
 
       - name: Upload secrets as artifact (debug only, never published)
         if: failure()

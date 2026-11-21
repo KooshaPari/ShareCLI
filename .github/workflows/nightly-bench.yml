@@ -45,7 +45,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     outputs:
-      bench_status: ${{ steps.bench.outcome }}
+      bench_status: ${{ steps.bench.outputs.bench_status }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -71,12 +71,21 @@ jobs:
 
       - name: Run Criterion benches (nightly sample sizes)
         id: bench
-        continue-on-error: true
+        shell: bash
         run: |
-          cargo bench --locked --bench config_parse -- --sample-size 50 --warm-up-time 2 --measurement-time 5 2>&1 | tee bench-criterion.log
-          cargo bench --locked --bench pool_list -- --sample-size 50 --warm-up-time 2 --measurement-time 5 2>&1 | tee -a bench-criterion.log
-          cargo bench --locked --bench prometheus_render -- --sample-size 50 --warm-up-time 2 --measurement-time 5 2>&1 | tee -a bench-criterion.log
-          cargo bench --locked --bench jwt_auth_validate -- --sample-size 50 --warm-up-time 2 --measurement-time 5 2>&1 | tee -a bench-criterion.log
+          set -euo pipefail
+          status=0
+          cargo bench --locked --bench config_parse -- --sample-size 50 --warm-up-time 2 --measurement-time 5 2>&1 | tee bench-criterion.log || status=$?
+          cargo bench --locked --bench pool_list -- --sample-size 50 --warm-up-time 2 --measurement-time 5 2>&1 | tee -a bench-criterion.log || status=$?
+          cargo bench --locked --bench prometheus_render -- --sample-size 50 --warm-up-time 2 --measurement-time 5 2>&1 | tee -a bench-criterion.log || status=$?
+          cargo bench --locked --bench jwt_auth_validate -- --sample-size 50 --warm-up-time 2 --measurement-time 5 2>&1 | tee -a bench-criterion.log || status=$?
+          echo "status=${status}" >> "$GITHUB_OUTPUT"
+          if [ "$status" -eq 0 ]; then
+            echo "bench_status=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "bench_status=failure" >> "$GITHUB_OUTPUT"
+          fi
+          exit 0
 
       - name: Export benchmark results to JSON
         if: always()
@@ -126,6 +135,23 @@ jobs:
           curl -sf -o /dev/null http://127.0.0.1:9000/healthz
           bash scripts/bench/hyperfine-healthz.sh
           echo '{"hyperfine": "completed"}' >> "${{ env.BENCH_RESULT_FILE }}"
+
+      - name: Fail if Criterion benches failed
+        if: always()
+        env:
+          BENCH_STATUS: ${{ steps.bench.outputs.status }}
+        run: |
+          set -euo pipefail
+          status="${BENCH_STATUS:-}"
+          if [ -z "${status}" ]; then
+            echo "::error::Criterion bench step did not report status"
+            exit 1
+          fi
+          if [ "${status}" -ne 0 ]; then
+            echo "::error::Criterion benches failed (exit ${status})"
+            exit "${status}"
+          fi
+          echo "Criterion benches passed"
 
   # ── Notification ────────────────────────────────────────────────────
   notify:

@@ -104,6 +104,10 @@ jobs:
         shell: bash
         run: |
           VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+          if [ -z "$VERSION" ]; then
+            echo "::error::failed to determine version from Cargo.toml"
+            exit 1
+          fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Releasing version: ${VERSION}"
 
@@ -261,7 +265,19 @@ jobs:
           STAGE=sharecli-desktop-macos
           mkdir -p "$STAGE"
           cp "$BIN" "$STAGE/ShareCLITray"
-          cp target/release/libsharecli_ffi.dylib "$STAGE/" 2>/dev/null || true
+          cp target/release/libsharecli_ffi.dylib "$STAGE/"
+          # Make the packaged binary relocatable: replace any absolute/workspace
+          # libsharecli_ffi load path with @executable_path so the archive runs
+          # outside the runner build directory.
+          DYLIB_REF=$(otool -L "$STAGE/ShareCLITray" | awk '/libsharecli_ffi\.dylib/ {print $1; exit}')
+          if [ -n "${DYLIB_REF}" ] && [ "${DYLIB_REF}" != "@executable_path/libsharecli_ffi.dylib" ]; then
+            install_name_tool -change "${DYLIB_REF}" "@executable_path/libsharecli_ffi.dylib" "$STAGE/ShareCLITray"
+          fi
+          install_name_tool -id "@executable_path/libsharecli_ffi.dylib" "$STAGE/libsharecli_ffi.dylib"
+          # install_name_tool invalidates Mach-O signatures on arm64; re-sign ad-hoc.
+          codesign --force --sign - "$STAGE/libsharecli_ffi.dylib"
+          codesign --force --sign - "$STAGE/ShareCLITray"
+          codesign --verify --strict "$STAGE/ShareCLITray"
           ARCHIVE=sharecli-desktop-macos-aarch64.tar.gz
           tar -czf "$ARCHIVE" -C "$STAGE" .
           shasum -a 256 "$ARCHIVE" | tee "${ARCHIVE}.sha256"
@@ -341,7 +357,6 @@ jobs:
           if-no-files-found: warn
 
       - name: Attest build provenance
-        continue-on-error: true
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: "release-artifacts/**/*.{tar.gz,zip}"
@@ -414,6 +429,10 @@ jobs:
             echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
           else
             VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+            if [ -z "$VERSION" ]; then
+              echo "::error::failed to determine version from Cargo.toml"
+              exit 1
+            fi
             echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
           fi
 
@@ -428,7 +447,7 @@ jobs:
           ASSETS=(release-artifacts/*.tar.gz release-artifacts/*.zip release-artifacts/*.sha256)
           if [[ ${#ASSETS[@]} -eq 0 ]]; then
             echo "No release assets found under release-artifacts/"
-            ls -laR release-artifacts || true
+            ls -laR release-artifacts || echo "::warning::failed to list release-artifacts"
             exit 1
           fi
           if gh release view "${TAG}" >/dev/null 2>&1; then
@@ -470,7 +489,9 @@ jobs:
         run: |
           set -euo pipefail
           cd bin
-          ARCHIVE=$(ls *.tar.gz 2>/dev/null | head -1)
+          shopt -s nullglob
+          archives=( *.tar.gz )
+          ARCHIVE="${archives[0]:-}"
           if [ -n "${ARCHIVE}" ]; then
             tar -xzf "${ARCHIVE}"
             find . -maxdepth 2 -type f -name sharecli -not -name '*.sha256' -exec cp {} ./sharecli \;
