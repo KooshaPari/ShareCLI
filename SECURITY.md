@@ -1,7 +1,7 @@
 # Security Policy
 
-We take the security of **sharecli** — the shared CLI process manager for
-Phenotype's multi-project agent infrastructure — seriously.
+We take the security of **sharecli** — the OS/kernel-adjacent agent runtime /
+hypervisor for Phenotype's multi-agent host infrastructure — seriously.
 
 > **TL;DR** — please **DO NOT** open a public GitHub issue for security
 > vulnerabilities. Use the private reporting channel below.
