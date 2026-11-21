@@ -46,8 +46,13 @@ serde_json = "1"
 toml = "1.1"
 
 # Process management (substrate SDK + adapter)
-substrate = { git = "https://github.com/KooshaPari/PhenoShared", default-features = false }
-runtime-process = { git = "https://github.com/KooshaPari/PhenoShared", package = "runtime-process" }
+# Vendored from the upstream shared-crates monorepo @
+# 9777b92e9f37ac2ca47486af0fa3530e7e2c2559 (provenance is recorded in each
+# vendor/*/Cargo.toml `repository` field). That history is force-pushed, so
+# git+rev pins keep disappearing and release builds fail. Path dependencies
+# make releases reproducible.
+substrate = { path = "vendor/substrate", default-features = false }
+runtime-process = { path = "vendor/runtime-process", package = "runtime-process" }
 sysinfo = "0.39"
 
 # Zig hot core: POSIX semaphore, posix_spawn, setpriority, waitpid
@@ -248,7 +253,15 @@ members = [
   "crates/gateway",
   "crates/gateway-tools",
 ]
-exclude = ["fuzz"]
+exclude = [
+  "fuzz",
+  "vendor/engine-spec",
+  "vendor/runtime-process",
+  "vendor/substrate",
+  "vendor/substrate-a2a",
+  "vendor/substrate-app",
+  "vendor/substrate-core",
+]
 
 # ---------------------------------------------------------------------------
 # cargo-dist release automation

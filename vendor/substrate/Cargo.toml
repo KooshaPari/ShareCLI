@@ -1,0 +1,27 @@
+[package]
+name = "substrate"
+version = "0.3.10"
+publish = false
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/KooshaPari/PhenoShared"
+rust-version = "1.82"
+description = "Rust SDK facade: hexagonal ports, domain types, dispatch planner, and optional adapters."
+readme = "README.md"
+keywords = ["agent", "dispatch", "hexagonal", "orchestration", "substrate"]
+categories = ["development-tools", "asynchronous"]
+
+[features]
+default = ["app", "spec"]
+app = ["dep:substrate-app"]
+spec = ["dep:engine-spec"]
+a2a = ["dep:a2a"]
+
+[dependencies]
+substrate-core = { version = "0.3.8", path = "../substrate-core" }
+substrate-app = { version = "0.3.8", path = "../substrate-app", optional = true }
+engine-spec = { version = "0.3.8", path = "../engine-spec", optional = true }
+a2a = { package = "substrate-a2a", version = "0.3.8", path = "../substrate-a2a", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.42", features = ["macros", "rt"] }

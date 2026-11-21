@@ -1,0 +1,21 @@
+[package]
+name = "substrate-app"
+version = "0.3.10"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/KooshaPari/PhenoShared"
+rust-version = "1.82"
+description = "Application layer: DispatchService use-case and DispatchPlanner, generic over the core ports."
+readme = "README.md"
+keywords = ["dispatch", "planner", "hexagonal", "substrate"]
+categories = ["development-tools"]
+
+[dependencies]
+substrate-core = { version = "0.3.8", path = "../substrate-core" }
+engine-spec = { version = "0.3.8", path = "../engine-spec" }
+async-trait = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+uuid = { version = "1.11", features = ["v4", "serde"] }
+
+[dev-dependencies]
+tokio = { version = "1.42", features = ["macros", "rt"] }

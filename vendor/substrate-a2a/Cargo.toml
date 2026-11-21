@@ -1,0 +1,24 @@
+[package]
+name = "substrate-a2a"
+version = "0.3.10"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/KooshaPari/PhenoShared"
+rust-version = "1.82"
+description = "A2A-shaped wire schema (Task, Message, Artifact, Part). Transport-agnostic; depends only on serde/uuid/thiserror."
+readme = "README.md"
+keywords = ["a2a", "agent", "protocol", "schema"]
+categories = ["development-tools", "encoding"]
+
+[lib]
+name = "a2a"
+
+# Deliberately a leaf crate. It must NOT depend on substrate-core, engine-*, transport-*,
+# store-*, driver-*, or *-adapter. arch-test enforces a similar rule for substrate-core.
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+uuid = { version = "1.11", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
