@@ -81,18 +81,27 @@ fn fr003_musl_test_job_exists() {
 }
 
 // ---------------------------------------------------------------------------
-// Gate 6: all jobs are advisory (continue-on-error: true)
+// Gate 6: cross-platform workflow must not mask failures with continue-on-error
 // ---------------------------------------------------------------------------
 
 #[test]
-fn fr003_cross_platform_jobs_are_advisory() {
+fn fr003_cross_platform_jobs_do_not_mask_failures_with_continue_on_error() {
+    // Policy (PR #1033, E:\koosh\Agents\scratch\ci-release\PR1033_HARDENED_FAILURES.md):
+    // cross-platform is a signal workflow whose results must remain visible. No job may be
+    // made advisory via `continue-on-error`, because masking failures can hide regressions
+    // and would violate gating if a job is promoted into a required check context. The
+    // workflow currently declares no `continue-on-error`; any reintroduced use fails this
+    // test unless the policy is explicitly revised to name a non-masking exception.
     let content = read_workflow();
-    // Count the number of continue-on-error: true lines
     let advisory_count = content.matches("continue-on-error: true").count();
-    assert!(
-        advisory_count >= 2,
-        "At least 2 jobs must be advisory (continue-on-error: true), found {}",
+    assert_eq!(
+        advisory_count, 0,
+        "cross-platform workflow must not use continue-on-error: true (found {}); failures must remain visible and cannot mask required checks",
         advisory_count
+    );
+    assert!(
+        !content.contains("continue-on-error:"),
+        "cross-platform workflow must not declare continue-on-error on any job (would mask failures)"
     );
 }
 
