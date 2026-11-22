@@ -32,6 +32,13 @@ fn get(uri: &'static str) -> Request<Body> {
     Request::builder().uri(uri).body(Body::empty()).expect("build request")
 }
 
+/// Prometheus sample lines are `name value`; compare the whole line so a value
+/// of `10`/`100` cannot satisfy an expected `1` by prefix.
+fn has_sample_line(text: &str, name: &str, value: u64) -> bool {
+    let expected = format!("{name} {value}");
+    text.lines().any(|line| line.trim_end() == expected)
+}
+
 const TRACEPARENT: &str = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
 
 #[test]
@@ -148,12 +155,20 @@ async fn fr003_prometheus_handler_reads_both_counters() {
     let text = String::from_utf8(body.to_vec()).expect("prometheus body is UTF-8");
 
     assert!(
-        text.contains(&format!("{INJECTED} 1")),
-        "prometheus output must expose the injected counter value:\n{text}"
+        has_sample_line(&text, INJECTED, 1),
+        "prometheus output must expose an exact `{INJECTED} 1` sample line:\n{text}"
     );
     assert!(
-        text.contains(&format!("{EXTRACTED} 1")),
-        "prometheus output must expose the extracted counter value:\n{text}"
+        has_sample_line(&text, EXTRACTED, 1),
+        "prometheus output must expose an exact `{EXTRACTED} 1` sample line:\n{text}"
+    );
+    // The scrape itself increments the injected counter only after the handler
+    // renders the body, so the emitted value is the pre-scrape count and the
+    // registry advances afterwards. This is why `1` is the correct expectation.
+    assert_eq!(
+        metrics.counter(INJECTED).get(),
+        2,
+        "the scrape request must increment the inject counter after rendering"
     );
     assert!(
         text.contains(&format!("# TYPE {INJECTED} counter")),

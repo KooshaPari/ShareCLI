@@ -54,17 +54,25 @@ async fn fr003_serve_middleware_wired_in_router() {
         ..ServeConfig::default()
     };
     // `from_env_or_config` honours `SHARECLI_SERVE_RATE_LIMIT_MAX/WINDOW_SECS`,
-    // so build the router from an explicit limiter to keep the assertion
-    // deterministic; the config path is covered by
-    // `fr003_config_rate_limit_fields_present`.
+    // so derive the expectation from whichever overrides are actually present,
+    // including a zero max that disables the limiter. Deriving rather than
+    // mutating process env keeps the assertion env-invariant without racing the
+    // other tests in this binary.
+    let env_max =
+        std::env::var("SHARECLI_SERVE_RATE_LIMIT_MAX").ok().and_then(|s| s.parse::<usize>().ok());
+    let env_window = std::env::var("SHARECLI_SERVE_RATE_LIMIT_WINDOW_SECS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok());
+    let expected_max = env_max.unwrap_or(2);
+    let expected_window = std::time::Duration::from_secs(env_window.unwrap_or(60));
+
     let resolved = ServeRateLimit::from_env_or_config(&cfg);
-    if std::env::var_os("SHARECLI_SERVE_RATE_LIMIT_MAX").is_none() {
-        let resolved = resolved.as_ref().expect("configured max must enable the limiter");
-        assert_eq!(resolved.max_per_window(), 2);
-        assert_eq!(resolved.window(), std::time::Duration::from_secs(60));
+    if expected_max == 0 {
+        assert!(resolved.is_none(), "a zero max must disable the limiter");
     } else {
-        // Env overrides must still produce a usable limiter.
-        assert!(resolved.is_some(), "env-supplied limit must enable the limiter");
+        let resolved = resolved.expect("a non-zero max must enable the limiter");
+        assert_eq!(resolved.max_per_window(), expected_max);
+        assert_eq!(resolved.window(), expected_window);
     }
 
     let (shutdown_tx, _shutdown_rx) = watch::channel(false);
@@ -133,7 +141,20 @@ fn fr003_config_rate_limit_fields_present() {
         rate_limit_window_secs: Some(60),
         ..ServeConfig::default()
     };
+    let env_max =
+        std::env::var("SHARECLI_SERVE_RATE_LIMIT_MAX").ok().and_then(|s| s.parse::<usize>().ok());
+    let env_window = std::env::var("SHARECLI_SERVE_RATE_LIMIT_WINDOW_SECS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok());
+    let expected_max = env_max.unwrap_or(120);
+    if expected_max == 0 {
+        assert!(
+            ServeRateLimit::from_env_or_config(&cfg).is_none(),
+            "a zero max must disable the limiter"
+        );
+        return;
+    }
     let lim = ServeRateLimit::from_env_or_config(&cfg).expect("limiter from config");
-    assert_eq!(lim.max_per_window(), 120);
-    assert_eq!(lim.window(), std::time::Duration::from_secs(60));
+    assert_eq!(lim.max_per_window(), expected_max);
+    assert_eq!(lim.window(), std::time::Duration::from_secs(env_window.unwrap_or(60)));
 }
