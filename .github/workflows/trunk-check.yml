@@ -10,7 +10,7 @@
 # of trunk-io/trunk-action. trunk-action's managed tool bootstrap repeatedly
 # failed on ubuntu-latest ("Binary not found" / "jq not installed on system!"
 # inside its launcher), while the tools themselves install cleanly. actionlint
-# runs from the official docker image (no download-and-execute in the lane).
+# runs from the official image via podman (no download-and-execute in the lane).
 # The `.trunk/` config remains the local-developer source of truth
 # (`trunk check`).
 
@@ -44,9 +44,14 @@ jobs:
         # actionlint integration runs without shellcheck too (and the repo's
         # workflows carry pre-existing SC2034/SC2086 advisories that trunk
         # does not gate on).
-        uses: docker://rhysd/actionlint:1.7.12
-        with:
-          args: -shellcheck=
+        # podman: this repo does not use the Docker engine
+        run: |
+          set -euo pipefail
+          podman run --rm \
+            -v "${PWD}:/mnt:Z" \
+            -w /mnt \
+            rhysd/actionlint:1.7.12 \
+            -shellcheck=
 
       - name: Install taplo
         run: cargo install taplo-cli --locked --version 0.9.3
@@ -57,7 +62,7 @@ jobs:
       - name: Run remaining trunk linters
         run: |
           set -euo pipefail
-          # actionlint runs in the docker step above (reads
+          # actionlint runs in the podman step above (reads
           # .github/actionlint.yaml for ignore rules).
           # Same whitespace-only formatting contract as `trunk fmt`.
           taplo fmt --check

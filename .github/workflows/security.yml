@@ -110,14 +110,24 @@ jobs:
       - name: Build image
         id: build_image
         if: ${{ hashFiles('Dockerfile') != '' }}
-        run: docker build -t sharecli:scan .
+        # podman: this repo does not use the Docker engine
+        # -f Dockerfile is explicit: podman's default discovery would pick the
+        # root Containerfile first, which is a different build definition.
+        run: podman build -f Dockerfile --platform linux/amd64 -t sharecli:scan .
+
+      - name: Export image for scanning
+        if: ${{ hashFiles('Dockerfile') != '' }}
+        # podman: export the built image so Trivy scans the archive directly.
+        # Trivy's podman image source would need a running podman API socket.
+        run: podman save --format docker-archive -o "${RUNNER_TEMP}/sharecli-scan.tar" sharecli:scan
 
       - name: Run Trivy vulnerability scanner
         id: trivy_scan
         if: ${{ hashFiles('Dockerfile') != '' }}
         uses: aquasecurity/trivy-action@38b337fff0a2f984d5be173c99e3f633438167ec
         with:
-          image-ref: 'sharecli:scan'
+          scan-type: 'image'
+          input: ${{ runner.temp }}/sharecli-scan.tar
           format: 'sarif'
           output: 'trivy-results.sarif'
 

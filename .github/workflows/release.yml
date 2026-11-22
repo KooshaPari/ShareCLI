@@ -508,31 +508,50 @@ jobs:
         run: |
           VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
           SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          # GHCR requires a lowercase repository path.
+          REPO_LC="$(printf '%s' "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "tag=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "tag-sha=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
-          echo "tag-latest=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> "$GITHUB_OUTPUT"
+          echo "tag=${REGISTRY}/${REPO_LC}:${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag-sha=${REGISTRY}/${REPO_LC}:${VERSION}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "tag-latest=${REGISTRY}/${REPO_LC}:latest" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Packages
-        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+        # podman: this repo does not use the Docker engine
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "${GHCR_TOKEN}" \
+            | podman login "${REGISTRY}" --username "${GITHUB_ACTOR}" --password-stdin
 
       - name: Build and push container image
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: .
-          file: Dockerfile.ghcr
-          push: true
-          tags: |
-            ${{ steps.version.outputs.tag }}
-            ${{ steps.version.outputs.tag-sha }}
-            ${{ steps.version.outputs.tag-latest }}
-          labels: |-
-            org.opencontainers.image.title=sharecli
-            org.opencontainers.image.description=OS-adjacent agent runtime
-            org.opencontainers.image.version=${{ steps.version.outputs.version }}
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
+        # podman: this repo does not use the Docker engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.version.outputs.tag }}"
+          TAG_SHA="${{ steps.version.outputs.tag-sha }}"
+          TAG_LATEST="${{ steps.version.outputs.tag-latest }}"
+          # podman: this repo does not use the Docker engine
+          # --format docker keeps the HEALTHCHECK from Dockerfile.ghcr, which
+          # the default OCI output format drops.
+          podman build \
+            -f Dockerfile.ghcr \
+            --format docker \
+            --label "org.opencontainers.image.title=sharecli" \
+            --label "org.opencontainers.image.description=OS-adjacent agent runtime" \
+            --label "org.opencontainers.image.version=${{ steps.version.outputs.version }}" \
+            --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
+            --label "org.opencontainers.image.revision=${{ github.sha }}" \
+            -t "${TAG}" \
+            -t "${TAG_SHA}" \
+            -t "${TAG_LATEST}" \
+            .
+          for ref in "${TAG}" "${TAG_SHA}" "${TAG_LATEST}"; do
+            echo "Pushing ${ref}"
+            digest_file="$(mktemp)"
+            podman push --digestfile "${digest_file}" "${ref}"
+            echo "pushed ${ref} digest=$(tr -d '[:space:]' <"${digest_file}")"
+            rm -f "${digest_file}"
+          done
