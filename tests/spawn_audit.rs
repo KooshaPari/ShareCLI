@@ -5,9 +5,9 @@
 use std::fs;
 use std::sync::Mutex;
 
+use serial_test::serial;
 use sharecli::audit_log;
 use sharecli::runtime::ProcessPool;
-use serial_test::serial;
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
