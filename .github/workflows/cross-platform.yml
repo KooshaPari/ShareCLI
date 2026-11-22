@@ -1,13 +1,13 @@
 ###############################################################################
 # Cross-platform CI (C07 L69 — score 3)
 #
-# Advisory matrix that validates the build on targets beyond ubuntu-latest:
+# Hard-gate matrix that validates the build on targets beyond ubuntu-latest:
 #   - ubuntu-latest + macos-latest + windows-latest (full surface: build+test)
 #   - FreeBSD (cross-compiled via cross-rs, no tests — link-only)
 #   - wasm32-unknown-unknown (link-only, no tests)
 #   - x86_64-unknown-linux-musl (build+test via cross-rs)
 #
-# continue-on-error: true — this is a signal workflow, not a hard gate.
+# Hard gates since PR #1047: no job is soft-failed, so a red cell blocks.
 ###############################################################################
 
 name: Cross-Platform

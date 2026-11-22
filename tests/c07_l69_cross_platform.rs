@@ -81,18 +81,20 @@ fn fr003_musl_test_job_exists() {
 }
 
 // ---------------------------------------------------------------------------
-// Gate 6: all jobs are advisory (continue-on-error: true)
+// Gate 6: no job is soft-failed (the matrix is a hard gate)
 // ---------------------------------------------------------------------------
+//
+// PR #1047 ("remove failure-masking constructs") turned the native, cross and
+// musl-test jobs into hard gates. The earlier version of this gate required at
+// least two `continue-on-error: true` jobs, which now contradicts every other
+// CI-truth gate in this suite; assert the current policy instead.
 
 #[test]
-fn fr003_cross_platform_jobs_are_advisory() {
+fn fr003_cross_platform_jobs_are_hard_gates() {
     let content = read_workflow();
-    // Count the number of continue-on-error: true lines
-    let advisory_count = content.matches("continue-on-error: true").count();
     assert!(
-        advisory_count >= 2,
-        "At least 2 jobs must be advisory (continue-on-error: true), found {}",
-        advisory_count
+        !content.contains("continue-on-error: true"),
+        "cross-platform jobs must not be soft-failed via continue-on-error"
     );
 }
 
