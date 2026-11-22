@@ -533,8 +533,12 @@ jobs:
           TAG="${{ steps.version.outputs.tag }}"
           TAG_SHA="${{ steps.version.outputs.tag-sha }}"
           TAG_LATEST="${{ steps.version.outputs.tag-latest }}"
+          # podman: this repo does not use the Docker engine
+          # --format docker keeps the HEALTHCHECK from Dockerfile.ghcr, which
+          # the default OCI output format drops.
           podman build \
             -f Dockerfile.ghcr \
+            --format docker \
             --label "org.opencontainers.image.title=sharecli" \
             --label "org.opencontainers.image.description=OS-adjacent agent runtime" \
             --label "org.opencontainers.image.version=${{ steps.version.outputs.version }}" \
@@ -546,5 +550,8 @@ jobs:
             .
           for ref in "${TAG}" "${TAG_SHA}" "${TAG_LATEST}"; do
             echo "Pushing ${ref}"
-            podman push "${ref}"
+            digest_file="$(mktemp)"
+            podman push --digestfile "${digest_file}" "${ref}"
+            echo "pushed ${ref} digest=$(tr -d '[:space:]' <"${digest_file}")"
+            rm -f "${digest_file}"
           done

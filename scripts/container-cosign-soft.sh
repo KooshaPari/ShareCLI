@@ -30,7 +30,10 @@ if ! podman info >/dev/null 2>&1; then
 fi
 
 echo "Building ${IMAGE_TAG} from Containerfile"
-podman build -f Containerfile -t "${IMAGE_TAG}" .
+# podman: this repo does not use the Docker engine
+# --format docker keeps the HEALTHCHECK that the Containerfile declares; the
+# default OCI output format drops it.
+podman build --format docker -f Containerfile -t "${IMAGE_TAG}" .
 
 IMAGE_ID="$(podman inspect --format='{{.Id}}' "${IMAGE_TAG}")"
 printf '%s\n' "${IMAGE_ID}" >"${BLOB_FILE}"
@@ -41,8 +44,19 @@ if [[ "${GHCR_COSIGN_PUSH:-false}" == "true" ]]; then
   GHCR_IMAGE="${GHCR_IMAGE:-ghcr.io/${GITHUB_REPOSITORY,,}/sharecli:ci}"
   echo "GHCR_COSIGN_PUSH=true — tagging and pushing ${GHCR_IMAGE}"
   if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    # podman: this repo does not use the Docker engine
+    # cosign reads the Docker keychain, not the podman auth file, so write the
+    # login in Docker-compatible form to the path cosign resolves.
+    DOCKER_AUTH_DIR="${DOCKER_CONFIG:-${HOME}/.docker}"
+    mkdir -p "${DOCKER_AUTH_DIR}"
     printf '%s\n' "${GITHUB_TOKEN}" \
-      | podman login "${GHCR_IMAGE%%/*}" -u "${GITHUB_ACTOR:-github-actions}" --password-stdin
+      | podman login "${GHCR_IMAGE%%/*}" \
+        --username "${GITHUB_ACTOR:-github-actions}" \
+        --password-stdin \
+        --compat-auth-file "${DOCKER_AUTH_DIR}/config.json"
+  else
+    echo "::error::GHCR_COSIGN_PUSH=true requires GITHUB_TOKEN to push/sign ${GHCR_IMAGE}" >&2
+    exit 1
   fi
   podman tag "${IMAGE_TAG}" "${GHCR_IMAGE}"
   podman push "${GHCR_IMAGE}"
