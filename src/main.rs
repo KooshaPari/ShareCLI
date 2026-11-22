@@ -86,11 +86,14 @@ EXAMPLES
   # Start a claude harness for a project, in a specific working directory
   $ sharecli start myproject --harness claude --cwd ~/code/myproject
 
-  # Stop a single process by PID, with confirmation prompt
+  # Stop a single process by PID (immediate; --force without --yes only previews)
   $ sharecli stop --pid 4242
 
-  # Stop all processes for a project, force-kill without prompt
-  $ sharecli stop --project myproject --all --force --yes
+  # Stop one project's processes, force-kill without prompting
+  $ sharecli stop --project myproject --force --yes
+
+  # Stop every managed process (--all ignores --project)
+  $ sharecli stop --all --yes
 
   # Inspect durable agent sessions (FR-005)
   $ sharecli session list
@@ -125,7 +128,7 @@ EXAMPLES
 
   # Service registry (process-compose)
   $ sharecli proc-compose list
-)",
+",
     long_about = None
 )]
 struct Cli {
