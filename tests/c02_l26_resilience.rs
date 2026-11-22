@@ -195,9 +195,7 @@ async fn fr003_healthz_readyz_split_is_observable() {
 
     // Flip the same flag the graceful-shutdown path publishes (Ctrl-C, SIGTERM,
     // thermal critical, external cancel) and observe the routed response.
-    shutdown_tx
-        .send(true)
-        .expect("set shutdown flag on shared state read by /readyz route");
+    shutdown_tx.send(true).expect("set shutdown flag on shared state read by /readyz route");
     let response = health_ready_router(Arc::clone(&shutdown_tx))
         .oneshot(Request::builder().uri("/readyz").body(Body::empty()).unwrap())
         .await

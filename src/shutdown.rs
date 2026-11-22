@@ -72,8 +72,7 @@ mod tests {
         let child = cancel.child_token();
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
         let shutdown_tx = Arc::new(shutdown_tx);
-        let signal =
-            tokio::spawn(serve_shutdown_signal(cancel.clone(), Arc::clone(&shutdown_tx)));
+        let signal = tokio::spawn(serve_shutdown_signal(cancel.clone(), Arc::clone(&shutdown_tx)));
         shutdown_tx.send(true).unwrap();
         signal.await.unwrap();
         assert!(child.is_cancelled());
