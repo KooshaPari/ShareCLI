@@ -59,7 +59,7 @@ if [[ "${GHCR_COSIGN_PUSH:-false}" == "true" ]]; then
     exit 1
   fi
   podman tag "${IMAGE_TAG}" "${GHCR_IMAGE}"
-  podman push "${GHCR_IMAGE}"
+  podman push --authfile "${DOCKER_AUTH_DIR}/config.json" "${GHCR_IMAGE}"
   cosign sign --yes "${GHCR_IMAGE}" \
     --certificate-identity-regexp "${IDENTITY_REGEXP}" \
     --certificate-oidc-issuer "${OIDC_ISSUER}"

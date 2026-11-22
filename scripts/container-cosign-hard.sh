@@ -144,7 +144,8 @@ printf '%s\n' "${GITHUB_TOKEN}" | ${CONTAINER_ENGINE} login ghcr.io \
 
 echo "Pushing ${GHCR_IMAGE}"
 PUSH_DIGEST_FILE="$(mktemp)"
-${CONTAINER_ENGINE} push --digestfile "${PUSH_DIGEST_FILE}" "${GHCR_IMAGE}"
+${CONTAINER_ENGINE} push --authfile "${DOCKER_AUTH_DIR}/config.json" \
+  --digestfile "${PUSH_DIGEST_FILE}" "${GHCR_IMAGE}"
 PUSH_DIGEST="$(tr -d '[:space:]' <"${PUSH_DIGEST_FILE}" 2>/dev/null || true)"
 rm -f "${PUSH_DIGEST_FILE}"
 
