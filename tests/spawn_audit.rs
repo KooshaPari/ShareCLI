@@ -7,11 +7,18 @@ use std::sync::Mutex;
 
 use sharecli::audit_log;
 use sharecli::runtime::ProcessPool;
+use serial_test::serial;
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 /// Spawn + stop emit `spawn` / `stop` rows with project, capability, outcome.
+///
+/// `#[serial]` is required: the sibling test removes `SHARECLI_AUDIT_LOG` from the
+/// process environment, and these two run concurrently by default. When the sibling
+/// won that race the spawn path saw an unset variable, wrote no row, and this test
+/// failed on the missing file (`spawn_audit.rs:59`, release run 45051757105).
 #[tokio::test]
+#[serial]
 async fn spawn_audit_emits_jsonl_when_configured() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("spawn-audit.jsonl");
@@ -75,6 +82,7 @@ async fn spawn_audit_emits_jsonl_when_configured() {
     }
 }
 
+#[serial]
 #[test]
 fn spawn_audit_skipped_without_env() {
     let _guard = ENV_LOCK.lock().unwrap();
