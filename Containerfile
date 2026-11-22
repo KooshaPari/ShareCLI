@@ -15,7 +15,22 @@ RUN apt-get update \
         automake \
         perl \
         pkg-config \
+        curl \
+        xz-utils \
+        ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# Zig 0.14.1 (pinned). crates/spawn-core-sys/build.rs shells out to `zig build`
+# to produce crates/spawn-core's static lib on Linux, and spawn-core-sys is an
+# unconditional dependency of the `sharecli` package. Without it the build stops at
+#   Error: failed to run `zig build`: No such file or directory (os error 2)
+# Unlike the smoke Dockerfile, this stage fails hard: a missing Zig cannot yield
+# a working release binary, so it must not degrade into a warning.
+ARG ZIG_VERSION=0.14.1
+RUN curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz" \
+      | tar -xJ -C /opt \
+    && ln -s "/opt/zig-linux-x86_64-${ZIG_VERSION}/zig" /usr/local/bin/zig \
+    && zig version
 
 WORKDIR /app
 COPY . .
