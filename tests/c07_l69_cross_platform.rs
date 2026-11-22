@@ -81,19 +81,31 @@ fn fr003_musl_test_job_exists() {
 }
 
 // ---------------------------------------------------------------------------
-// Gate 6: all jobs are advisory (continue-on-error: true)
+// Gate 6: cross-platform must not mask failures with continue-on-error
 // ---------------------------------------------------------------------------
 
 #[test]
-fn fr003_cross_platform_jobs_are_advisory() {
+fn fr003_cross_platform_jobs_do_not_mask_failures() {
+    // Policy: PR #1047 removed the failure-masking from this workflow so its results
+    // stay honest. cross-platform is a signal workflow, but masking a failing job
+    // hides regressions and would silently weaken the signal if any job were later
+    // promoted into a required check. Asserted against parsed YAML rather than raw
+    // text so a comment mentioning the construct cannot fail the gate on its own.
     let content = read_workflow();
-    // Count the number of continue-on-error: true lines
-    let advisory_count = content.matches("continue-on-error: true").count();
-    assert!(
-        advisory_count >= 2,
-        "At least 2 jobs must be advisory (continue-on-error: true), found {}",
-        advisory_count
-    );
+    let doc: serde_yaml::Value =
+        serde_yaml::from_str(&content).expect("cross-platform.yml must be valid YAML");
+    let jobs = doc
+        .get("jobs")
+        .and_then(serde_yaml::Value::as_mapping)
+        .expect("cross-platform.yml must declare jobs");
+    for (name, job) in jobs {
+        let masked = job.get("continue-on-error").and_then(serde_yaml::Value::as_bool);
+        assert_ne!(
+            masked,
+            Some(true),
+            "job {name:?} must not mask failures; failures must stay visible"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

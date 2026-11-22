@@ -7,7 +7,8 @@
 #   - wasm32-unknown-unknown (link-only, no tests)
 #   - x86_64-unknown-linux-musl (build+test via cross-rs)
 #
-# continue-on-error: true — this is a signal workflow, not a hard gate.
+# Signal workflow, not a required check: no job here is masked with
+# `continue-on-error`, so a red run stays visible instead of being swallowed.
 ###############################################################################
 
 name: Cross-Platform
