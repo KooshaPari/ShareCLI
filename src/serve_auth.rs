@@ -74,6 +74,12 @@ struct JwtClaims {
 }
 
 impl ServeAuth {
+    /// Auth-disabled (open) mode. Explicit constructor so tests and the probe
+    /// router never inherit `SHARECLI_SERVE_TOKEN` from the ambient environment.
+    pub fn open() -> Self {
+        Self { mode: AuthMode::Open }
+    }
+
     /// Resolve mode: env bearer token wins; else config `auth_mode` / jwt / bearer.
     pub fn from_env_or_config(serve: &ServeConfig) -> Result<Self, String> {
         if let Ok(token) = std::env::var("SHARECLI_SERVE_TOKEN") {

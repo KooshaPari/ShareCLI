@@ -4,6 +4,8 @@
 //! Root [`CancellationToken`] fans out to background tasks; HTTP serve uses
 //! `axum::serve` graceful shutdown. See `docs/ops/async-shutdown.md`.
 
+use std::sync::Arc;
+
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
@@ -24,14 +26,21 @@ pub async fn wait_for_shutdown_flag(mut rx: watch::Receiver<bool>) {
 }
 
 /// Drive graceful HTTP shutdown: SIGINT (Ctrl-C), thermal critical, or external cancel.
-pub async fn serve_shutdown_signal(cancel: CancellationToken, shutdown_rx: watch::Receiver<bool>) {
+///
+/// Every trigger also publishes `true` on the shared shutdown flag, so the
+/// `/readyz` route reports 503 during the drain window instead of continuing to
+/// advertise readiness. Ctrl-C previously left the flag `false`.
+pub async fn serve_shutdown_signal(
+    cancel: CancellationToken,
+    shutdown_tx: Arc<watch::Sender<bool>>,
+) {
     let child = cancel.child_token();
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {
             info!("sharecli serve: shutdown requested (Ctrl-C)");
             println!("sharecli serve shutting down (Ctrl-C)");
         }
-        _ = wait_for_shutdown_flag(shutdown_rx) => {
+        _ = wait_for_shutdown_flag(shutdown_tx.subscribe()) => {
             info!("sharecli serve: shutdown requested (thermal critical)");
             println!("sharecli serve shutting down (thermal critical)");
         }
@@ -39,6 +48,9 @@ pub async fn serve_shutdown_signal(cancel: CancellationToken, shutdown_rx: watch
             info!("sharecli serve: shutdown requested (cancellation token)");
         }
     }
+    // Mark not-ready before draining in-flight requests. `send` only fails when
+    // every receiver is gone, which is not an error for shutdown.
+    let _ = shutdown_tx.send(true);
     cancel.cancel();
 }
 
@@ -59,10 +71,12 @@ mod tests {
         let cancel = CancellationToken::new();
         let child = cancel.child_token();
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
-        let signal = tokio::spawn(serve_shutdown_signal(cancel.clone(), shutdown_rx));
+        let shutdown_tx = Arc::new(shutdown_tx);
+        let signal = tokio::spawn(serve_shutdown_signal(cancel.clone(), Arc::clone(&shutdown_tx)));
         shutdown_tx.send(true).unwrap();
         signal.await.unwrap();
         assert!(child.is_cancelled());
+        assert!(*shutdown_rx.borrow(), "shutdown flag MUST be published");
     }
 
     #[tokio::test]
@@ -103,10 +117,11 @@ mod tests {
         let child = cancel.child_token();
         cancel.cancel();
         assert!(child.is_cancelled());
-        let (_shutdown_tx, shutdown_rx) = watch::channel(false);
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
+        let shutdown_tx = Arc::new(shutdown_tx);
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(1),
-            serve_shutdown_signal(cancel.clone(), shutdown_rx),
+            serve_shutdown_signal(cancel.clone(), Arc::clone(&shutdown_tx)),
         )
         .await;
         assert!(
@@ -115,5 +130,11 @@ mod tests {
         );
         // Even after the function returns, child must be cancelled (it already was).
         assert!(child.is_cancelled());
+        // A non-signal shutdown path (external cancel) MUST mark /readyz not-ready
+        // so probes stop routing traffic during the drain window.
+        assert!(
+            *shutdown_rx.borrow(),
+            "external cancellation MUST publish the shutdown flag read by /readyz"
+        );
     }
 }
