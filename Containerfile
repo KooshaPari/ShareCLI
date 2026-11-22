@@ -1,4 +1,22 @@
 FROM rust:1.87-slim AS builder
+
+# `--features jemalloc` pulls in tikv-jemalloc-sys, which compiles the vendored
+# jemalloc from source: its build.rs shells out to the autoconf-generated
+# Makefile (`make`, `cc`). rust:*-slim ships a C compiler but has NO `make`, so
+# the build aborted with:
+#   thread 'main' panicked at tikv-jemalloc-sys-*/build.rs:
+#   failed to execute command: No such file or directory (os error 2)
+# Keep these packages in the builder only; the runtime stage stays minimal.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        make \
+        autoconf \
+        automake \
+        perl \
+        pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY . .
 RUN cargo build --release --locked --features jemalloc
