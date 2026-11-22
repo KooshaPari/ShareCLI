@@ -4,17 +4,35 @@
 //! Verifies the trace-context inject/extract counters are wired end-to-end:
 //! middleware increments -> MetricsRegistry -> `/metrics/prometheus` output.
 //! These counters populate L49's `sharecli-trace.json` panel #2.
+//!
+//! The assertions drive the production router (`serve::build_router`, the same
+//! builder `serve::run` serves) through `tower::ServiceExt::oneshot`, so they
+//! observe the real middleware and handler behaviour rather than source text.
 
-use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
+
+use axum::body::Body;
+use axum::http::{Request, StatusCode};
+use sharecli::commands::serve::router_with_rate_limit;
+use sharecli::metrics::MetricsRegistry;
+use tokio::sync::watch;
+use tower::ServiceExt;
 
 const INJECTED: &str = "sharecli_tracecontext_injected_total";
 const EXTRACTED: &str = "sharecli_tracecontext_extracted_total";
 
-fn serve_src() -> String {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/commands/serve.rs");
-    fs::read_to_string(&p).expect("read src/commands/serve.rs")
+/// Build the production serve router with a fresh, inspectable metrics registry.
+fn router_with_metrics(metrics: Arc<MetricsRegistry>) -> axum::Router {
+    let (shutdown_tx, _shutdown_rx) = watch::channel(false);
+    router_with_rate_limit(Arc::new(shutdown_tx), None, metrics)
 }
+
+fn get(uri: &'static str) -> Request<Body> {
+    Request::builder().uri(uri).body(Body::empty()).expect("build request")
+}
+
+const TRACEPARENT: &str = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
 
 #[test]
 fn fr003_counter_names_are_stable_constants() {
@@ -23,44 +41,123 @@ fn fr003_counter_names_are_stable_constants() {
     assert_eq!(EXTRACTED, "sharecli_tracecontext_extracted_total");
 }
 
-#[test]
-fn fr003_middleware_increments_extract_counter_when_traceparent_present() {
-    let src = serve_src();
-    // The extract counter must be bumped only when an incoming traceparent exists.
-    assert!(
-        src.contains("sharecli_tracecontext_extracted_total\").inc();"),
-        "extract counter must be incremented"
+#[tokio::test]
+async fn fr003_middleware_increments_extract_counter_when_traceparent_present() {
+    let metrics = Arc::new(MetricsRegistry::new());
+    let response = router_with_metrics(Arc::clone(&metrics))
+        .oneshot(
+            Request::builder()
+                .uri("/healthz")
+                .header("traceparent", TRACEPARENT)
+                .body(Body::empty())
+                .expect("build request"),
+        )
+        .await
+        .expect("request through router");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    // The extract counter is bumped only when an incoming traceparent exists.
+    assert_eq!(
+        metrics.counter(EXTRACTED).get(),
+        1,
+        "inbound traceparent must increment the extract counter exactly once"
     );
-    assert!(
-        src.contains("get(\"traceparent\")") || src.contains(r#"header("traceparent")"#),
-        "extract point must read the incoming traceparent header"
+    // A request without a traceparent must NOT touch the extract counter.
+    let response = router_with_metrics(Arc::clone(&metrics))
+        .oneshot(get("/healthz"))
+        .await
+        .expect("request through router");
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        metrics.counter(EXTRACTED).get(),
+        1,
+        "requests without traceparent must not increment the extract counter"
     );
 }
 
-#[test]
-fn fr003_middleware_increments_inject_counter() {
-    let src = serve_src();
-    assert!(
-        src.contains("sharecli_tracecontext_injected_total\").inc();"),
-        "inject counter must be incremented"
+#[tokio::test]
+async fn fr003_middleware_increments_inject_counter() {
+    let metrics = Arc::new(MetricsRegistry::new());
+    let response = router_with_metrics(Arc::clone(&metrics))
+        .oneshot(get("/healthz"))
+        .await
+        .expect("request through router");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        metrics.counter(INJECTED).get(),
+        1,
+        "every response must increment the inject counter"
     );
+    // The outgoing header is what the inject point writes.
+    let outgoing = response
+        .headers()
+        .get("traceparent")
+        .expect("response must carry an injected traceparent")
+        .to_str()
+        .expect("traceparent is ASCII")
+        .to_owned();
     assert!(
-        src.contains("traceparent") && src.contains("response.headers_mut().insert"),
-        "inject point must write the outgoing traceparent header"
+        outgoing.starts_with("00-") && outgoing.ends_with("-01") && outgoing.len() == 55,
+        "injected traceparent must be a W3C traceparent, got {outgoing:?}"
     );
+
+    // An inbound traceparent is propagated, not replaced.
+    let response = router_with_metrics(Arc::clone(&metrics))
+        .oneshot(
+            Request::builder()
+                .uri("/healthz")
+                .header("traceparent", TRACEPARENT)
+                .body(Body::empty())
+                .expect("build request"),
+        )
+        .await
+        .expect("request through router");
+    assert_eq!(
+        response.headers().get("traceparent").and_then(|v| v.to_str().ok()),
+        Some(TRACEPARENT),
+        "inbound traceparent must be propagated on the response"
+    );
+    assert_eq!(metrics.counter(INJECTED).get(), 2);
 }
 
-#[test]
-fn fr003_prometheus_handler_reads_both_counters() {
-    let src = serve_src();
-    assert!(src.contains("metrics_prometheus_handler"), "prometheus handler must exist");
+#[tokio::test]
+async fn fr003_prometheus_handler_reads_both_counters() {
+    let metrics = Arc::new(MetricsRegistry::new());
+
+    // One request with a traceparent: extracted=1 during handler execution;
+    // injected=1 is recorded once the first response is complete.
+    let first = router_with_metrics(Arc::clone(&metrics))
+        .oneshot(
+            Request::builder()
+                .uri("/healthz")
+                .header("traceparent", TRACEPARENT)
+                .body(Body::empty())
+                .expect("build request"),
+        )
+        .await
+        .expect("request through router");
+    assert_eq!(first.status(), StatusCode::OK);
+
+    let response = router_with_metrics(Arc::clone(&metrics))
+        .oneshot(get("/metrics/prometheus"))
+        .await
+        .expect("scrape through router");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.expect("body");
+    let text = String::from_utf8(body.to_vec()).expect("prometheus body is UTF-8");
+
     assert!(
-        src.contains(&format!("counter(\"{INJECTED}\").get()")),
-        "prometheus handler must read the injected counter value"
+        text.contains(&format!("{INJECTED} 1")),
+        "prometheus output must expose the injected counter value:\n{text}"
     );
     assert!(
-        src.contains(&format!("counter(\"{EXTRACTED}\").get()")),
-        "prometheus handler must read the extracted counter value"
+        text.contains(&format!("{EXTRACTED} 1")),
+        "prometheus output must expose the extracted counter value:\n{text}"
+    );
+    assert!(
+        text.contains(&format!("# TYPE {INJECTED} counter")),
+        "injected counter must be typed as a counter"
     );
 }
 
@@ -71,7 +168,7 @@ fn fr003_dashboard_panel_references_the_same_counter_names() {
     let dash = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("docs/ops/grafana/dashboards/sharecli-trace.json");
     if dash.exists() {
-        let json = fs::read_to_string(&dash).unwrap_or_default();
+        let json = std::fs::read_to_string(&dash).unwrap_or_default();
         assert!(
             json.contains(INJECTED) && json.contains(EXTRACTED),
             "sharecli-trace.json must query both trace-context counters"
