@@ -61,11 +61,19 @@ pub(crate) fn build_router(
 }
 
 /// Build a router over the real production route table (see [`build_router`])
-/// that exposes `/healthz` and `/readyz`, sharing `shutdown_tx` as the exact
-/// readiness state the `/readyz` route reads. Used by integration tests so they
-/// exercise the routed surface rather than calling handlers directly.
-pub fn health_ready_router(
+/// with an explicit rate limiter and metrics registry, sharing `shutdown_tx`
+/// as the exact readiness state the `/readyz` route reads.
+///
+/// This goes through the same [`build_router`] that `serve::run` serves, so a
+/// test driving it exercises the real route table and middleware stack (trace
+/// context extract/inject, rate limit, auth) without binding a socket. It
+/// exists because `AppState` is crate-private; without it an integration test
+/// could only reach handlers directly, which would not prove the middleware
+/// wiring.
+pub fn router_with_rate_limit(
     shutdown_tx: std::sync::Arc<tokio::sync::watch::Sender<bool>>,
+    rate_limit: Option<crate::serve_rate_limit::ServeRateLimit>,
+    metrics: std::sync::Arc<crate::metrics::MetricsRegistry>,
 ) -> axum::Router {
     use std::sync::Arc;
 
@@ -78,8 +86,22 @@ pub fn health_ready_router(
         config: Arc::new(RwLock::new(crate::config::Config::default())),
         health_store: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         http_red: Arc::new(crate::http_red::HttpRedMetrics::default()),
-        rate_limit: Arc::new(std::sync::Mutex::new(None)),
-        metrics: Arc::new(crate::metrics::MetricsRegistry::new()),
+        rate_limit: Arc::new(std::sync::Mutex::new(rate_limit)),
+        metrics,
     };
     build_router(state, crate::serve_auth::ServeAuth::open())
+}
+
+/// Build a router over the real production route table (see [`build_router`])
+/// that exposes `/healthz` and `/readyz`, sharing `shutdown_tx` as the exact
+/// readiness state the `/readyz` route reads. Used by integration tests so they
+/// exercise the routed surface rather than calling handlers directly.
+pub fn health_ready_router(
+    shutdown_tx: std::sync::Arc<tokio::sync::watch::Sender<bool>>,
+) -> axum::Router {
+    router_with_rate_limit(
+        shutdown_tx,
+        None,
+        std::sync::Arc::new(crate::metrics::MetricsRegistry::new()),
+    )
 }
