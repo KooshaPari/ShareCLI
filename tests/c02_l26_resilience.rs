@@ -144,29 +144,94 @@ fn fr003_linear_backoff_no_overflow_at_u32_max() {
     );
 }
 
-#[test]
-fn fr003_healthz_readyz_split_is_observable() {
+#[tokio::test]
+async fn fr003_healthz_readyz_split_is_observable() {
     // AC-L26.11: /healthz and /readyz MUST be distinct probes, both returning
     // JSON, with /readyz able to surface 503 during shutdown.
-    use sharecli::commands::serve::{healthz_json, readyz_response};
+    //
+    // This drives the production route table (`serve::build_router`, the same
+    // builder `serve::run` uses) through `tower::ServiceExt::oneshot`, so the
+    // assertions cover routing + middleware, not just the handlers. The watch
+    // flag is the exact state shared with the graceful-shutdown signal.
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use sharecli::commands::serve::health_ready_router;
+    use std::sync::Arc;
+    use tokio::sync::watch;
+    use tower::ServiceExt;
 
-    let health = healthz_json();
+    let (shutdown_tx, _shutdown_rx) = watch::channel(false);
+    let shutdown_tx = Arc::new(shutdown_tx);
+
+    // A path outside the route table MUST 404: proves responses come from the
+    // router, not from calling handlers directly.
+    let response = health_ready_router(Arc::clone(&shutdown_tx))
+        .oneshot(Request::builder().uri("/definitely-not-a-route").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "unknown paths MUST 404 through the router"
+    );
+
+    let response = health_ready_router(Arc::clone(&shutdown_tx))
+        .oneshot(Request::builder().uri("/healthz").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK, "/healthz route MUST return 200");
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let health: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(health["status"], "ok", "/healthz probe MUST return status ok");
 
-    let (ready_status, ready_body) = readyz_response(false);
-    assert_eq!(ready_status.as_u16(), 200, "/readyz MUST return 200 while serving");
+    let response = health_ready_router(Arc::clone(&shutdown_tx))
+        .oneshot(Request::builder().uri("/readyz").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK, "/readyz MUST return 200 while serving");
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let ready_body: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(ready_body["status"], "ok", "/readyz MUST return status ok while serving");
 
-    let (shutdown_status, shutdown_body) = readyz_response(true);
-    assert_eq!(shutdown_status.as_u16(), 503, "/readyz MUST return 503 when shutdown is requested");
+    // Flip the same flag the graceful-shutdown path publishes (Ctrl-C, SIGTERM,
+    // thermal critical, external cancel) and observe the routed response.
+    shutdown_tx
+        .send(true)
+        .expect("set shutdown flag on shared state read by /readyz route");
+    let response = health_ready_router(Arc::clone(&shutdown_tx))
+        .oneshot(Request::builder().uri("/readyz").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::SERVICE_UNAVAILABLE,
+        "/readyz MUST return 503 when shutdown is requested"
+    );
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let shutdown_body: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(
         shutdown_body["status"], "unavailable",
         "/readyz MUST report unavailable during shutdown"
     );
+
+    // Liveness MUST stay green during drain; only readiness flips.
+    let response = health_ready_router(Arc::clone(&shutdown_tx))
+        .oneshot(Request::builder().uri("/healthz").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "/healthz MUST keep returning 200 while draining (liveness != readiness)"
+    );
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let health_during_drain: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(health_during_drain["status"], "ok");
     assert_ne!(
-        health, shutdown_body,
+        health_during_drain, shutdown_body,
         "liveness (/healthz) and readiness (/readyz) MUST be distinct under shutdown"
     );
+    assert_ne!(health, shutdown_body, "bodies MUST differ once shutdown is requested");
 }
 
 #[test]

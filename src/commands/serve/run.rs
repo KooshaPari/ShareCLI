@@ -8,9 +8,6 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use axum::middleware;
-use axum::routing::get;
-use axum::Router;
 use serde_json::json;
 use sharecli_fleet::thermal::ThermalGovernor;
 use tokio::sync::{broadcast, watch, RwLock};
@@ -24,20 +21,15 @@ use crate::health_check::{HealthCheckScheduler, HealthCheckStore};
 use crate::http_red::HttpRedMetrics;
 use crate::metrics::MetricsRegistry;
 use crate::notifier::Notifier;
-use crate::serve_auth::{self, ServeAuth};
+use crate::serve_auth::ServeAuth;
 use crate::serve_lock::{decide, probe, Decision, OnConflict, ServeLock, ServeState};
 use crate::serve_rate_limit::ServeRateLimit;
 use crate::shutdown::serve_shutdown_signal;
 
-use super::handlers::{
-    config_handler, dashboard, health_processes_handler, healthz, metrics_prometheus_handler,
-    readyz,
-};
-use super::middleware::{http_observability_middleware, serve_rate_limit_middleware};
+use super::build_router;
 use super::poller::thermal_poll_task;
 use super::pressure::ThermalEvent;
 use super::state::AppState;
-use super::ws::ws_handler;
 
 /// Entry point for `sharecli serve`.
 #[instrument(skip(on_conflict), fields(bind = %bind))]
@@ -79,7 +71,7 @@ pub async fn run(bind: &str, on_conflict: OnConflict) -> Result<()> {
     }
 
     let (thermal_tx, _) = broadcast::channel::<ThermalEvent>(64);
-    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let (shutdown_tx, _shutdown_rx) = watch::channel(false);
     let cancel = CancellationToken::new();
     let thermal_cancel = cancel.child_token();
     let config_cancel = cancel.child_token();
@@ -176,25 +168,15 @@ pub async fn run(bind: &str, on_conflict: OnConflict) -> Result<()> {
 
     println!("sharecli serve listening on {url}");
 
-    let app = Router::new()
-        .route("/", get(dashboard))
-        .route("/assets/dashboard/ui/{*path}", get(crate::dashboard_assets::serve))
-        .route("/healthz", get(healthz))
-        .route("/readyz", get(readyz))
-        .route("/config", get(config_handler))
-        .route("/health/processes", get(health_processes_handler))
-        .route("/metrics/prometheus", get(metrics_prometheus_handler))
-        .route("/debug/pprof/profile", get(crate::pprof_http::profile_handler))
-        .route("/ws", get(ws_handler))
-        .layer(middleware::from_fn_with_state(state.clone(), http_observability_middleware))
-        .layer(middleware::from_fn_with_state(state.clone(), serve_rate_limit_middleware))
-        .layer(middleware::from_fn_with_state(auth, serve_auth::require_bearer))
-        .with_state(state);
+    let app = build_router(state.clone(), auth);
 
     let listener = tokio::net::TcpListener::bind(bind).await?;
 
     axum::serve(listener, app)
-        .with_graceful_shutdown(serve_shutdown_signal(cancel.clone(), shutdown_rx))
+        .with_graceful_shutdown(serve_shutdown_signal(
+            cancel.clone(),
+            Arc::clone(&state.shutdown_tx),
+        ))
         .await?;
 
     cancel.cancel();
