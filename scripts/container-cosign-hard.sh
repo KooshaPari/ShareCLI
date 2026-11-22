@@ -8,8 +8,9 @@
 #   GHCR_IMAGE         Full GHCR ref (default: ghcr.io/<owner>/<repo>/sharecli:<tag>)
 #   GHCR_TAG           Tag suffix when GHCR_IMAGE unset (default: ci | git tag | sha)
 #   SKIP_GHCR_PUSH     If true, build + write digest/predicate only (permission blocker mode)
-#   GITHUB_TOKEN       Required for docker login when pushing
+#   GITHUB_TOKEN       Required for podman login when pushing
 set -euo pipefail
+# podman: this repo does not use the Docker engine
 
 IMAGE_TAG="${IMAGE_TAG:-sharecli:ci}"
 IDENTITY_REGEXP="${COSIGN_IDENTITY_REGEXP:-https://github.com/KooshaPari/sharecli/.*}"
@@ -39,28 +40,18 @@ command -v cosign >/dev/null 2>&1 || {
   echo "::error::cosign not installed"
   exit 1
 }
-CONTAINER_ENGINE=""
-if command -v podman >/dev/null 2>&1; then
-  CONTAINER_ENGINE="podman"
-elif command -v docker >/dev/null 2>&1; then
-  CONTAINER_ENGINE="docker"
-else
-  echo "::error::Neither podman nor docker CLI found - hard container cosign requires a container engine" >&2
+# podman: this repo does not use the Docker engine
+command -v podman >/dev/null 2>&1 || {
+  echo "::error::podman CLI not found - hard container cosign requires a container engine" >&2
   exit 1
-fi
+}
+CONTAINER_ENGINE="podman"
 echo "Using container engine: ${CONTAINER_ENGINE}"
 
-if [[ "${CONTAINER_ENGINE}" == "podman" ]]; then
-  podman info >/dev/null 2>&1 || {
-    echo "::error::podman daemon/machine required for hard container cosign" >&2
-    exit 1
-  }
-else
-  docker info >/dev/null 2>&1 || {
-    echo "::error::docker daemon required for hard container cosign" >&2
-    exit 1
-  }
-fi
+podman info >/dev/null 2>&1 || {
+  echo "::error::podman machine/storage required for hard container cosign" >&2
+  exit 1
+}
 
 cosign version
 
@@ -148,21 +139,13 @@ ${CONTAINER_ENGINE} push "${GHCR_IMAGE}"
 # Prefer digest-based signing (immutable)
 DIGEST_REF=""
 DIGEST_SHA=""
-if [[ "${CONTAINER_ENGINE}" == "docker" ]]; then
-  DIGEST_REF="$(${CONTAINER_ENGINE} inspect --format='{{index .RepoDigests 0}}' "${GHCR_IMAGE}" 2>/dev/null || true)"
-  if [[ -n "${DIGEST_REF}" && "${DIGEST_REF}" == *"@"* ]]; then
-    DIGEST_SHA="${DIGEST_REF#*@}"
-  else
-    if docker buildx imagetools inspect "${GHCR_IMAGE}" --format '{{.Manifest.Digest}}' >/tmp/ghcr-digest.txt 2>/dev/null; then
-      DIGEST_SHA="$(tr -d '[:space:]"' </tmp/ghcr-digest.txt)"
-      DIGEST_REF="${REPO_NAME}@${DIGEST_SHA}"
-    else
-      DIGEST_REF="${GHCR_IMAGE}"
-      DIGEST_SHA=""
-    fi
-  fi
+# podman: this repo does not use the Docker engine
+# Prefer the registry digest podman recorded on push (immutable subject);
+# fall back to the local image ID when the registry returned no digest.
+DIGEST_REF="$(${CONTAINER_ENGINE} inspect --format='{{index .RepoDigests 0}}' "${GHCR_IMAGE}" 2>/dev/null || true)"
+if [[ -n "${DIGEST_REF}" && "${DIGEST_REF}" == *"@"* ]]; then
+  DIGEST_SHA="${DIGEST_REF#*@}"
 else
-  # Podman: use image ID as digest reference
   DIGEST_SHA="${IMAGE_ID}"
   DIGEST_REF="${GHCR_IMAGE}"
 fi

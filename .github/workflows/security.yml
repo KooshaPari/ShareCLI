@@ -110,12 +110,16 @@ jobs:
       - name: Build image
         id: build_image
         if: ${{ hashFiles('Dockerfile') != '' }}
-        run: docker build -t sharecli:scan .
+        # podman: this repo does not use the Docker engine
+        run: podman build -t sharecli:scan .
 
       - name: Run Trivy vulnerability scanner
         id: trivy_scan
         if: ${{ hashFiles('Dockerfile') != '' }}
         uses: aquasecurity/trivy-action@38b337fff0a2f984d5be173c99e3f633438167ec
+        env:
+          # podman: this repo does not use the Docker engine (read podman storage)
+          TRIVY_IMAGE_SRC: podman
         with:
           image-ref: 'sharecli:scan'
           format: 'sarif'

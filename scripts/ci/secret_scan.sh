@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Local parity for C04 L31 dual secret scanners (gitleaks + trufflehog).
+# podman: this repo does not use the Docker engine
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -10,13 +11,13 @@ run_gitleaks() {
     gitleaks detect --source . --verbose --redact --config .gitleaks.toml
     return
   fi
-  if command -v docker >/dev/null 2>&1; then
-    docker run --rm -v "$ROOT:/repo" -w /repo \
+  if command -v podman >/dev/null 2>&1; then
+    podman run --rm -v "$ROOT:/repo:Z" -w /repo \
       ghcr.io/gitleaks/gitleaks:v8.22.1 \
       detect --source . --verbose --redact --config .gitleaks.toml
     return
   fi
-  echo "gitleaks not found (install via brew or use docker)" >&2
+  echo "gitleaks not found (install via brew or use podman)" >&2
   exit 1
 }
 
@@ -25,13 +26,13 @@ run_trufflehog() {
     trufflehog filesystem . --fail --only-verified
     return
   fi
-  if command -v docker >/dev/null 2>&1; then
-    docker run --rm -v "$ROOT:/repo" -w /repo \
+  if command -v podman >/dev/null 2>&1; then
+    podman run --rm -v "$ROOT:/repo:Z" -w /repo \
       trufflesecurity/trufflehog:3.93.6 \
       filesystem /repo --fail --only-verified
     return
   fi
-  echo "trufflehog not found (install via brew or use docker)" >&2
+  echo "trufflehog not found (install via brew or use podman)" >&2
   exit 1
 }
 

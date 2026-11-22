@@ -54,9 +54,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Build + run Containerfile.fuse-smoke
+        # podman: this repo does not use the Docker engine
+        # Rootful podman keeps parity with the previous root daemon: the smoke
+        # needs /dev/fuse plus SYS_ADMIN, which a rootless user namespace drops.
         run: |
-          docker build -f Containerfile.fuse-smoke -t sharecli-fuse-smoke:ci .
-          docker run --rm --device /dev/fuse --cap-add SYS_ADMIN \
+          sudo podman build -f Containerfile.fuse-smoke -t sharecli-fuse-smoke:ci .
+          sudo podman run --rm --device /dev/fuse --cap-add SYS_ADMIN \
             --security-opt apparmor=unconfined sharecli-fuse-smoke:ci
 
   macos-native:

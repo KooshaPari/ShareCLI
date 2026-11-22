@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # C06 L56 — soft container cosign gate (no GHCR required).
-# Builds sharecli:ci when docker is available; keyless sign-blob on main only.
+# Builds sharecli:ci when podman is available; keyless sign-blob on main only.
+# podman: this repo does not use the Docker engine
 # Hard GHCR path: scripts/container-cosign-hard.sh + .github/workflows/container-cosign.yml
 set -euo pipefail
 
@@ -18,20 +19,20 @@ fi
 echo "Containerfile present — container cosign soft gate"
 cosign version
 
-if ! command -v docker >/dev/null 2>&1; then
-  echo "::notice::docker CLI unavailable — cosign version + Containerfile gate only"
+if ! command -v podman >/dev/null 2>&1; then
+  echo "::notice::podman CLI unavailable — cosign version + Containerfile gate only"
   exit 0
 fi
 
-if ! docker info >/dev/null 2>&1; then
-  echo "::notice::docker daemon unavailable — cosign version + Containerfile gate only"
+if ! podman info >/dev/null 2>&1; then
+  echo "::notice::podman storage unavailable — cosign version + Containerfile gate only"
   exit 0
 fi
 
 echo "Building ${IMAGE_TAG} from Containerfile"
-docker build -f Containerfile -t "${IMAGE_TAG}" .
+podman build -f Containerfile -t "${IMAGE_TAG}" .
 
-IMAGE_ID="$(docker inspect --format='{{.Id}}' "${IMAGE_TAG}")"
+IMAGE_ID="$(podman inspect --format='{{.Id}}' "${IMAGE_TAG}")"
 printf '%s\n' "${IMAGE_ID}" >"${BLOB_FILE}"
 echo "Image ID: ${IMAGE_ID}"
 
@@ -39,8 +40,12 @@ echo "Image ID: ${IMAGE_ID}"
 if [[ "${GHCR_COSIGN_PUSH:-false}" == "true" ]]; then
   GHCR_IMAGE="${GHCR_IMAGE:-ghcr.io/${GITHUB_REPOSITORY,,}/sharecli:ci}"
   echo "GHCR_COSIGN_PUSH=true — tagging and pushing ${GHCR_IMAGE}"
-  docker tag "${IMAGE_TAG}" "${GHCR_IMAGE}"
-  docker push "${GHCR_IMAGE}"
+  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    printf '%s\n' "${GITHUB_TOKEN}" \
+      | podman login "${GHCR_IMAGE%%/*}" -u "${GITHUB_ACTOR:-github-actions}" --password-stdin
+  fi
+  podman tag "${IMAGE_TAG}" "${GHCR_IMAGE}"
+  podman push "${GHCR_IMAGE}"
   cosign sign --yes "${GHCR_IMAGE}" \
     --certificate-identity-regexp "${IDENTITY_REGEXP}" \
     --certificate-oidc-issuer "${OIDC_ISSUER}"
