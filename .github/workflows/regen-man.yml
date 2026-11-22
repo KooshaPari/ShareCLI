@@ -3,6 +3,8 @@
 name: Regen man page
 
 on:
+  push:
+    branches: [fix/man-page-sync]
   workflow_dispatch:
 
 permissions:
