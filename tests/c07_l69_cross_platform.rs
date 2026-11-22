@@ -84,13 +84,24 @@ fn fr003_musl_test_job_exists() {
 // Gate 6: cross-platform must not mask failures with continue-on-error
 // ---------------------------------------------------------------------------
 
+/// True when this mapping declares `continue-on-error` in a form Actions treats as
+/// truthy. Booleans and the string `"true"` (any case) both mask; `false` and
+/// expressions are left to the workflow author.
+fn masks_failures(node: &serde_yaml::Value) -> bool {
+    match node.get("continue-on-error") {
+        Some(serde_yaml::Value::Bool(flag)) => *flag,
+        Some(serde_yaml::Value::String(text)) => text.trim().eq_ignore_ascii_case("true"),
+        _ => false,
+    }
+}
+
 #[test]
 fn fr003_cross_platform_jobs_do_not_mask_failures() {
     // Policy: PR #1047 removed the failure-masking from this workflow so its results
-    // stay honest. cross-platform is a signal workflow, but masking a failing job
-    // hides regressions and would silently weaken the signal if any job were later
-    // promoted into a required check. Asserted against parsed YAML rather than raw
-    // text so a comment mentioning the construct cannot fail the gate on its own.
+    // stay honest. cross-platform is a signal workflow, but masking a failing job or
+    // step hides regressions and would silently weaken the signal if any job were
+    // later promoted into a required check. Asserted against parsed YAML rather than
+    // raw text so a comment mentioning the construct cannot fail the gate on its own.
     let content = read_workflow();
     let doc: serde_yaml::Value =
         serde_yaml::from_str(&content).expect("cross-platform.yml must be valid YAML");
@@ -99,12 +110,21 @@ fn fr003_cross_platform_jobs_do_not_mask_failures() {
         .and_then(serde_yaml::Value::as_mapping)
         .expect("cross-platform.yml must declare jobs");
     for (name, job) in jobs {
-        let masked = job.get("continue-on-error").and_then(serde_yaml::Value::as_bool);
-        assert_ne!(
-            masked,
-            Some(true),
+        assert!(
+            !masks_failures(job),
             "job {name:?} must not mask failures; failures must stay visible"
         );
+        // Steps can override the job: a single masked step neutralizes the gate just
+        // as effectively as a masked job.
+        if let Some(steps) = job.get("steps").and_then(serde_yaml::Value::as_sequence) {
+            for (index, step) in steps.iter().enumerate() {
+                assert!(
+                    !masks_failures(step),
+                    "step {} of job {name:?} must not mask failures",
+                    index + 1
+                );
+            }
+        }
     }
 }
 
