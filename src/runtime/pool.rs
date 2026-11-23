@@ -24,6 +24,7 @@ use super::audit::ProcState;
 use super::audit::{emit_spawn_audit, emit_stop_audit, spawn_capability};
 use super::managed::ManagedProcess;
 use super::process_info::{count_open_fds, count_threads, EnvGuard, ProcessInfo};
+use super::registry::{pid_alive, signal_group_or_pid, Registry, RegistryEntry};
 
 /// Metadata + handle pool for processes spawned via the substrate
 /// `ProcessPort`. All public surface (new / with_spawn_policy / refresh /
@@ -77,17 +78,34 @@ impl ProcessPool {
 
     /// Get all managed processes
     pub async fn list(&self) -> Vec<ProcessInfo> {
-        let sys = self.system.read().await;
-        let procs = self.processes.read().await;
-
         let mut result = Vec::new();
-        for (pid, managed) in procs.iter() {
-            if let Some(mut info) =
-                ProcessInfo::from_sysinfo(Pid::from_u32(*pid), managed.info.name.clone(), &sys)
-            {
-                info.project = managed.info.project.clone();
-                info.harness = managed.info.harness.clone();
-                result.push(info);
+        let seen: std::collections::HashSet<u32>;
+        {
+            let sys = self.system.read().await;
+            let procs = self.processes.read().await;
+            for (pid, managed) in procs.iter() {
+                if let Some(mut info) =
+                    ProcessInfo::from_sysinfo(Pid::from_u32(*pid), managed.info.name.clone(), &sys)
+                {
+                    info.project = managed.info.project.clone();
+                    info.harness = managed.info.harness.clone();
+                    result.push(info);
+                }
+            }
+            seen = result.iter().map(|p| p.pid).collect();
+            // Processes recorded by earlier invocations: the device authority.
+            for entry in Registry::open().prune_dead() {
+                if seen.contains(&entry.pid) {
+                    continue;
+                }
+                let name = entry.cmd.first().cloned().unwrap_or_default();
+                if let Some(mut info) =
+                    ProcessInfo::from_sysinfo(Pid::from_u32(entry.pid), name, &sys)
+                {
+                    info.project = entry.project.clone();
+                    info.harness = entry.harness.clone();
+                    result.push(info);
+                }
             }
         }
         result
@@ -97,11 +115,10 @@ impl ProcessPool {
     ///
     /// When a `SpawnPolicy` is configured and the harness is a recognised build
     /// harness (cargo/rustc/make/…), this method:
-    /// 1. Acquires a semaphore permit — queuing if `max_concurrent_builds` slots
-    ///    are already taken (released automatically when the permit is dropped at
-    ///    the end of this call; callers that want to hold the slot for the full
-    ///    build duration should use `ProcessPool::with_spawn_policy` and
-    ///    `SpawnPolicy::acquire_build_permit` directly).
+    /// 1. Takes a device-wide build slot — queuing if `max_concurrent_builds`
+    ///    slots are already held by this or any sibling `sharecli` invocation.
+    ///    The slot is inherited by the child and released when the child exits,
+    ///    not when this call returns.
     /// 2. Wraps the command with `taskpolicy -b` on macOS when `nice_level > 0`.
     /// 3. Injects `CARGO_BUILD_JOBS` and optionally `RUSTC_WRAPPER=sccache`.
     pub async fn spawn(
@@ -117,24 +134,39 @@ impl ProcessPool {
             harness.as_deref().map(is_build_harness).unwrap_or_else(|| is_build_harness(cmd));
 
         // Apply policy when present and harness is a build harness.
-        let _permit;
+        //
+        // Admission is device-scoped: a build slot is flocked under the device
+        // state directory and the descriptor is inherited by the child, so the
+        // slot is held for the whole build even though `sharecli start` exits
+        // immediately after spawning. The in-process semaphore is only a
+        // fallback for when the state directory is not writable, because it
+        // cannot see a sibling invocation.
+        let mut lease = None;
+        let mut permit = None;
         let (effective_cmd, effective_args, extra_env): (
             String,
             Vec<String>,
             Vec<(String, String)>,
         ) = if is_build {
             if let Some(ref policy) = self.spawn_policy {
-                // Acquire build slot (queues if at cap).
-                _permit = Some(policy.acquire_build_permit().await?);
+                let slots = policy.config.max_concurrent_builds.max(1);
+                match super::admission::SlotPool::device(slots).acquire().await {
+                    Ok(acquired) => lease = Some(acquired),
+                    Err(error) => {
+                        eprintln!(
+                            "sharecli: warning: device build admission unavailable ({error}); \
+                             admitting within this process only"
+                        );
+                        permit = Some(policy.acquire_build_permit().await?);
+                    }
+                }
                 let (prog, shaped_args) = policy.apply_taskpolicy(cmd, args);
                 let env = policy.build_env_overrides();
                 (prog, shaped_args, env)
             } else {
-                _permit = None;
                 (cmd.to_string(), args.to_vec(), vec![])
             }
         } else {
-            _permit = None;
             (cmd.to_string(), args.to_vec(), vec![])
         };
 
@@ -203,10 +235,25 @@ impl ProcessPool {
             thread_count: None,
         };
 
-        let managed = ManagedProcess { info: info.clone(), handle };
+        // The slot travels with the entry: dropping it here would release the
+        // build slot at spawn-return instead of at child exit.
+        let managed = ManagedProcess { info: info.clone(), handle, lease, permit };
 
         let mut procs = self.processes.write().await;
         procs.insert(pid, managed);
+        drop(procs);
+
+        if let Err(error) = Registry::open().insert(RegistryEntry::new(
+            pid,
+            info.project.clone(),
+            info.harness.clone(),
+            info.cmd.clone(),
+        )) {
+            // A registry write failure must not fail the spawn: the child is
+            // already running and killing it here would be worse than a pid the
+            // next invocation cannot see.
+            eprintln!("sharecli: warning: could not record pid {pid} for later invocations: {error}");
+        }
 
         emit_spawn_audit(&info.project, &capability, "ok", Some(pid));
 
@@ -229,6 +276,7 @@ impl ProcessPool {
             }
             procs.remove(&pid);
         }
+        Registry::open().remove(pid);
         Ok(())
     }
 
@@ -253,6 +301,57 @@ impl ProcessPool {
         }
         for pid in stopped {
             procs.remove(&pid);
+            Registry::open().remove(pid);
+        }
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(anyhow!(failures.join("; ")))
+        }
+    }
+
+    /// Kill a process recorded by an earlier `sharecli` invocation.
+    ///
+    /// When this invocation owns the handle the substrate group-kill is used;
+    /// otherwise the device registry supplies the pid and the signal goes to its
+    /// process group, so a harness's children exit with it.
+    pub async fn kill_registered(&self, pid: u32, force: bool) -> Result<()> {
+        // Scope the read guard: `kill` takes the write lock, and tokio's RwLock is
+        // not reentrant, so holding it across the call would deadlock.
+        let owns_handle = { self.processes.read().await.contains_key(&pid) };
+        if owns_handle {
+            return self.kill(pid).await;
+        }
+
+        let registry = Registry::open();
+        if !registry.contains(pid) {
+            return Err(anyhow!("pid {pid} is not a sharecli-managed process"));
+        }
+
+        signal_group_or_pid(pid, if force { libc::SIGKILL } else { libc::SIGTERM });
+        if !force {
+            for _ in 0..40 {
+                if !pid_alive(pid) {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+            if pid_alive(pid) {
+                return Err(anyhow!("pid {pid} did not exit after SIGTERM; retry with --force"));
+            }
+        }
+        registry.remove(pid);
+        Ok(())
+    }
+
+    /// Kill every process recorded on this device, including ones started by
+    /// earlier invocations.
+    pub async fn kill_all_registered(&self, force: bool) -> Result<()> {
+        let mut failures = Vec::new();
+        for entry in Registry::open().prune_dead() {
+            if let Err(error) = self.kill_registered(entry.pid, force).await {
+                failures.push(format!("pid {}: {error}", entry.pid));
+            }
         }
         if failures.is_empty() {
             Ok(())
@@ -275,6 +374,7 @@ impl ProcessPool {
         let procs = self.processes.read().await;
 
         let mut result = Vec::new();
+        let mut seen = std::collections::HashSet::new();
 
         for (pid, managed) in procs.iter() {
             let info =
@@ -290,8 +390,29 @@ impl ProcessPool {
                 };
 
                 if matches {
+                    seen.insert(info.pid);
                     result.push(info);
                 }
+            }
+        }
+
+        for entry in Registry::open().prune_dead() {
+            if seen.contains(&entry.pid) {
+                continue;
+            }
+            let matches = match &filter {
+                ProcessFilter::All => true,
+                ProcessFilter::ByProject(proj) => entry.project.as_ref() == Some(proj),
+                ProcessFilter::ByHarness(harness) => entry.harness.as_ref() == Some(harness),
+            };
+            if !matches {
+                continue;
+            }
+            let name = entry.cmd.first().cloned().unwrap_or_default();
+            if let Some(mut info) = ProcessInfo::from_sysinfo(Pid::from_u32(entry.pid), name, &sys) {
+                info.project = entry.project.clone();
+                info.harness = entry.harness.clone();
+                result.push(info);
             }
         }
 

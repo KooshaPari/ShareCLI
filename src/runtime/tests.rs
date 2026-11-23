@@ -37,7 +37,12 @@ mod tests {
         drop(system);
         pool.processes.write().await.insert(
             pid,
-            ManagedProcess { info, handle: ProcessHandle { id: Default::default(), pid } },
+            ManagedProcess {
+                info,
+                handle: ProcessHandle { id: Default::default(), pid },
+                permit: None,
+                lease: None,
+            },
         );
         pid
     }
