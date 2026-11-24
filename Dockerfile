@@ -6,13 +6,15 @@
 FROM rust:1.85-slim AS builder
 # Install Zig 0.14.1 (pinned) — required by spawn-core-sys build script.
 ARG ZIG_VERSION=0.14.1
+# ziglang.org renamed its release assets in 0.13/0.14: the arch and OS
+# components swapped order, so `zig-linux-x86_64-<v>` 404s while
+# `zig-x86_64-linux-<v>` resolves (verified 2026-11-24: HEAD -> 200).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends curl xz-utils ca-certificates \
  && rm -rf /var/lib/apt/lists/* \
- && (curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz" \
+ && curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" \
     | tar -xJ -C "/opt" \
-    && ln -s "/opt/zig-linux-x86_64-${ZIG_VERSION}/zig" /usr/local/bin/zig \
-    || echo 'WARN: Zig download failed; cargo build may fail for spawn-core-sys')
+ && ln -s "/opt/zig-x86_64-linux-${ZIG_VERSION}/zig" /usr/local/bin/zig
 RUN groupadd -r sharecli && useradd -r -g sharecli -m sharecli
 WORKDIR /app
 COPY . .
