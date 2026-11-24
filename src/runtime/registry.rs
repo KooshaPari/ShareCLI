@@ -446,6 +446,77 @@ impl Registry {
     }
 }
 
+/// True when `metadata` is a directory owned by `owner` with no group or other
+/// access, on the platforms that expose those bits.
+#[cfg(unix)]
+fn dir_is_private(metadata: &std::fs::Metadata, owner: u32) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    metadata.is_dir() && metadata.uid() == owner && metadata.mode() & 0o077 == 0
+}
+
+/// Create (if needed) and verify the predictable per-user fallback directory.
+///
+/// The fallback lives under the shared temp root, where the name is guessable
+/// and another user could pre-create it. A directory we did not create, or one
+/// that is reachable by group/other, is refused. When it is absent it is created
+/// with `0700` and then re-checked, so the mode we asked for is the mode we got
+/// and the path is still ours.
+#[cfg(unix)]
+fn secure_fallback_dir(dir: &Path, owner: u32) -> Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt};
+    match std::fs::symlink_metadata(dir) {
+        // Refuse a symlink outright: `symlink_metadata` does not follow it, so
+        // an attacker-planted link cannot redirect our state elsewhere.
+        Ok(meta) if meta.file_type().is_symlink() => Err(anyhow::anyhow!(
+            "fallback state dir {} is a symlink; refusing to use it",
+            dir.display()
+        )),
+        Ok(meta) => {
+            if dir_is_private(&meta, owner) {
+                Ok(())
+            } else {
+                Err(anyhow::anyhow!(
+                    "fallback state dir {} is not exclusively owned by uid {owner} with \
+                     owner-only permissions (uid {} mode {:o}); refusing to use it",
+                    dir.display(),
+                    meta.uid(),
+                    meta.mode() & 0o777,
+                ))
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir).with_context(
+                || format!("create fallback state dir {}", dir.display()),
+            )?;
+            // Re-check after creation: the mode we asked for must be the mode we
+            // got, and the directory must still be ours.
+            let meta = std::fs::metadata(dir)
+                .with_context(|| format!("verify fallback state dir {}", dir.display()))?;
+            if dir_is_private(&meta, owner) {
+                Ok(())
+            } else {
+                Err(anyhow::anyhow!(
+                    "fallback state dir {} is not private after creation (uid {} mode {:o})",
+                    dir.display(),
+                    meta.uid(),
+                    meta.mode() & 0o777,
+                ))
+            }
+        }
+        Err(error) => {
+            Err(error).with_context(|| format!("stat fallback state dir {}", dir.display()))
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn secure_fallback_dir(dir: &Path, _owner: u32) -> Result<()> {
+    // Windows exposes no uid/mode. Keep the existing plain create-only fallback
+    // so behaviour there is unchanged.
+    std::fs::create_dir_all(dir)
+        .with_context(|| format!("create fallback state dir {}", dir.display()))
+}
+
 /// Device state root shared by the process registry and the build-slot pool.
 /// `SHARECLI_STATE_DIR` overrides it so tests and the acceptance harness never
 /// touch the operator's real state.
@@ -459,16 +530,28 @@ pub(crate) fn state_root() -> PathBuf {
             // `PathBuf::from(".")` would scatter per-device state across
             // whatever directory each invocation runs from, breaking the "one
             // resident authority per device" property. Use one stable per-user
-            // location instead, and say so rather than failing silently.
-            // A stable per-user tag that needs no platform state directory.
+            // location under the temp root instead, and verify it before use:
+            // the name is guessable, so a directory we do not exclusively own is
+            // refused rather than silently trusted.
             #[cfg(unix)]
             // SAFETY: getuid cannot fail and touches no memory.
-            let user_tag = unsafe { libc::getuid() }.to_string();
+            let owner = unsafe { libc::getuid() };
+            #[cfg(not(unix))]
+            let owner = 0u32;
+            #[cfg(unix)]
+            let user_tag = owner.to_string();
             #[cfg(not(unix))]
             let user_tag = std::env::var("USERNAME")
                 .or_else(|_| std::env::var("USER"))
                 .unwrap_or_else(|_| "user".to_string());
             let fallback = std::env::temp_dir().join(format!("sharecli-{user_tag}"));
+            // Refuse to continue on an insecure fallback. `state_root` cannot
+            // become fallible without rippling through every caller, and using a
+            // directory another user can write is exactly the defect this
+            // guards, so fail closed with a clear message instead.
+            if let Err(error) = secure_fallback_dir(&fallback, owner) {
+                panic!("sharecli: refusing to use insecure fallback state dir: {error:#}");
+            }
             eprintln!(
                 "sharecli: warning: no platform state directory is available; using {} \
                  for per-device state",
@@ -749,5 +832,76 @@ mod tests {
             .filter(|name| name.ends_with(".tmp"))
             .collect();
         assert!(leftovers.is_empty(), "temp files must be published or removed: {leftovers:?}");
+    }
+
+    #[cfg(unix)]
+    fn secure_test_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir()
+            .join(format!("sharecli-secure-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_file(&dir);
+        dir
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn secure_fallback_dir_creates_a_private_directory() {
+        use std::os::unix::fs::MetadataExt;
+        let dir = secure_test_dir("created");
+        let owner = unsafe { libc::getuid() };
+
+        secure_fallback_dir(&dir, owner).expect("a fresh fallback must be created and verified");
+
+        let meta = std::fs::metadata(&dir).expect("stat created fallback");
+        assert_eq!(
+            meta.mode() & 0o077,
+            0,
+            "a created fallback must deny group/other access, got mode {:o}",
+            meta.mode() & 0o777
+        );
+        assert_eq!(meta.uid(), owner, "the created fallback must be owned by the caller");
+        // Idempotent: a second call accepts the directory it just created.
+        secure_fallback_dir(&dir, owner).expect("an existing private fallback must be accepted");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn secure_fallback_dir_refuses_a_shared_directory() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = secure_test_dir("shared");
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        // 0777: another user could plant entries between check and use.
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o777)).expect("chmod");
+        let owner = unsafe { libc::getuid() };
+
+        let error = secure_fallback_dir(&dir, owner)
+            .expect_err("a group/other-accessible fallback must be refused");
+
+        assert!(
+            error.to_string().contains("refusing to use it"),
+            "unexpected error for a shared fallback: {error}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn secure_fallback_dir_refuses_a_symlink() {
+        let target = secure_test_dir("symlink-target");
+        std::fs::create_dir_all(&target).expect("mkdir target");
+        let dir = secure_test_dir("symlink");
+        std::os::unix::fs::symlink(&target, &dir).expect("create symlink");
+        let owner = unsafe { libc::getuid() };
+
+        let error =
+            secure_fallback_dir(&dir, owner).expect_err("a symlinked fallback must be refused");
+
+        assert!(
+            error.to_string().contains("symlink"),
+            "unexpected error for a symlinked fallback: {error}"
+        );
+        let _ = std::fs::remove_file(&dir);
+        let _ = std::fs::remove_dir_all(&target);
     }
 }
