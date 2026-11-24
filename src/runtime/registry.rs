@@ -248,10 +248,17 @@ fn linux_clock_ticks_per_sec() -> u64 {
 }
 
 /// Tolerance when comparing a recorded start time against the live process
-/// start time. Both sides now come from the same kernel probe, so this only
-/// absorbs the one-second resolution of `btime` / integer tick division; a pid
-/// that has been recycled since is separated by far more than this.
-const START_TIME_TOLERANCE_SECS: u64 = 5;
+/// start time.
+///
+/// Both sides come from the same kernel probe for the same pid, and that probe
+/// is stable for a process's lifetime: on Linux `starttime` (field 22 of
+/// `/proc/<pid>/stat`) never changes, and the `btime`/`_SC_CLK_TCK` conversion
+/// is a fixed integer division; off Linux `sysinfo` reports one stable value.
+/// An unchanged process therefore produces an IDENTICAL value on both sides,
+/// so any non-zero tolerance only widens the window in which a genuinely
+/// recycled pid is mistaken for the recorded one. Keep this at zero: refuse
+/// unless the values are exactly equal.
+const START_TIME_TOLERANCE_SECS: u64 = 0;
 
 /// Start time of the process currently on `pid`, in Unix epoch seconds.
 ///
@@ -833,6 +840,23 @@ mod tests {
         assert!(
             identity_matches_live(&honest),
             "a record taken from the kernel start time must still match"
+        );
+    }
+
+    // A 2s drift is farther than the probe's one-second resolution but inside
+    // the old 5s window, so this is exactly the recycled pid the loose tolerance
+    // used to admit. It must now be treated as a different process.
+    #[test]
+    fn identity_refuses_a_pid_drifted_past_the_probe_resolution() {
+        let pid = std::process::id();
+        let real = process_start_epoch(pid).expect("the test's own pid has a start time");
+
+        let mut drifted = RegistryEntry::new(pid, None, None, vec!["drifted".into()]);
+        drifted.started_at = real + 2;
+        assert!(
+            !identity_matches_live(&drifted),
+            "a 2s drift exceeds the probe resolution and must be refused, not accepted \
+             inside the old 5s window"
         );
     }
 
