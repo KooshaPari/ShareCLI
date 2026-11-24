@@ -25,7 +25,7 @@ use super::audit::{emit_spawn_audit, emit_stop_audit, spawn_capability};
 use super::managed::ManagedProcess;
 use super::process_info::{count_open_fds, count_threads, EnvGuard, ProcessInfo};
 use super::registry::{
-    identity_matches_live, pid_alive, signal_group_or_pid, Registry, RegistryEntry,
+    entry_is_live, identity_matches_live, pid_alive, signal_group_or_pid, Registry, RegistryEntry,
 };
 
 /// Metadata + handle pool for processes spawned via the substrate
@@ -510,9 +510,15 @@ impl ProcessPool {
     /// freshly-spawned PIDs that are no longer alive are filtered out.
     pub async fn find(&self, filter: ProcessFilter) -> Vec<ProcessInfo> {
         // Registry resolution must happen before any async guard is taken:
-        // the registry read and liveness probes are synchronous file I/O.
-        // `find` is a read path, so it must not rewrite the registry.
-        let recorded = self.registry().live_entries();
+        // the registry read is synchronous file I/O. `find` is a read path, so
+        // it must not rewrite the registry.
+        //
+        // Read the *unvalidated* snapshot here and validate identity only after
+        // `refresh()` below. Validating first left a window in which a PID
+        // recycled before the sysinfo snapshot was rendered as the replacement
+        // process; the identity probe must be at least as fresh as the snapshot
+        // it is qualifying.
+        let recorded = self.registry().entries();
         self.refresh().await;
         let sys = self.system.read().await;
 
@@ -544,6 +550,12 @@ impl ProcessPool {
 
         for entry in recorded {
             if seen.contains(&entry.pid) {
+                continue;
+            }
+            // Re-probe the recorded identity now that the sysinfo snapshot is
+            // current. A pid recycled between the registry read and the refresh
+            // fails here and is never rendered as the recorded process.
+            if !entry_is_live(&entry) {
                 continue;
             }
             let matches = match &filter {
