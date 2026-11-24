@@ -455,8 +455,31 @@ impl ProcessPool {
         if let Err(error) = self.kill_all().await {
             failures.push(format!("owned handles: {error}"));
         }
+        // Snapshot the recorded set *before* pruning. `prune_dead` returns only
+        // the entries it kept live, so a record whose leader already exited is
+        // dropped and never handed to `kill_registered`. Without this snapshot a
+        // device-wide stop would silently succeed for that record, even though
+        // `stop --pid` refuses to call the same state a success. Report every
+        // pruned record as an explicit failure so the outcome is identical on
+        // both platforms.
+        let recorded_before = self.registry().entries();
         match self.registry().prune_dead() {
             Ok(entries) => {
+                let stopped: std::collections::HashSet<u32> =
+                    entries.iter().map(|entry| entry.pid).collect();
+                for entry in &recorded_before {
+                    if !stopped.contains(&entry.pid) {
+                        // Another writer may have removed an entry between the
+                        // snapshot and the prune. That reports one conservative
+                        // extra failure, never a false success, and this call
+                        // never signalled that record either way.
+                        failures.push(format!(
+                            "pid {}: already exited and was pruned from the registry; \
+                             the process tree was not signalled",
+                            entry.pid
+                        ));
+                    }
+                }
                 for entry in entries {
                     if let Err(error) = self.kill_registered(entry.pid, force).await {
                         failures.push(format!("pid {}: {error}", entry.pid));
@@ -558,3 +581,40 @@ pub enum ProcessFilter {
 // `process_info.rs`) and re-anchored here for unit-test discoverability.
 #[allow(unused_imports)]
 use {count_open_fds as _count_open_fds_for_anchor, count_threads as _count_threads_for_anchor};
+
+#[cfg(test)]
+mod stop_all_regression_tests {
+    use super::*;
+
+    /// A private registry file, mirroring `runtime::tests` so this module never
+    /// touches the device-wide registry.
+    fn isolated_registry_path(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("sharecli-pool-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create isolated registry dir");
+        dir.join("processes.json")
+    }
+
+    /// Review `PRRT_kwDORwQ5fs67Oa1H`: a recorded leader that already exited is
+    /// pruned by `prune_dead` and never handed to `kill_registered`, so a
+    /// device-wide stop used to report success without ever having signalled it.
+    /// It must now be surfaced as an explicit failure on both platforms.
+    #[tokio::test]
+    async fn kill_all_registered_reports_pruned_dead_record_as_failure() {
+        let path = isolated_registry_path("stop-all-dead-record");
+        let pool = ProcessPool::with_registry_path(path.clone());
+        let registry = Registry::at(path);
+        // PID 0 is never signalable, so it is dead without spawning anything.
+        registry
+            .insert(RegistryEntry::new(0, None, None, vec!["dead".into()]))
+            .expect("seed dead record");
+
+        let error = pool
+            .kill_all_registered(false)
+            .await
+            .expect_err("a pruned dead record must not be silent success");
+
+        assert!(error.to_string().contains("already exited"), "got: {error}");
+        assert!(!registry.contains(0), "the dead record must still be pruned from the file");
+    }
+}
