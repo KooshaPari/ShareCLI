@@ -6,6 +6,9 @@
 //! calling the AC-007.48 `monitoringReport` refresh path on each tick.
 
 use sharecli_tray_linux::poll::TRAY_POLL_INTERVAL_SECS as LINUX_TRAY_POLL_INTERVAL_SECS;
+// `sharecli-tray-windows` is linked only on Windows and Linux glibc (see
+// Cargo.toml); the Swift source checks below stay enabled everywhere.
+#[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
 use sharecli_tray_windows::poll::TRAY_POLL_INTERVAL_SECS as WIN_TRAY_POLL_INTERVAL_SECS;
 
 /// FR-007 / AC-007.53 — Swift tray poll constant matches Linux/Windows 3 s cadence.
@@ -17,6 +20,7 @@ fn fr007_tray_swift_poll_interval_seconds() {
         "TrayPoll.intervalSeconds MUST be 3 (AC-007.53)"
     );
     assert_eq!(LINUX_TRAY_POLL_INTERVAL_SECS, 3);
+    #[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
     assert_eq!(WIN_TRAY_POLL_INTERVAL_SECS, 3);
 }
 

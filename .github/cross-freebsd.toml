@@ -1,0 +1,13 @@
+# cross-rs config for the x86_64-unknown-freebsd signal job.
+#
+# The FreeBSD build runs inside the cross-rs Docker image, so a Zig installed on
+# the GitHub runner's host is not visible to crates/spawn-core-sys/build.rs
+# (which shells out to `zig build` on Unix). Install the same pinned Zig 0.14.1
+# inside the container before cargo runs.
+[build]
+pre-build = [
+  "apt-get update && apt-get install -y curl xz-utils",
+  "curl -fsSL https://ziglang.org/download/0.14.1/zig-x86_64-linux-0.14.1.tar.xz -o /tmp/zig.tar.xz",
+  "tar -xJf /tmp/zig.tar.xz -C /usr/local",
+  "ln -sf /usr/local/zig-x86_64-linux-0.14.1/zig /usr/local/bin/zig",
+]

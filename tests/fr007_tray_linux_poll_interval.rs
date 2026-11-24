@@ -6,6 +6,9 @@
 //! calling the AC-007.48 `monitoring.report` refresh path on each tick.
 
 use sharecli_tray_linux::poll::{tray_poll_interval, TRAY_POLL_INTERVAL_SECS};
+// `sharecli-tray-windows` is linked only on Windows and Linux glibc (see
+// Cargo.toml); the Linux tray checks below stay enabled everywhere.
+#[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
 use sharecli_tray_windows::poll::TRAY_POLL_INTERVAL_SECS as WIN_TRAY_POLL_INTERVAL_SECS;
 
 /// FR-007 / AC-007.53 — canonical Linux tray poll interval matches Windows 3 s cadence.
@@ -13,6 +16,7 @@ use sharecli_tray_windows::poll::TRAY_POLL_INTERVAL_SECS as WIN_TRAY_POLL_INTERV
 fn fr007_tray_linux_poll_interval_seconds() {
     assert_eq!(TRAY_POLL_INTERVAL_SECS, 3, "Linux tray MUST poll every 3s (AC-007.53)");
     assert_eq!(tray_poll_interval(), std::time::Duration::from_secs(3));
+    #[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
     assert_eq!(
         TRAY_POLL_INTERVAL_SECS, WIN_TRAY_POLL_INTERVAL_SECS,
         "Linux/Windows tray poll MUST match (AC-007.53)"

@@ -5,6 +5,9 @@
 //! Swift `AppState.kill` / `killAll` MUST call IPC `process.kill` / `process.kill_all`
 //! and refresh (reference contract for Windows AC-007.54).
 
+// `sharecli-tray-windows` is linked only on Windows and Linux glibc (see
+// Cargo.toml); the Swift source checks below stay enabled everywhere.
+#[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
 use sharecli_tray_windows::ipc::{IPC_METHOD_KILL, IPC_METHOD_KILL_ALL};
 
 /// FR-007 / AC-007.54 — Swift IPCClient kill methods match handler contract.
@@ -19,8 +22,11 @@ fn fr007_tray_swift_kill_ipc_methods() {
         ipc_client.contains(r#""process.kill_all""#),
         "IPCClient MUST call process.kill_all (AC-007.54)"
     );
-    assert_eq!(IPC_METHOD_KILL, "process.kill");
-    assert_eq!(IPC_METHOD_KILL_ALL, "process.kill_all");
+    #[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
+    {
+        assert_eq!(IPC_METHOD_KILL, "process.kill");
+        assert_eq!(IPC_METHOD_KILL_ALL, "process.kill_all");
+    }
 }
 
 /// FR-007 / AC-007.54 — Swift AppState wires kill + post-kill refresh.

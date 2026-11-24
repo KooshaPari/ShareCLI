@@ -66,6 +66,8 @@ fn fr007_ipc_status_snapshot_tray_linux_wire_roundtrip() {
 }
 
 /// FR-007 / AC-007.68 — Windows tray wire shape decodes gate + host_watch from pool.status JSON.
+// `sharecli-tray-windows` is linked only on Windows and Linux glibc (see Cargo.toml).
+#[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
 #[test]
 fn fr007_ipc_pool_status_tray_windows_wire_roundtrip() {
     use sharecli_tray_windows::ipc::PoolSnapshot;
@@ -85,6 +87,7 @@ fn fr007_ipc_pool_status_tray_windows_wire_roundtrip() {
 }
 
 /// FR-007 / AC-007.68 — Windows tray wire shape decodes gate + host_watch from status.snapshot JSON.
+#[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
 #[test]
 fn fr007_ipc_status_snapshot_tray_windows_wire_roundtrip() {
     use sharecli_tray_windows::ipc::StatusSnapshot;
