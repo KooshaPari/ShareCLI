@@ -41,6 +41,10 @@ pub struct ProcessPool {
     /// must acquire a permit before spawning, and receive injected env-vars and
     /// optional taskpolicy wrapping.
     spawn_policy: Option<Arc<SpawnPolicy>>,
+    /// Registry file this pool records/reads managed pids in. `None` uses the
+    /// device registry (`Registry::open()`); tests inject a private path so they
+    /// never observe or mutate the operator's real device registry.
+    registry_path: Option<PathBuf>,
 }
 
 impl Default for ProcessPool {
@@ -56,6 +60,7 @@ impl ProcessPool {
             system: RwLock::new(sysinfo::System::new_all()),
             port: CommandGroupProcess::new(),
             spawn_policy: None,
+            registry_path: None,
         }
     }
 
@@ -67,6 +72,22 @@ impl ProcessPool {
             system: RwLock::new(sysinfo::System::new_all()),
             port: CommandGroupProcess::new(),
             spawn_policy: Some(policy),
+            registry_path: None,
+        }
+    }
+
+    /// Test-only: a pool whose process registry is a private file, so it never
+    /// reads or writes the device-wide registry shared with other invocations.
+    #[cfg(test)]
+    pub(crate) fn with_registry_path(path: PathBuf) -> Self {
+        Self { registry_path: Some(path), ..Self::new() }
+    }
+
+    /// The registry this pool records managed pids in.
+    fn registry(&self) -> Registry {
+        match &self.registry_path {
+            Some(path) => Registry::at(path.clone()),
+            None => Registry::open(),
         }
     }
 
@@ -94,7 +115,7 @@ impl ProcessPool {
             }
             seen = result.iter().map(|p| p.pid).collect();
             // Processes recorded by earlier invocations: the device authority.
-            for entry in Registry::open().prune_dead() {
+            for entry in self.registry().prune_dead() {
                 if seen.contains(&entry.pid) {
                     continue;
                 }
@@ -243,7 +264,7 @@ impl ProcessPool {
         procs.insert(pid, managed);
         drop(procs);
 
-        if let Err(error) = Registry::open().insert(RegistryEntry::new(
+        if let Err(error) = self.registry().insert(RegistryEntry::new(
             pid,
             info.project.clone(),
             info.harness.clone(),
@@ -278,7 +299,7 @@ impl ProcessPool {
             }
             procs.remove(&pid);
         }
-        Registry::open().remove(pid);
+        self.registry().remove(pid);
         Ok(())
     }
 
@@ -303,7 +324,7 @@ impl ProcessPool {
         }
         for pid in stopped {
             procs.remove(&pid);
-            Registry::open().remove(pid);
+            self.registry().remove(pid);
         }
         if failures.is_empty() {
             Ok(())
@@ -325,7 +346,7 @@ impl ProcessPool {
             return self.kill(pid).await;
         }
 
-        let registry = Registry::open();
+        let registry = self.registry();
         if !registry.contains(pid) {
             return Err(anyhow!("pid {pid} is not a sharecli-managed process"));
         }
@@ -350,7 +371,7 @@ impl ProcessPool {
     /// earlier invocations.
     pub async fn kill_all_registered(&self, force: bool) -> Result<()> {
         let mut failures = Vec::new();
-        for entry in Registry::open().prune_dead() {
+        for entry in self.registry().prune_dead() {
             if let Err(error) = self.kill_registered(entry.pid, force).await {
                 failures.push(format!("pid {}: {error}", entry.pid));
             }
@@ -398,7 +419,7 @@ impl ProcessPool {
             }
         }
 
-        for entry in Registry::open().prune_dead() {
+        for entry in self.registry().prune_dead() {
             if seen.contains(&entry.pid) {
                 continue;
             }
