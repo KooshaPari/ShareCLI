@@ -90,16 +90,47 @@ else
   record G1 "start reports pid" PASS "pid=$PID_A"
 fi
 
-# Invocation B — a different OS process — must see it.
-if [ -n "${PID_A:-}" ] && "$BIN" ps --all --json >"$WORK/ps1.json" 2>/dev/null; then
-  if python3 - "$WORK/ps1.json" "$PID_A" <<'PY'
+# Verifier for "ps --all --json lists this pid": PASS only when a JSON object's
+# own "pid" field equals the integer. A flattened substring search would let pid
+# 12 match 312 (prefix) or a non-pid field such as cmdline, which is the defect
+# this gate exists to catch.
+ps_has_pid() { # <json-file> <pid>
+  python3 - "$1" "$2" <<'PY'
 import json,sys
 data=json.load(open(sys.argv[1])); pid=int(sys.argv[2])
-flat=json.dumps(data)
-sys.exit(0 if str(pid) in flat else 1)
+def has_pid(o):
+    if isinstance(o, dict):
+        return any((k == "pid" and isinstance(v, int) and v == pid) or has_pid(v)
+                   for k, v in o.items())
+    if isinstance(o, list):
+        return any(has_pid(v) for v in o)
+    return False
+sys.exit(0 if has_pid(data) else 1)
 PY
-  then record G1 "visible across invocations" PASS "pid $PID_A in ps --all"
-  else record G1 "visible across invocations" FAIL "pid $PID_A missing from ps --all (fresh pool per invocation)"; fi
+}
+
+# Negative controls for the verifier itself. These MUST NOT match; if any does,
+# a stale entry or a longer pid reports G1 PASS on zero evidence.
+printf '{"processes":[{"pid":999,"cmdline":"sleep 1234"}]}' >"$WORK/ps-neg-substring.json"
+printf '{"processes":[{"pid":312}]}' >"$WORK/ps-neg-prefix.json"
+printf '{"processes":[{"pid":1234}]}' >"$WORK/ps-pos.json"
+G1_VERIFIER_BAD=0
+ps_has_pid "$WORK/ps-neg-substring.json" 1234 && G1_VERIFIER_BAD=1
+ps_has_pid "$WORK/ps-neg-prefix.json" 12 && G1_VERIFIER_BAD=1
+ps_has_pid "$WORK/ps-pos.json" 1234 || G1_VERIFIER_BAD=1
+if [ "$G1_VERIFIER_BAD" -eq 0 ]; then
+  record G1 "pid match is exact" PASS "non-pid and prefix matches rejected; exact pid field accepted"
+else
+  record G1 "pid match is exact" FAIL "verifier matched a non-pid field or a pid prefix, or missed an exact pid"
+fi
+
+# Invocation B — a different OS process — must see it.
+if [ -n "${PID_A:-}" ] && "$BIN" ps --all --json >"$WORK/ps1.json" 2>/dev/null; then
+  if ps_has_pid "$WORK/ps1.json" "$PID_A"; then
+    record G1 "visible across invocations" PASS "pid $PID_A in a ps --all \"pid\" field"
+  else
+    record G1 "visible across invocations" FAIL "pid $PID_A missing from ps --all (fresh pool per invocation)"
+  fi
 else
   record G1 "visible across invocations" FAIL "ps --all unavailable"
 fi
@@ -127,7 +158,17 @@ wait "$B1" "$B2" 2>/dev/null
 # Give any queued-but-not-admitted child time to run.
 sleep 6
 
-read -r FIRST_START FIRST_END SECOND_START <<<"$(python3 - "$LOGF" <<'PY'
+# Classify a build log for the cap=1 lifetime property. Prints
+# "<verdict> <first_start> <first_end> <second_start>", where verdict is one of:
+#   fail_first_unobserved  build 1 has no complete START/END pair
+#   fail_second_missing    build 1 complete, but no second START at all
+#   fail_overlap           build 2 started before build 1 ended
+#   pass                   build 1 complete and build 2 started at/after its end
+# Absent timestamps are printed as 0, but a 0 is never treated as evidence: the
+# verdict is decided inside this one function so the checks below and the
+# self-tests below exercise identical logic.
+g2_verdict() { # <logfile>
+  python3 - "$1" <<'PY'
 import sys
 starts=[];ends=[]
 for line in open(sys.argv[1]):
@@ -135,21 +176,69 @@ for line in open(sys.argv[1]):
     if len(p)>=2 and p[1].isdigit():
         (starts if p[0]=='START' else ends).append(int(p[1]))
 starts.sort()
-print((starts[0] if starts else 0), (min(ends) if ends else 0), (starts[1] if len(starts)>1 else 0))
+first_start = starts[0] if starts else 0
+first_end   = min(ends) if ends else 0
+second_start = starts[1] if len(starts)>1 else 0
+if first_start == 0 or first_end == 0 or first_end < first_start:
+    verdict = "fail_first_unobserved"
+elif second_start == 0:
+    verdict = "fail_second_missing"
+elif second_start < first_end:
+    verdict = "fail_overlap"
+else:
+    verdict = "pass"
+print(verdict, first_start, first_end, second_start)
 PY
-)"
+}
 
-if [ "${SECOND_START:-0}" = "0" ]; then
-  # The second build never ran at all: admission held it out entirely, which is
-  # still a FAIL for "queued then admitted", but distinguishable from overlap.
-  record G2 "second build admitted" FAIL "second build never executed (cap=1 not released)"
-elif [ "${SECOND_START:-0}" -lt "${FIRST_END:-0}" ]; then
-  record G2 "no build overlap" FAIL "overlap: build2 started ${SECOND_START} before build1 ended ${FIRST_END} (permit dropped at spawn return)"
-  record G2 "second build admitted" PASS "second build ran"
-else
-  record G2 "no build overlap" PASS "build2 started ${SECOND_START} >= build1 end ${FIRST_END}"
-  record G2 "second build admitted" PASS "queued then admitted"
-fi
+# Self-tests for the classifier. Each fixture has a REQUIRED verdict; a
+# classifier that cannot reject incomplete or overlapping evidence is the
+# defect, so any mismatch here is a harness failure, not a product failure.
+g2_selftest() { # <name> <expected-verdict> <logfile>
+  got=$(g2_verdict "$3" | awk '{print $1}')
+  if [ "$got" = "$2" ]; then
+    record G2 "classifier self-test: $1" PASS "verdict=$got"
+  else
+    record G2 "classifier self-test: $1" FAIL "expected verdict=$2, got '$got'"
+  fi
+}
+: >"$WORK/g2-neg-empty.log"
+printf 'START %s build\n' "$(now_ms)" >"$WORK/g2-neg-noend.log"
+# The exact pre-fix false PASS: two STARTs, no END at all. Old logic read
+# FIRST_END=0, found SECOND_START >= 0, and recorded both rows PASS.
+printf 'START 100 build\nSTART 200 build\n' >"$WORK/g2-neg-two-start-noend.log"
+printf 'START 100 build\nEND 200 build\nSTART 150 build\nEND 250 build\n' >"$WORK/g2-neg-overlap.log"
+printf 'START 100 build\nEND 200 build\nSTART 250 build\nEND 350 build\n' >"$WORK/g2-pos.log"
+g2_selftest "empty log rejected" fail_first_unobserved "$WORK/g2-neg-empty.log"
+g2_selftest "START without END rejected" fail_first_unobserved "$WORK/g2-neg-noend.log"
+g2_selftest "two STARTs without END rejected" fail_first_unobserved "$WORK/g2-neg-two-start-noend.log"
+g2_selftest "overlap detected" fail_overlap "$WORK/g2-neg-overlap.log"
+g2_selftest "serialised builds accepted" pass "$WORK/g2-pos.log"
+
+read -r G2_VERDICT _ FIRST_END SECOND_START <<<"$(g2_verdict "$LOGF")"
+
+case "${G2_VERDICT:-}" in
+  fail_first_unobserved)
+    record G2 "first build observed" FAIL "build 1 has no complete START/END pair in $LOGF (cap=1 cannot be asserted on zero evidence)"
+    record G2 "second build admitted" FAIL "verdict undefined: build 1 never completed"
+    ;;
+  fail_second_missing)
+    # The second build never ran at all: admission held it out entirely, which is
+    # still a FAIL for "queued then admitted", but distinguishable from overlap.
+    record G2 "second build admitted" FAIL "second build never executed (cap=1 not released)"
+    ;;
+  fail_overlap)
+    record G2 "no build overlap" FAIL "overlap: build2 started ${SECOND_START} before build1 ended ${FIRST_END} (permit dropped at spawn return)"
+    record G2 "second build admitted" PASS "second build ran"
+    ;;
+  pass)
+    record G2 "no build overlap" PASS "build2 started ${SECOND_START} >= build1 end ${FIRST_END}"
+    record G2 "second build admitted" PASS "queued then admitted"
+    ;;
+  *)
+    record G2 "verdict computed" FAIL "g2_verdict produced '${G2_VERDICT:-<empty>}'"
+    ;;
+esac
 
 echo "== G3 coalescing (out of MVP slice) =="
 record G3 "agent-call coalescing" NOT_RUN "requires the call-capture path; MVP slice is G1+G2"
