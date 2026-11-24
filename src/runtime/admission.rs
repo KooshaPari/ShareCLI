@@ -12,9 +12,11 @@
 //!
 //! - `flock` locks belong to the *open file description*, not to the process, so
 //!   a sibling invocation opening the same slot file contends with this one.
-//! - the descriptor is made inheritable, so the build child holds the lock as
-//!   well. When `sharecli start` exits, the slot stays occupied until the build
-//!   itself exits; when the build exits, the kernel releases the lock.
+//! - the descriptor is kept close-on-exec and an *out-of-process supervisor*
+//!   holds a duplicate open file description for the whole build. The build
+//!   never inherits the lock, so a long-lived descendant cannot pin the slot;
+//!   the supervisor releases it as soon as the direct build process exits, even
+//!   after the short-lived `sharecli start` that took the slot has gone.
 //!
 //! Liveness is the kernel's: a killed build releases its slot with no stale-lock
 //! recovery path needed.
@@ -23,8 +25,13 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
-/// One occupied build slot. Dropping it releases the lock for this process; an
-/// inherited copy in the child keeps it held until that child exits.
+/// One occupied build slot.
+///
+/// The descriptor is close-on-exec: the build process tree never inherits the
+/// lock. Callers that outlive the taking process (i.e. `sharecli start`, which
+/// exits immediately after spawning) must hand the lease to a supervisor with
+/// [`SlotLease::watch_until_exit`] before dropping it, otherwise the slot is
+/// released as soon as the taking process exits.
 #[derive(Debug)]
 pub struct SlotLease {
     file: std::fs::File,
@@ -87,7 +94,8 @@ fn acquire_blocking(dir: &Path, slots: usize) -> Result<SlotLease> {
                 }
             };
             if try_lock(&file)? {
-                make_inheritable(&file)?;
+                // Keep FD_CLOEXEC: the build subtree must NOT inherit the lock.
+                // The slot's lifetime tracks the supervised child instead.
                 return Ok(SlotLease { file, slot });
             }
         }
@@ -113,28 +121,84 @@ fn try_lock(file: &std::fs::File) -> Result<bool> {
     }
 }
 
-/// Clear `FD_CLOEXEC` so the build child inherits the locked descriptor and the
-/// slot survives this process exiting.
 #[cfg(unix)]
-fn make_inheritable(file: &std::fs::File) -> Result<()> {
-    use std::os::unix::io::AsRawFd;
-    // SAFETY: plain fcntl on a descriptor owned by `file`.
-    let flags = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETFD) };
-    if flags < 0 {
-        return Err(anyhow::anyhow!(
-            "fcntl(F_GETFD) build slot: {}",
-            std::io::Error::last_os_error()
-        ));
+impl SlotLease {
+    /// Hand this lease to a detached supervisor process that keeps the slot held
+    /// until `pid` (the direct build child) is gone, then releases it.
+    ///
+    /// The supervisor `fork`s and inherits a duplicate of the locked open file
+    /// description, so the `flock` survives this process exiting. Because the
+    /// supervisor is not the build's parent only `kill(pid, 0)` can poll it, but
+    /// that observes the *direct* child only: a descendant that outlives the
+    /// build (`cargo` leaving a `sleep` behind) never pins the slot.
+    ///
+    /// Call this before dropping the lease in any process that does not outlive
+    /// the build (notably `sharecli start`). Calling it more than once is a
+    /// caller error; the first supervisor to see the child exit releases the
+    /// lock, so the slot is still bounded by the child's lifetime.
+    pub fn watch_until_exit(&self, pid: i32) -> Result<()> {
+        use std::os::unix::io::AsRawFd;
+        if pid <= 0 {
+            return Err(anyhow::anyhow!("watch_until_exit: invalid pid {pid}"));
+        }
+        let keep = self.file.as_raw_fd();
+        // SAFETY: the child runs only async-signal-safe operations (`close`,
+        // `kill`, `nanosleep`, `_exit`) and never touches Rust-allocated state,
+        // so a `fork` from a threaded runtime is sound for our purpose.
+        let child = unsafe { libc::fork() };
+        if child < 0 {
+            return Err(anyhow::anyhow!(
+                "fork build-slot supervisor: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+        if child == 0 {
+            // Supervisor: drop every inherited descriptor except stdio and the
+            // locked slot, so another lease in this process is not pinned open.
+            // SAFETY: all calls below are async-signal-safe.
+            unsafe {
+                let max_fd: i32 = 1024;
+                for fd in 0..max_fd {
+                    if fd != keep && fd > 2 {
+                        libc::close(fd);
+                    }
+                }
+                loop {
+                    let rc = libc::kill(pid, 0);
+                    if rc != 0 {
+                        let code = raw_errno();
+                        if code == libc::ESRCH {
+                            break;
+                        }
+                        // EPERM: alive but not ours. Any other errno: keep
+                        // waiting rather than release a slot early.
+                    }
+                    let period = libc::timespec { tv_sec: 0, tv_nsec: 50_000_000 };
+                    libc::nanosleep(&period, std::ptr::null_mut());
+                }
+                // Closing `keep` on `_exit` releases the `flock`.
+                libc::_exit(0);
+            }
+        }
+        Ok(())
     }
-    let cleared = flags & !libc::FD_CLOEXEC;
-    // SAFETY: as above; `cleared` is a valid fd-flag set.
-    if unsafe { libc::fcntl(file.as_raw_fd(), libc::F_SETFD, cleared) } < 0 {
-        return Err(anyhow::anyhow!(
-            "fcntl(F_SETFD) build slot: {}",
-            std::io::Error::last_os_error()
-        ));
-    }
-    Ok(())
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+unsafe fn raw_errno() -> i32 {
+    *libc::__errno_location()
+}
+
+#[cfg(any(
+    target_os = "macos",
+    target_os = "ios",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd",
+    target_os = "dragonfly"
+))]
+unsafe fn raw_errno() -> i32 {
+    *libc::__error()
 }
 
 #[cfg(not(unix))]
@@ -143,8 +207,11 @@ fn try_lock(_file: &std::fs::File) -> Result<bool> {
 }
 
 #[cfg(not(unix))]
-fn make_inheritable(_file: &std::fs::File) -> Result<()> {
-    Err(anyhow::anyhow!("device build admission requires unix flock"))
+impl SlotLease {
+    /// Non-unix stub: without `flock` there is no supervisor to hand off to.
+    pub fn watch_until_exit(&self, _pid: i32) -> Result<()> {
+        Err(anyhow::anyhow!("device build admission requires unix flock"))
+    }
 }
 
 #[cfg(test)]
@@ -190,14 +257,61 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn lease_descriptor_is_inheritable() {
+    fn lease_descriptor_stays_close_on_exec() {
         use std::os::unix::io::AsRawFd;
-        let dir = temp_dir("inheritable");
+        let dir = temp_dir("cloexec");
         let lease = acquire_blocking(&dir, 1).expect("lease");
         // SAFETY: reading fd flags on a descriptor owned by the lease.
         let flags = unsafe { libc::fcntl(lease.file.as_raw_fd(), libc::F_GETFD) };
         assert!(flags >= 0, "F_GETFD failed");
-        assert_eq!(flags & libc::FD_CLOEXEC, 0, "build slot fd must survive exec");
+        assert_ne!(
+            flags & libc::FD_CLOEXEC,
+            0,
+            "build slot fd must NOT survive exec, or a descendant pins the slot"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The G2 full-lifetime property: the supervisor holds the slot for the
+    /// *direct* build child only. A descendant that outlives the build must not
+    /// keep the slot. Pre-fix (inheritable fd + no supervisor) the second
+    /// acquire never returns, so the watchdog fails the test instead of hanging.
+    #[cfg(unix)]
+    #[test]
+    fn slot_is_released_when_build_exits_even_if_a_descendant_survives() {
+        use std::process::Command;
+        use std::time::Duration;
+
+        let dir = temp_dir("supervise");
+        let lease = acquire_blocking(&dir, 1).expect("lease");
+
+        // Fake build: leaves a long-lived background child behind, then exits.
+        let mut build = Command::new("sh")
+            .arg("-c")
+            .arg("sleep 30 >/dev/null 2>&1 & exit 0")
+            .spawn()
+            .expect("spawn fake build");
+        let pid = build.id() as i32;
+        lease.watch_until_exit(pid).expect("supervisor");
+        // The taking process (`sharecli start`) exits here: only the supervisor
+        // still holds the lock, and it releases when `pid` is reaped.
+        drop(lease);
+        build.wait().expect("reap build");
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        let dir2 = dir.clone();
+        std::thread::spawn(move || {
+            let second = acquire_blocking(&dir2, 1);
+            let _ = tx.send(second.is_ok());
+        });
+        match rx.recv_timeout(Duration::from_secs(5)) {
+            Ok(true) => {}
+            Ok(false) => panic!("second acquire errored"),
+            Err(_) => panic!(
+                "slot leaked: second acquire did not return within 5s \
+                 (a surviving descendant pinned the lease)"
+            ),
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
