@@ -883,6 +883,11 @@ mod tests {
         );
     }
 
+    // The refusal path exercised here is the Unix one: it rejects pid 0/1 with
+    // "not a signalable process id" before any syscall. Windows refuses every
+    // pid with the "unsupported on Windows" message (covered above), so gate
+    // this to the platform whose message it asserts.
+    #[cfg(unix)]
     #[test]
     fn signal_refuses_pid_zero_and_one_before_any_syscall() {
         // A group signal is derived by negating the pid, so pid 1 would become
