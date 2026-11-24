@@ -7,6 +7,8 @@
 //! `health.status` + `process.list` polls.
 
 /// FR-007 / AC-007.51 — live `monitoring.report` dispatch feeds Windows tray mapping helpers.
+// `sharecli-tray-windows` is linked only on Windows and Linux glibc (see Cargo.toml).
+#[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
 #[tokio::test]
 async fn fr007_tray_windows_monitoring_report_refresh_live() {
     let handler = sharecli_ipc::handler::Handler::new().await.expect("Handler::new");
@@ -32,6 +34,7 @@ async fn fr007_tray_windows_monitoring_report_refresh_live() {
 }
 
 /// FR-007 / AC-007.51 — Windows tray mapping preserves gate → host_watch from monitoring.report wire.
+#[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
 #[test]
 fn fr007_tray_windows_monitoring_report_maps_gate_host_watch_order() {
     use sharecli_tray_windows::ipc::MonitoringReportSnapshot;

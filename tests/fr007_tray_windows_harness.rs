@@ -5,9 +5,14 @@
 //! WinUI tray MUST map `monitoring.report` process `harness` into tray rows and surface it in
 //! the process DataGrid (parity with Linux tray submenu Harness label and Swift Harness column).
 
+// `sharecli-tray-windows` is linked only on Windows and Linux glibc (see
+// Cargo.toml). The C#/XAML and Linux-reference checks below do not need the
+// crate, so only the Rust mapping test is gated.
+#[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
 use sharecli_tray_windows::ipc::MonitoringReportSnapshot;
 
 /// FR-007 / AC-007.55 — Rust process_summaries preserves harness from monitoring.report wire.
+#[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
 #[test]
 fn fr007_tray_windows_harness_maps_from_monitoring_report() {
     let raw = r#"{"timestamp":1700000000,"total_processes":2,"used_memory_mb":256,

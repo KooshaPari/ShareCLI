@@ -147,6 +147,10 @@ proptest = "1.6"
 #     assert Windows<->Linux constant parity. Gating it to `cfg(windows)` alone
 #     leaves those test targets unable to resolve the crate under the required
 #     `cargo check --workspace --all-targets`, which is what broke ci / test.
+#     Every test file that imports `sharecli_tray_windows` therefore repeats this
+#     exact `cfg(any(windows, all(target_os = "linux", target_env = "gnu")))` on
+#     the import and on each Windows-only case, so musl and macOS still compile
+#     `--tests` while their Linux-only cases stay enabled.
 #   - sharecli-tray-linux is pure Rust (ksni/zbus) and only meaningful on Linux.
 [target.'cfg(any(windows, all(target_os = "linux", target_env = "gnu")))'.dev-dependencies]
 sharecli-tray-windows = { path = "crates/sharecli-tray-windows" }

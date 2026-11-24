@@ -8,6 +8,9 @@
 
 use sharecli_tray_linux::ipc::{PoolSnapshot, StatusSnapshot};
 use sharecli_tray_linux::operator_display as linux_display;
+// `sharecli-tray-windows` is linked only on Windows and Linux glibc (see
+// Cargo.toml); gate the Windows parity case so musl/macOS `--tests` compiles.
+#[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
 use sharecli_tray_windows::operator_display as win_display;
 
 fn sample_pool() -> PoolSnapshot {
@@ -115,6 +118,7 @@ fn fr007_tray_pool_status_consume_linux_format() {
 }
 
 /// FR-007 / AC-007.72 — Windows tray Rust helpers stay byte-identical to Linux.
+#[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
 #[test]
 fn fr007_tray_pool_status_consume_windows_linux_parity() {
     use sharecli_tray_windows::ipc::{

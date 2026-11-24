@@ -9,6 +9,10 @@
 use sharecli_tray_linux::ipc::GateStatusSnapshot;
 use sharecli_tray_linux::operator_display as linux_display;
 use sharecli_tray_linux::operator_display::TrayGateSeverity;
+// `sharecli-tray-windows` is linked only on Windows and Linux glibc (see
+// Cargo.toml). Keep the Linux-only cases above enabled everywhere; gate only
+// the Windows parity case below so a musl/macOS `--tests` build still compiles.
+#[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
 use sharecli_tray_windows::operator_display as win_display;
 
 /// FR-007 / AC-007.57 — golden severity matrix for ADMIT/GREEN (normal).
@@ -67,6 +71,7 @@ fn fr007_tray_thermal_visual_offline_when_disconnected() {
 }
 
 /// FR-007 / AC-007.57 — Windows Rust helpers stay token-identical to Linux.
+#[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
 #[test]
 fn fr007_tray_thermal_visual_windows_linux_parity() {
     let cases = [
