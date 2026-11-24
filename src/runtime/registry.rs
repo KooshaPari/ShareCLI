@@ -485,9 +485,11 @@ fn secure_fallback_dir(dir: &Path, owner: u32) -> Result<()> {
             }
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir).with_context(
-                || format!("create fallback state dir {}", dir.display()),
-            )?;
+            std::fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(dir)
+                .with_context(|| format!("create fallback state dir {}", dir.display()))?;
             // Re-check after creation: the mode we asked for must be the mode we
             // got, and the directory must still be ours.
             let meta = std::fs::metadata(dir)
@@ -636,11 +638,7 @@ mod tests {
 
         let live_entries = registry.live_entries();
 
-        assert_eq!(
-            live_entries.len(),
-            1,
-            "only the live entry may be returned: {live_entries:?}"
-        );
+        assert_eq!(live_entries.len(), 1, "only the live entry may be returned: {live_entries:?}");
         assert_eq!(live_entries[0].pid, live);
         let after = std::fs::read_to_string(registry.path()).expect("read registry");
         assert_eq!(before, after, "a read-only live view must not rewrite the registry");
@@ -743,6 +741,11 @@ mod tests {
         assert!(pid_alive(std::process::id()), "the refusal must not signal the caller");
     }
 
+    // `is_zombie` reads `/proc/<pid>/stat` and returns false off Linux, so on
+    // other platforms `pid_alive` cannot report an unreaped child as dead. Gate
+    // this test to the platform where the assertion reflects real behaviour
+    // rather than asserting a false negative on macOS/Windows.
+    #[cfg(target_os = "linux")]
     #[test]
     fn unreaped_zombie_child_is_not_alive() {
         let mut child =
@@ -836,8 +839,8 @@ mod tests {
 
     #[cfg(unix)]
     fn secure_test_dir(name: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir()
-            .join(format!("sharecli-secure-{name}-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("sharecli-secure-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::remove_file(&dir);
         dir
