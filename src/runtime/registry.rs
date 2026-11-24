@@ -19,9 +19,9 @@
 //!   that bypasses this module can still race, and a resident supervisor would
 //!   remove even that.
 //! - Liveness is probed with `kill(pid, 0)`. `EPERM` counts as alive, a zombie
-//!   counts as dead (on Linux), and pid 0 or anything above `i32::MAX` is never
-//!   alive. A recycled PID is still possible in principle; the recorded
-//!   `started_at` and `cmd` let a caller discriminate.
+//!   counts as dead (on Linux), and pid 0, pid 1 (init) or anything above
+//!   `i32::MAX` is never alive. A recycled PID is still possible in principle;
+//!   the recorded `started_at` and `cmd` let a caller discriminate.
 //! - A registry that exists but cannot be read or parsed is an error for every
 //!   writer, so a transient read failure can never replace records it did not
 //!   read. Read-only callers degrade to an empty view instead.
@@ -61,11 +61,16 @@ fn now_secs() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
-/// True when `pid` is a value the OS can address. `kill(0, sig)` targets the
-/// caller's whole process group, and an id above `i32::MAX` wraps negative when
-/// cast to `pid_t`, so neither may ever reach a syscall.
+/// True when `pid` is a value this module may address with a signal.
+///
+/// `kill(0, sig)` targets the caller's whole process group and `kill(-1, sig)`
+/// targets every process the user may signal. A group signal is derived by
+/// negating the pid, so a recorded pid of `1` would become `-1`: the widest
+/// signal there is. Pid 1 is the init/system process, which `sharecli` never
+/// spawns, so both `0` and `1` are refused before any syscall. An id above
+/// `i32::MAX` wraps negative when cast to `pid_t`, so it is refused too.
 fn signalable(pid: u32) -> bool {
-    pid > 0 && pid <= i32::MAX as u32
+    pid > 1 && pid <= i32::MAX as u32
 }
 
 /// True when `pid` is a zombie: it has exited but its parent has not reaped it.
@@ -192,8 +197,9 @@ pub(crate) fn entry_is_live(entry: &RegistryEntry) -> bool {
 #[cfg(unix)]
 pub fn signal_group_or_pid(pid: u32, signal: i32) -> Result<()> {
     if !signalable(pid) {
-        // A registry file is operator-writable data; never let a 0 or a wrapped
-        // id turn into a signal for our own group or an unrelated process.
+        // A registry file is operator-writable data; never let a 0 or 1 turn
+        // into a signal for our own group or every process the user owns, nor a
+        // wrapped id turn into a signal for an unrelated process.
         return Err(anyhow::anyhow!("pid {pid} is not a signalable process id"));
     }
     // SAFETY: the target is a pid sharecli recorded at spawn time.
@@ -561,6 +567,25 @@ mod tests {
         assert!(!pid_alive(i32::MAX as u32 + 1), "ids above i32::MAX wrap when cast to pid_t");
         assert!(!pid_alive(u32::MAX), "u32::MAX wraps when cast to pid_t");
         assert!(pid_alive(std::process::id()), "the test's own pid must read as alive");
+    }
+
+    #[test]
+    fn signal_refuses_pid_zero_and_one_before_any_syscall() {
+        // A group signal is derived by negating the pid, so pid 1 would become
+        // `kill(-1, sig)`: it signals EVERY process the user may signal. Pid 0
+        // is the caller's own process group. Neither may ever reach a syscall.
+        for pid in [0u32, 1u32] {
+            let result = signal_group_or_pid(pid, 15);
+            let error = result.expect_err("pid 0 and pid 1 must be refused");
+            assert!(
+                error.to_string().contains("not a signalable process id"),
+                "unexpected error for pid {pid}: {error}"
+            );
+            assert!(!pid_alive(pid), "pid {pid} must not read as a live managed process");
+        }
+        // Reaching here proves no signal was delivered: a `kill(-1, SIGTERM)`
+        // would have taken down this very test process.
+        assert!(pid_alive(std::process::id()), "the refusal must not signal the caller");
     }
 
     #[test]
