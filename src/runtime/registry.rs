@@ -54,6 +54,11 @@ fn now_secs() -> u64 {
 /// True when `pid` exists. `kill(pid, 0)` performs the permission and existence
 /// check without delivering a signal.
 pub fn pid_alive(pid: u32) -> bool {
+    // PID 0 is not a real process handle: `kill(0, 0)` targets the caller's
+    // whole process group, so it always "succeeds". Treat it as dead.
+    if pid == 0 {
+        return false;
+    }
     // SAFETY: signal 0 delivers nothing; it only validates the pid.
     unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
 }

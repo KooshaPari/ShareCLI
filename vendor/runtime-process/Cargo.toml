@@ -10,7 +10,14 @@ description = "ProcessPort implementation: cross-platform managed subprocess via
 [dependencies]
 substrate-core = { version = "0.3.8", path = "../substrate-core" }
 async-trait = "0.1"
-tokio = { version = "1.42", features = ["rt", "rt-multi-thread", "macros", "process", "sync", "time"] }
+tokio = { version = "1.42", features = [
+  "rt",
+  "rt-multi-thread",
+  "macros",
+  "process",
+  "sync",
+  "time",
+] }
 uuid = { version = "1.11", features = ["v4", "serde"] }
 command-group = { version = "5.0", features = ["with-tokio"] }
 
