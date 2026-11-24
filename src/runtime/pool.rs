@@ -104,7 +104,7 @@ impl ProcessPool {
         // Resolve the device registry BEFORE taking any lock: `prune_dead` does
         // synchronous flock + file I/O + fsync, and no synchronous filesystem
         // call may run while an async `RwLock` guard is held.
-        let recorded = self.registry().prune_dead();
+        let recorded = self.registry().prune_dead().unwrap_or_default();
 
         let mut result = Vec::new();
         {
@@ -441,9 +441,19 @@ impl ProcessPool {
         if let Err(error) = self.kill_all().await {
             failures.push(format!("owned handles: {error}"));
         }
-        for entry in self.registry().prune_dead() {
-            if let Err(error) = self.kill_registered(entry.pid, force).await {
-                failures.push(format!("pid {}: {error}", entry.pid));
+        match self.registry().prune_dead() {
+            Ok(entries) => {
+                for entry in entries {
+                    if let Err(error) = self.kill_registered(entry.pid, force).await {
+                        failures.push(format!("pid {}: {error}", entry.pid));
+                    }
+                }
+            }
+            Err(error) => {
+                // An unreadable registry looks like "no live processes" if it
+                // is swallowed. Surface it so a device-wide stop can never
+                // report success while recorded processes keep running.
+                failures.push(format!("registry: {error}"));
             }
         }
         if failures.is_empty() {
@@ -464,7 +474,7 @@ impl ProcessPool {
     pub async fn find(&self, filter: ProcessFilter) -> Vec<ProcessInfo> {
         // Registry resolution must happen before any async guard is taken:
         // `prune_dead` performs synchronous file I/O under a flock.
-        let recorded = self.registry().prune_dead();
+        let recorded = self.registry().prune_dead().unwrap_or_default();
         self.refresh().await;
         let sys = self.system.read().await;
 

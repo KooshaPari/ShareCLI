@@ -332,24 +332,29 @@ impl Registry {
         self.read_entries().unwrap_or_default()
     }
 
-    /// Entries whose process is still alive. Dead entries are dropped from the
-    /// file as a side effect so the registry cannot grow without bound.
-    pub fn prune_dead(&self) -> Vec<RegistryEntry> {
-        let Ok(_guard) = RegistryLock::acquire(&self.path) else {
-            // Cannot serialise with other writers: report what is readable
-            // without rewriting the file.
-            return self.entries().into_iter().filter(entry_is_live).collect();
+    /// Entries whose process is still alive, pruning dead ones from the file.
+    ///
+    /// Returns an error when the registry exists but cannot be read or parsed,
+    /// and when the pruned rewrite fails. A read failure must not look like an
+    /// empty registry: `kill_all_registered` iterates the result and would
+    /// otherwise report success while the processes it was asked to stop are
+    /// still running.
+    pub fn prune_dead(&self) -> Result<Vec<RegistryEntry>> {
+        let _guard = match RegistryLock::acquire(&self.path) {
+            Ok(guard) => guard,
+            // Cannot serialise with other writers: report the live view without
+            // rewriting the file. This is a deliberate read fallback, not a read
+            // failure, so no record is lost and no error is reported here.
+            Err(_) => return Ok(self.entries().into_iter().filter(entry_is_live).collect()),
         };
-        let Ok(all) = self.read_entries() else {
-            // Never publish the live subset of a registry we failed to read: an
-            // empty write here would destroy every record.
-            return Vec::new();
-        };
+        // Never publish the live subset of a registry we failed to read: that
+        // returns the error to the caller instead of destroying every record.
+        let all = self.read_entries()?;
         let (live, dead): (Vec<_>, Vec<_>) = all.into_iter().partition(entry_is_live);
         if !dead.is_empty() {
-            let _ = self.write(&live);
+            self.write(&live)?;
         }
-        live
+        Ok(live)
     }
 
     /// Record a spawned process. Idempotent per pid. Fails rather than
@@ -511,10 +516,32 @@ mod tests {
         registry
             .insert(RegistryEntry::new(0, None, None, vec!["dead".into()]))
             .expect("insert dead");
-        let pruned = registry.prune_dead();
+        let pruned = registry.prune_dead().expect("prune must succeed");
         assert_eq!(pruned.len(), 1);
         assert_eq!(pruned[0].pid, live);
         assert_eq!(registry.entries().len(), 1);
+    }
+
+    #[test]
+    fn prune_dead_reports_an_unreadable_registry_as_an_error() {
+        // A corrupt registry must be an ERROR, never an empty "no live
+        // processes" success: `kill_all_registered` iterates the result and
+        // would otherwise report success while leaving processes running.
+        let registry = temp_registry("prune-corrupt");
+        if let Some(dir) = registry.path().parent() {
+            std::fs::create_dir_all(dir).expect("mkdir");
+        }
+        std::fs::write(registry.path(), "{not json").expect("write");
+        let error = registry.prune_dead().expect_err("a corrupt registry must be an error");
+        assert!(
+            error.to_string().contains("parse registry"),
+            "unexpected error for a corrupt registry: {error}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(registry.path()).expect("corrupt file must survive"),
+            "{not json",
+            "an unreadable registry must never be laundered into an empty one"
+        );
     }
 
     #[test]
@@ -527,7 +554,7 @@ mod tests {
         recycled.started_at = now_secs().saturating_sub(3600);
         registry.insert(recycled).expect("insert recycled");
 
-        let pruned = registry.prune_dead();
+        let pruned = registry.prune_dead().expect("prune must succeed");
 
         assert!(pruned.is_empty(), "a recycled pid must not read as managed: {pruned:?}");
         assert!(registry.entries().is_empty(), "the recycled entry must be dropped from the file");
