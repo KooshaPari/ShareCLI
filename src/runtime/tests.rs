@@ -92,6 +92,92 @@ mod tests {
         assert_eq!(tracked.len(), 1);
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn kill_registered_refuses_recycled_pid() {
+        let path = isolated_registry_path("kill-registered-recycled");
+        let pool = ProcessPool::with_registry_path(path.clone());
+        let own = std::process::id();
+        let registry = Registry::at(path);
+        let mut recycled = RegistryEntry::new(own, None, None, vec!["stale".into()]);
+        recycled.started_at = recycled.started_at.saturating_sub(3600);
+        registry.insert(recycled).expect("seed recycled entry");
+
+        let error = pool
+            .kill_registered(own, false)
+            .await
+            .expect_err("a recycled pid must never be signalled");
+
+        assert!(error.to_string().contains("recycled"), "got: {error}");
+        assert!(!registry.contains(own), "the stale entry must be removed");
+        // Reaching this line at all is the evidence that no signal was sent to
+        // the test process's own pid.
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn kill_registered_reports_not_stopped_when_alive_after_signal() {
+        use std::io::BufRead;
+
+        let path = isolated_registry_path("kill-registered-alive");
+        let pool = ProcessPool::with_registry_path(path.clone());
+        let mut child = std::process::Command::new("sh")
+            .args(["-c", "trap '' TERM; echo ready; while :; do sleep 1; done"])
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .expect("spawn a SIGTERM-ignoring child");
+        let pid = child.id();
+        // Wait for the trap to be installed before signalling; otherwise SIGTERM
+        // can win the race and the test proves nothing.
+        let mut ready = String::new();
+        std::io::BufReader::new(child.stdout.take().expect("child stdout"))
+            .read_line(&mut ready)
+            .expect("read readiness line");
+        assert_eq!(ready.trim(), "ready");
+
+        let registry = Registry::at(path);
+        registry
+            .insert(RegistryEntry::new(pid, None, None, vec!["sh".into()]))
+            .expect("record child");
+
+        let error = pool
+            .kill_registered(pid, false)
+            .await
+            .expect_err("success must imply an observed exit");
+
+        assert!(error.to_string().contains("did not exit"), "got: {error}");
+        assert!(registry.contains(pid), "a live process must keep its registry entry");
+        assert!(crate::runtime::registry::pid_alive(pid), "the child must still be alive");
+
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn kill_all_registered_stops_owned_child_with_no_registry_entry() {
+        let path = isolated_registry_path("kill-all-owned");
+        let pool = ProcessPool::with_registry_path(path.clone());
+        let child = pool.spawn("sleep", &["30".into()], None, None, None).await.unwrap();
+        // Simulate a failed registry write: the pool owns the handle, but the
+        // device registry has no record of it.
+        Registry::at(path.clone()).remove(child.pid);
+        assert!(!Registry::at(path).contains(child.pid));
+
+        pool.kill_all_registered(false).await.expect("owned handles must be stopped");
+
+        assert!(!pool.processes.read().await.contains_key(&child.pid));
+        let mut alive = true;
+        for _ in 0..40 {
+            alive = crate::runtime::registry::pid_alive(child.pid);
+            if !alive {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        assert!(!alive, "an unregistered owned child must not survive kill_all_registered");
+    }
+
     #[tokio::test]
     async fn test_process_pool() {
         let pool = isolated_pool("process-pool");

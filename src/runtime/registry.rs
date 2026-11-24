@@ -104,20 +104,75 @@ pub fn pid_alive(pid: u32) -> bool {
     std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
 }
 
+/// Tolerance when comparing a recorded spawn time against the live process
+/// start time. The record is written just after the child starts, so the
+/// recorded value is normally a little later than the true start; a pid that
+/// has been recycled since is separated by far more than this.
+const START_TIME_TOLERANCE_SECS: u64 = 5;
+
+/// Start time of the process currently on `pid`, in Unix epoch seconds.
+///
+/// `None` when the pid is not signalable, is gone, or the platform cannot
+/// report a start time. Used to tell the recorded process apart from a
+/// recycled PID that now happens to own the same id.
+pub(crate) fn live_start_epoch(pid: u32) -> Option<u64> {
+    if !signalable(pid) {
+        return None;
+    }
+    // `ProcessRefreshKind::nothing()` still collects pid/name/start time, and
+    // restricting the refresh to one pid keeps this cheap enough for the
+    // prune/insert/kill paths that call it.
+    let pid = sysinfo::Pid::from_u32(pid);
+    let mut system = sysinfo::System::new();
+    system.refresh_processes_specifics(
+        sysinfo::ProcessesToUpdate::Some(&[pid]),
+        false,
+        sysinfo::ProcessRefreshKind::nothing(),
+    );
+    system.process(pid).map(|process| process.start_time())
+}
+
+/// True when the live process on `entry.pid` is still the recorded process.
+///
+/// A recycled PID is the hazard this closes: `kill(pid, 0)` succeeds for
+/// whatever now owns the id, so liveness alone would let `kill` signal an
+/// unrelated process. When the platform cannot report a start time, fall back
+/// to the plain liveness probe so behaviour is unchanged there.
+pub(crate) fn identity_matches_live(entry: &RegistryEntry) -> bool {
+    match live_start_epoch(entry.pid) {
+        Some(live) => live.abs_diff(entry.started_at) <= START_TIME_TOLERANCE_SECS,
+        None => pid_alive(entry.pid),
+    }
+}
+
+/// True while `entry` is both alive and still the process it recorded. A
+/// mismatch is treated as dead: pruned, listed as unmanaged, never signalled.
+pub(crate) fn entry_is_live(entry: &RegistryEntry) -> bool {
+    pid_alive(entry.pid) && identity_matches_live(entry)
+}
+
 /// Signal a pid, preferring its process group so a harness's own children go
 /// with it (sharecli spawns each harness as a group leader).
-pub fn signal_group_or_pid(pid: u32, signal: i32) {
+///
+/// Returns an error when neither the group signal nor the single-process
+/// fallback could be delivered, so a caller can never mistake a failed signal
+/// (`ESRCH` for a gone pid, `EPERM` for one it may not signal) for success.
+pub fn signal_group_or_pid(pid: u32, signal: i32) -> Result<()> {
     if !signalable(pid) {
         // A registry file is operator-writable data; never let a 0 or a wrapped
         // id turn into a signal for our own group or an unrelated process.
-        return;
+        return Err(anyhow::anyhow!("pid {pid} is not a signalable process id"));
     }
     // SAFETY: the target is a pid sharecli recorded at spawn time.
     let as_group = unsafe { libc::kill(-(pid as libc::pid_t), signal) };
-    if as_group != 0 {
-        // SAFETY: same pid, single-process fallback for a non-group child.
-        unsafe { libc::kill(pid as libc::pid_t, signal) };
+    if as_group == 0 {
+        return Ok(());
     }
+    // SAFETY: same pid, single-process fallback for a non-group child.
+    if unsafe { libc::kill(pid as libc::pid_t, signal) } == 0 {
+        return Ok(());
+    }
+    Err(std::io::Error::last_os_error()).with_context(|| format!("signal pid {pid} with {signal}"))
 }
 
 /// Handle to the on-disk registry.
@@ -210,14 +265,14 @@ impl Registry {
         let Ok(_guard) = RegistryLock::acquire(&self.path) else {
             // Cannot serialise with other writers: report what is readable
             // without rewriting the file.
-            return self.entries().into_iter().filter(|e| pid_alive(e.pid)).collect();
+            return self.entries().into_iter().filter(entry_is_live).collect();
         };
         let Ok(all) = self.read_entries() else {
             // Never publish the live subset of a registry we failed to read: an
             // empty write here would destroy every record.
             return Vec::new();
         };
-        let (live, dead): (Vec<_>, Vec<_>) = all.into_iter().partition(|e| pid_alive(e.pid));
+        let (live, dead): (Vec<_>, Vec<_>) = all.into_iter().partition(entry_is_live);
         if !dead.is_empty() {
             let _ = self.write(&live);
         }
@@ -229,7 +284,7 @@ impl Registry {
     pub fn insert(&self, entry: RegistryEntry) -> Result<()> {
         let _guard = RegistryLock::acquire(&self.path)?;
         let mut entries = self.read_entries()?;
-        entries.retain(|e| e.pid != entry.pid && pid_alive(e.pid));
+        entries.retain(|e| e.pid != entry.pid && entry_is_live(e));
         entries.push(entry);
         self.write(&entries)
     }
@@ -254,6 +309,12 @@ impl Registry {
 
     pub fn contains(&self, pid: u32) -> bool {
         self.entries().iter().any(|e| e.pid == pid)
+    }
+
+    /// The recorded entry for `pid`, if any. Callers that are about to signal
+    /// the pid use this to validate its recorded identity first.
+    pub fn get(&self, pid: u32) -> Option<RegistryEntry> {
+        self.entries().into_iter().find(|e| e.pid == pid)
     }
 
     fn write(&self, entries: &[RegistryEntry]) -> Result<()> {
@@ -375,6 +436,40 @@ mod tests {
         assert_eq!(pruned.len(), 1);
         assert_eq!(pruned[0].pid, live);
         assert_eq!(registry.entries().len(), 1);
+    }
+
+    #[test]
+    fn prune_drops_recycled_pid_with_stale_start_time() {
+        let registry = temp_registry("prune-recycled");
+        let live = std::process::id();
+        // The pid is very much alive, but the record claims it started an hour
+        // ago: that pid must have been recycled, so the entry is not "managed".
+        let mut recycled = RegistryEntry::new(live, None, None, vec!["stale".into()]);
+        recycled.started_at = now_secs().saturating_sub(3600);
+        registry.insert(recycled).expect("insert recycled");
+
+        let pruned = registry.prune_dead();
+
+        assert!(pruned.is_empty(), "a recycled pid must not read as managed: {pruned:?}");
+        assert!(registry.entries().is_empty(), "the recycled entry must be dropped from the file");
+    }
+
+    #[test]
+    fn insert_prunes_a_recycled_entry_rather_than_keeping_it() {
+        let registry = temp_registry("insert-recycled");
+        let live = std::process::id();
+        let mut recycled = RegistryEntry::new(live, None, None, vec!["stale".into()]);
+        recycled.started_at = now_secs().saturating_sub(3600);
+        registry.insert(recycled).expect("insert recycled");
+        assert!(registry.contains(live), "a write records the entry it was given");
+
+        // A later insert is a read-modify-write: the recycled entry must not
+        // survive it.
+        registry
+            .insert(RegistryEntry::new(0, None, None, vec!["dead".into()]))
+            .expect("insert other");
+
+        assert!(!registry.contains(live), "a later write must prune a recycled-pid entry");
     }
 
     #[test]

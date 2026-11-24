@@ -24,7 +24,9 @@ use super::audit::ProcState;
 use super::audit::{emit_spawn_audit, emit_stop_audit, spawn_capability};
 use super::managed::ManagedProcess;
 use super::process_info::{count_open_fds, count_threads, EnvGuard, ProcessInfo};
-use super::registry::{pid_alive, signal_group_or_pid, Registry, RegistryEntry};
+use super::registry::{
+    identity_matches_live, pid_alive, signal_group_or_pid, Registry, RegistryEntry,
+};
 
 /// Metadata + handle pool for processes spawned via the substrate
 /// `ProcessPort`. All public surface (new / with_spawn_policy / refresh /
@@ -99,8 +101,12 @@ impl ProcessPool {
 
     /// Get all managed processes
     pub async fn list(&self) -> Vec<ProcessInfo> {
+        // Resolve the device registry BEFORE taking any lock: `prune_dead` does
+        // synchronous flock + file I/O + fsync, and no synchronous filesystem
+        // call may run while an async `RwLock` guard is held.
+        let recorded = self.registry().prune_dead();
+
         let mut result = Vec::new();
-        let seen: std::collections::HashSet<u32>;
         {
             let sys = self.system.read().await;
             let procs = self.processes.read().await;
@@ -113,9 +119,13 @@ impl ProcessPool {
                     result.push(info);
                 }
             }
-            seen = result.iter().map(|p| p.pid).collect();
+        }
+
+        if !recorded.is_empty() {
+            let seen: std::collections::HashSet<u32> = result.iter().map(|p| p.pid).collect();
+            let sys = self.system.read().await;
             // Processes recorded by earlier invocations: the device authority.
-            for entry in self.registry().prune_dead() {
+            for entry in recorded {
                 if seen.contains(&entry.pid) {
                     continue;
                 }
@@ -347,21 +357,51 @@ impl ProcessPool {
         }
 
         let registry = self.registry();
-        if !registry.contains(pid) {
+        let Some(entry) = registry.get(pid) else {
             return Err(anyhow!("pid {pid} is not a sharecli-managed process"));
+        };
+
+        // The pid may have exited since it was recorded: nothing to signal, but
+        // the stale record must still go.
+        if !pid_alive(pid) {
+            registry.remove(pid);
+            return Ok(());
+        }
+        // A recycled PID must never be signalled. `kill(pid, 0)` succeeds for
+        // whatever now owns the id, so validate the recorded identity first and
+        // drop the record instead of signalling an unrelated process.
+        if !identity_matches_live(&entry) {
+            registry.remove(pid);
+            return Err(anyhow!(
+                "pid {pid} is no longer the recorded process (stale or recycled pid); \
+                 removed the stale registry entry instead of signalling it"
+            ));
         }
 
-        signal_group_or_pid(pid, if force { libc::SIGKILL } else { libc::SIGTERM });
-        if !force {
-            for _ in 0..40 {
-                if !pid_alive(pid) {
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let signal = if force { libc::SIGKILL } else { libc::SIGTERM };
+        let label = if force { "SIGKILL" } else { "SIGTERM" };
+        if let Err(error) = signal_group_or_pid(pid, signal) {
+            // The target may have exited between the identity probe and the
+            // signal; that is success, and the stale entry must go.
+            if !pid_alive(pid) {
+                registry.remove(pid);
+                return Ok(());
             }
-            if pid_alive(pid) {
-                return Err(anyhow!("pid {pid} did not exit after SIGTERM; retry with --force"));
+            return Err(anyhow!("pid {pid}: {error}"));
+        }
+
+        // Confirm the exit for BOTH signal strengths. A registry entry is
+        // removed iff the process is observed gone, so `Ok` never accompanies a
+        // live pid, and a failed SIGKILL can no longer look like success.
+        for _ in 0..40 {
+            if !pid_alive(pid) {
+                break;
             }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        if pid_alive(pid) {
+            let hint = if force { "" } else { "; retry with --force" };
+            return Err(anyhow!("pid {pid} did not exit after {label}{hint}"));
         }
         registry.remove(pid);
         Ok(())
@@ -371,6 +411,12 @@ impl ProcessPool {
     /// earlier invocations.
     pub async fn kill_all_registered(&self, force: bool) -> Result<()> {
         let mut failures = Vec::new();
+        // Owned handles first: a child spawned by this invocation whose registry
+        // write failed is in `processes` but not in the registry, and a
+        // device-wide stop must not leave it running.
+        if let Err(error) = self.kill_all().await {
+            failures.push(format!("owned handles: {error}"));
+        }
         for entry in self.registry().prune_dead() {
             if let Err(error) = self.kill_registered(entry.pid, force).await {
                 failures.push(format!("pid {}: {error}", entry.pid));
@@ -392,34 +438,39 @@ impl ProcessPool {
     /// Find managed processes matching `filter`. Refreshes sysinfo first so
     /// freshly-spawned PIDs that are no longer alive are filtered out.
     pub async fn find(&self, filter: ProcessFilter) -> Vec<ProcessInfo> {
+        // Registry resolution must happen before any async guard is taken:
+        // `prune_dead` performs synchronous file I/O under a flock.
+        let recorded = self.registry().prune_dead();
         self.refresh().await;
         let sys = self.system.read().await;
-        let procs = self.processes.read().await;
 
         let mut result = Vec::new();
         let mut seen = std::collections::HashSet::new();
 
-        for (pid, managed) in procs.iter() {
-            let info =
-                ProcessInfo::from_sysinfo(Pid::from_u32(*pid), managed.info.name.clone(), &sys);
+        {
+            let procs = self.processes.read().await;
+            for (pid, managed) in procs.iter() {
+                let info =
+                    ProcessInfo::from_sysinfo(Pid::from_u32(*pid), managed.info.name.clone(), &sys);
 
-            if let Some(mut info) = info {
-                info.project = managed.info.project.clone();
-                info.harness = managed.info.harness.clone();
-                let matches = match &filter {
-                    ProcessFilter::All => true,
-                    ProcessFilter::ByProject(proj) => info.project.as_ref() == Some(proj),
-                    ProcessFilter::ByHarness(harness) => info.harness.as_ref() == Some(harness),
-                };
+                if let Some(mut info) = info {
+                    info.project = managed.info.project.clone();
+                    info.harness = managed.info.harness.clone();
+                    let matches = match &filter {
+                        ProcessFilter::All => true,
+                        ProcessFilter::ByProject(proj) => info.project.as_ref() == Some(proj),
+                        ProcessFilter::ByHarness(harness) => info.harness.as_ref() == Some(harness),
+                    };
 
-                if matches {
-                    seen.insert(info.pid);
-                    result.push(info);
+                    if matches {
+                        seen.insert(info.pid);
+                        result.push(info);
+                    }
                 }
             }
         }
 
-        for entry in self.registry().prune_dead() {
+        for entry in recorded {
             if seen.contains(&entry.pid) {
                 continue;
             }
