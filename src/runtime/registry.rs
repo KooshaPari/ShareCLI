@@ -12,17 +12,27 @@
 //!
 //! Scope and limits, stated plainly:
 //!
-//! - Entries are written atomically (temp file + rename) but the registry is not
-//!   a lock: two invocations spawning at the same instant can drop one entry
-//!   (last writer wins). A resident supervisor removes that race entirely; this
-//!   file is the bounded step that makes cross-invocation kill work today.
-//! - Liveness is probed with `kill(pid, 0)`, so a recycled PID is possible in
-//!   principle. The recorded `started_at` and `cmd` let a caller discriminate.
+//! - Every read-modify-write (`insert`, `remove`, `prune_dead`) runs under an
+//!   exclusive advisory `flock` on a sidecar `processes.json.lock` and publishes
+//!   through a per-writer temp file, so two invocations spawning at the same
+//!   instant cannot drop one another's entry. The lock is advisory: a writer
+//!   that bypasses this module can still race, and a resident supervisor would
+//!   remove even that.
+//! - Liveness is probed with `kill(pid, 0)`. `EPERM` counts as alive, a zombie
+//!   counts as dead (on Linux), and pid 0 or anything above `i32::MAX` is never
+//!   alive. A recycled PID is still possible in principle; the recorded
+//!   `started_at` and `cmd` let a caller discriminate.
+//! - A registry that exists but cannot be read or parsed is an error for every
+//!   writer, so a transient read failure can never replace records it did not
+//!   read. Read-only callers degrade to an empty view instead.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
+use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 
 /// One process recorded by a `sharecli` invocation.
@@ -51,21 +61,57 @@ fn now_secs() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
+/// True when `pid` is a value the OS can address. `kill(0, sig)` targets the
+/// caller's whole process group, and an id above `i32::MAX` wraps negative when
+/// cast to `pid_t`, so neither may ever reach a syscall.
+fn signalable(pid: u32) -> bool {
+    pid > 0 && pid <= i32::MAX as u32
+}
+
+/// True when `pid` is a zombie: it has exited but its parent has not reaped it.
+/// `kill(pid, 0)` still succeeds for a zombie, so a liveness probe that only
+/// checks the signal would call a finished workload alive forever in a container
+/// whose PID 1 does not reap.
+#[cfg(target_os = "linux")]
+fn is_zombie(pid: u32) -> bool {
+    let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else {
+        return false;
+    };
+    // Field 3 is the state, after `pid (comm)`. `comm` may itself contain spaces
+    // and parentheses, so split after the LAST `)`.
+    match stat.rfind(')') {
+        Some(end) => matches!(stat[end + 1..].trim_start().chars().next(), Some('Z' | 'X' | 'x')),
+        None => false,
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn is_zombie(_pid: u32) -> bool {
+    false
+}
+
 /// True when `pid` exists. `kill(pid, 0)` performs the permission and existence
 /// check without delivering a signal.
 pub fn pid_alive(pid: u32) -> bool {
-    // PID 0 is not a real process handle: `kill(0, 0)` targets the caller's
-    // whole process group, so it always "succeeds". Treat it as dead.
-    if pid == 0 {
+    if !signalable(pid) {
         return false;
     }
     // SAFETY: signal 0 delivers nothing; it only validates the pid.
-    unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
+    if unsafe { libc::kill(pid as libc::pid_t, 0) } == 0 {
+        return !is_zombie(pid);
+    }
+    // `EPERM` means the process exists but belongs to another user: still alive.
+    std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
 }
 
 /// Signal a pid, preferring its process group so a harness's own children go
 /// with it (sharecli spawns each harness as a group leader).
 pub fn signal_group_or_pid(pid: u32, signal: i32) {
+    if !signalable(pid) {
+        // A registry file is operator-writable data; never let a 0 or a wrapped
+        // id turn into a signal for our own group or an unrelated process.
+        return;
+    }
     // SAFETY: the target is a pid sharecli recorded at spawn time.
     let as_group = unsafe { libc::kill(-(pid as libc::pid_t), signal) };
     if as_group != 0 {
@@ -78,6 +124,40 @@ pub fn signal_group_or_pid(pid: u32, signal: i32) {
 #[derive(Debug, Clone)]
 pub struct Registry {
     path: PathBuf,
+}
+
+/// Exclusive advisory lock on the registry's sidecar `processes.json.lock`.
+///
+/// Held across the whole read-modify-write of a writer, so two invocations can
+/// no longer read the same snapshot and let the later write drop the other's
+/// entry. Released when dropped.
+struct RegistryLock {
+    file: std::fs::File,
+}
+
+impl RegistryLock {
+    fn acquire(path: &Path) -> Result<Self> {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)
+                .with_context(|| format!("create registry dir {}", dir.display()))?;
+        }
+        let lock_path = path.with_extension("json.lock");
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(&lock_path)
+            .with_context(|| format!("open registry lock {}", lock_path.display()))?;
+        file.lock_exclusive().with_context(|| format!("lock registry {}", lock_path.display()))?;
+        Ok(Self { file })
+    }
+}
+
+impl Drop for RegistryLock {
+    fn drop(&mut self) {
+        let _ = fs2::FileExt::unlock(&self.file);
+    }
 }
 
 impl Default for Registry {
@@ -101,18 +181,42 @@ impl Registry {
         &self.path
     }
 
-    /// Read every recorded entry, ignoring a corrupt or absent file.
-    pub fn entries(&self) -> Vec<RegistryEntry> {
+    /// Strictly read every recorded entry. A missing file is an empty registry;
+    /// any other read or parse failure is an error, so a writer can never
+    /// replace records it failed to read.
+    fn read_entries(&self) -> Result<Vec<RegistryEntry>> {
         match std::fs::read_to_string(&self.path) {
-            Ok(text) => serde_json::from_str(&text).unwrap_or_default(),
-            Err(_) => Vec::new(),
+            Ok(text) => serde_json::from_str(&text)
+                .with_context(|| format!("parse registry {}", self.path.display())),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+            Err(error) => {
+                Err(error).with_context(|| format!("read registry {}", self.path.display()))
+            }
         }
+    }
+
+    /// Read every recorded entry, ignoring a corrupt or absent file.
+    ///
+    /// This is the read-only view (`list`, `find`, `contains`). Writers use
+    /// [`Self::read_entries`] instead so a corrupt file is never silently
+    /// replaced with the empty list it appears to be.
+    pub fn entries(&self) -> Vec<RegistryEntry> {
+        self.read_entries().unwrap_or_default()
     }
 
     /// Entries whose process is still alive. Dead entries are dropped from the
     /// file as a side effect so the registry cannot grow without bound.
     pub fn prune_dead(&self) -> Vec<RegistryEntry> {
-        let all = self.entries();
+        let Ok(_guard) = RegistryLock::acquire(&self.path) else {
+            // Cannot serialise with other writers: report what is readable
+            // without rewriting the file.
+            return self.entries().into_iter().filter(|e| pid_alive(e.pid)).collect();
+        };
+        let Ok(all) = self.read_entries() else {
+            // Never publish the live subset of a registry we failed to read: an
+            // empty write here would destroy every record.
+            return Vec::new();
+        };
         let (live, dead): (Vec<_>, Vec<_>) = all.into_iter().partition(|e| pid_alive(e.pid));
         if !dead.is_empty() {
             let _ = self.write(&live);
@@ -120,24 +224,32 @@ impl Registry {
         live
     }
 
-    /// Record a spawned process. Idempotent per pid.
+    /// Record a spawned process. Idempotent per pid. Fails rather than
+    /// overwriting a registry it could not read.
     pub fn insert(&self, entry: RegistryEntry) -> Result<()> {
-        let mut entries = self.entries();
+        let _guard = RegistryLock::acquire(&self.path)?;
+        let mut entries = self.read_entries()?;
         entries.retain(|e| e.pid != entry.pid && pid_alive(e.pid));
         entries.push(entry);
         self.write(&entries)
     }
 
-    /// Remove a pid. Returns whether anything was recorded for it.
+    /// Remove a pid. Returns whether the entry was actually removed from the
+    /// registry, so a failed read or write reports `false` instead of claiming a
+    /// removal that never reached the file.
     pub fn remove(&self, pid: u32) -> bool {
-        let mut entries = self.entries();
+        let Ok(_guard) = RegistryLock::acquire(&self.path) else {
+            return false;
+        };
+        let Ok(mut entries) = self.read_entries() else {
+            return false;
+        };
         let before = entries.len();
         entries.retain(|e| e.pid != pid);
-        let removed = entries.len() != before;
-        if removed {
-            let _ = self.write(&entries);
+        if entries.len() == before {
+            return false;
         }
-        removed
+        self.write(&entries).is_ok()
     }
 
     pub fn contains(&self, pid: u32) -> bool {
@@ -150,12 +262,33 @@ impl Registry {
                 .with_context(|| format!("create registry dir {}", dir.display()))?;
         }
         let body = serde_json::to_string_pretty(entries)?;
-        let tmp = self.path.with_extension("json.tmp");
-        std::fs::write(&tmp, body)
-            .with_context(|| format!("write registry tmp {}", tmp.display()))?;
-        std::fs::rename(&tmp, &self.path)
-            .with_context(|| format!("publish registry {}", self.path.display()))?;
+        let tmp = self.tmp_path();
+        let written = std::fs::OpenOptions::new().create_new(true).write(true).open(&tmp).and_then(
+            |mut file| {
+                file.write_all(body.as_bytes())?;
+                // Publish only complete, durable bytes.
+                file.sync_all()
+            },
+        );
+        if let Err(error) = written {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(error).with_context(|| format!("write registry tmp {}", tmp.display()));
+        }
+        if let Err(error) = std::fs::rename(&tmp, &self.path) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(error).with_context(|| format!("publish registry {}", self.path.display()));
+        }
         Ok(())
+    }
+
+    /// A per-writer temporary path: two writers must never truncate, read, or
+    /// publish the same in-progress file.
+    fn tmp_path(&self) -> PathBuf {
+        static SEQ: AtomicU64 = AtomicU64::new(0);
+        let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        let name = self.path.file_name().and_then(|name| name.to_str()).unwrap_or("processes.json");
+        self.path.with_file_name(format!("{name}.{}.{nanos}.{seq}.tmp", std::process::id()))
     }
 }
 
@@ -166,10 +299,24 @@ pub(crate) fn state_root() -> PathBuf {
     if let Some(dir) = std::env::var_os("SHARECLI_STATE_DIR") {
         return PathBuf::from(dir);
     }
-    let base = dirs::state_dir()
-        .or_else(dirs::data_local_dir)
-        .or_else(dirs::config_dir)
-        .unwrap_or_else(|| PathBuf::from("."));
+    let base = match dirs::state_dir().or_else(dirs::data_local_dir).or_else(dirs::config_dir) {
+        Some(base) => base,
+        None => {
+            // `PathBuf::from(".")` would scatter per-device state across
+            // whatever directory each invocation runs from, breaking the "one
+            // resident authority per device" property. Use one stable per-user
+            // location instead, and say so rather than failing silently.
+            // SAFETY: getuid cannot fail and touches no memory.
+            let uid = unsafe { libc::getuid() };
+            let fallback = std::env::temp_dir().join(format!("sharecli-{uid}"));
+            eprintln!(
+                "sharecli: warning: no platform state directory is available; using {} \
+                 for per-device state",
+                fallback.display()
+            );
+            fallback
+        }
+    };
     base.join("sharecli")
 }
 
@@ -238,5 +385,104 @@ mod tests {
         }
         std::fs::write(registry.path(), "{not json").expect("write");
         assert!(registry.entries().is_empty());
+    }
+
+    #[test]
+    fn pid_alive_rejects_ids_the_os_cannot_address() {
+        assert!(!pid_alive(0), "pid 0 is the caller's group, never a process handle");
+        assert!(!pid_alive(i32::MAX as u32 + 1), "ids above i32::MAX wrap when cast to pid_t");
+        assert!(!pid_alive(u32::MAX), "u32::MAX wraps when cast to pid_t");
+        assert!(pid_alive(std::process::id()), "the test's own pid must read as alive");
+    }
+
+    #[test]
+    fn unreaped_zombie_child_is_not_alive() {
+        let mut child =
+            std::process::Command::new("sh").args(["-c", "exit 0"]).spawn().expect("spawn sh");
+        let pid = child.id();
+        // The shell exits immediately and `Child` has not reaped it, so it is a
+        // zombie. `kill(pid, 0)` still succeeds for a zombie, so liveness must
+        // inspect the process state instead of the signal alone.
+        let mut alive = true;
+        for _ in 0..200 {
+            alive = pid_alive(pid);
+            if !alive {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        let _ = child.wait();
+        assert!(!alive, "a zombie whose parent has not reaped it must read as dead");
+    }
+
+    #[test]
+    fn concurrent_inserts_keep_every_entry() {
+        let registry = temp_registry("concurrent");
+        let mut children: Vec<std::process::Child> = (0..8)
+            .map(|_| {
+                std::process::Command::new("sleep")
+                    .arg("30")
+                    .spawn()
+                    .expect("spawn a live stand-in process")
+            })
+            .collect();
+        let pids: Vec<u32> = children.iter().map(|child| child.id()).collect();
+        std::thread::scope(|scope| {
+            for pid in &pids {
+                let registry = registry.clone();
+                let pid = *pid;
+                scope.spawn(move || {
+                    registry
+                        .insert(RegistryEntry::new(pid, None, None, vec!["sleep".into()]))
+                        .expect("insert");
+                });
+            }
+        });
+        let mut recorded: Vec<u32> = registry.entries().iter().map(|e| e.pid).collect();
+        let mut expected = pids;
+        recorded.sort_unstable();
+        expected.sort_unstable();
+        for child in &mut children {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        assert_eq!(recorded, expected, "a concurrent insert must not drop another entry");
+    }
+
+    #[test]
+    fn corrupt_registry_is_not_overwritten_by_a_writer() {
+        let registry = temp_registry("corrupt-write");
+        if let Some(dir) = registry.path().parent() {
+            std::fs::create_dir_all(dir).expect("mkdir");
+        }
+        std::fs::write(registry.path(), "{not json").expect("write");
+        let error = registry
+            .insert(RegistryEntry::new(std::process::id(), None, None, vec!["x".into()]))
+            .expect_err("a corrupt registry must fail the write, not be replaced");
+        assert!(
+            error.to_string().contains("parse registry"),
+            "unexpected error for a corrupt registry: {error}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(registry.path()).expect("corrupt file must survive"),
+            "{not json",
+            "a failed read must never be laundered into an empty registry"
+        );
+    }
+
+    #[test]
+    fn write_publishes_through_a_unique_temp_file_and_cleans_up() {
+        let registry = temp_registry("tmp-cleanup");
+        registry
+            .insert(RegistryEntry::new(std::process::id(), None, None, vec!["x".into()]))
+            .expect("insert");
+        let dir = registry.path().parent().expect("parent").to_path_buf();
+        let leftovers: Vec<String> = std::fs::read_dir(&dir)
+            .expect("read_dir")
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.ends_with(".tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "temp files must be published or removed: {leftovers:?}");
     }
 }
