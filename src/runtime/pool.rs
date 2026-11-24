@@ -148,8 +148,9 @@ impl ProcessPool {
     /// harness (cargo/rustc/make/…), this method:
     /// 1. Takes a device-wide build slot — queuing if `max_concurrent_builds`
     ///    slots are already held by this or any sibling `sharecli` invocation.
-    ///    The slot is inherited by the child and released when the child exits,
-    ///    not when this call returns.
+    ///    The slot is handed to an out-of-process supervisor for the direct
+    ///    build pid, so it is released when the build exits, not when this call
+    ///    returns or when the spawning process exits.
     /// 2. Wraps the command with `taskpolicy -b` on macOS when `nice_level > 0`.
     /// 3. Injects `CARGO_BUILD_JOBS` and optionally `RUSTC_WRAPPER=sccache`.
     pub async fn spawn(
@@ -244,6 +245,24 @@ impl ProcessPool {
         };
 
         let pid = handle.pid;
+
+        // Hand the device build slot to an out-of-process supervisor now that
+        // the direct build pid is known. The slot descriptor is close-on-exec,
+        // so the build never inherits the lock; this process (`sharecli start`)
+        // exits immediately after spawning, and without a supervisor the slot
+        // would be released here instead of at the build's exit. Like the
+        // registry write below, a failure must not fail the spawn: the child is
+        // already running, and killing it would be worse than a slot released
+        // at spawn-return. It is reported, never swallowed.
+        if let Some(lease) = lease.as_ref() {
+            if let Err(error) = lease.watch_until_exit(pid as i32) {
+                eprintln!(
+                    "sharecli: warning: could not hand build slot to a supervisor for pid \
+                     {pid} ({error}); max_concurrent_builds is now enforced for this \
+                     invocation's lifetime only"
+                );
+            }
+        }
 
         self.refresh().await;
 
