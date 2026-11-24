@@ -153,10 +153,23 @@ impl SlotLease {
             ));
         }
         if child == 0 {
-            // Supervisor: drop every inherited descriptor except stdio and the
-            // locked slot, so another lease in this process is not pinned open.
+            // Supervisor: detach from the caller's session and standard streams
+            // so it cannot hold the caller's terminal pipes open or be killed
+            // with the caller's session, then drop every inherited descriptor
+            // except stdio and the locked slot, so another lease in this
+            // process is not pinned open.
             // SAFETY: all calls below are async-signal-safe.
             unsafe {
+                libc::setsid();
+                let devnull = libc::open(c"/dev/null".as_ptr(), libc::O_RDWR);
+                if devnull >= 0 {
+                    libc::dup2(devnull, 0);
+                    libc::dup2(devnull, 1);
+                    libc::dup2(devnull, 2);
+                    if devnull > 2 {
+                        libc::close(devnull);
+                    }
+                }
                 let max_fd: i32 = 1024;
                 for fd in 0..max_fd {
                     if fd != keep && fd > 2 {
