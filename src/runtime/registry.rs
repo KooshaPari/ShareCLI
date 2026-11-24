@@ -47,7 +47,17 @@ pub struct RegistryEntry {
     pub project: Option<String>,
     pub harness: Option<String>,
     pub cmd: Vec<String>,
-    /// Unix epoch seconds, used to tell a live process from a recycled PID.
+    /// Unix epoch seconds of the process's *start*, used to tell a live
+    /// process from a recycled PID that now owns the same id.
+    ///
+    /// Recorded from the kernel's own start-time probe
+    /// ([`process_start_epoch`]), never from the wall clock read at spawn time:
+    /// a wall-clock value moves forward while the process runs, so a reused pid
+    /// could pass the identity check whenever the two clocks happened to
+    /// coincide. Where the probe is unavailable (non-Linux, or the process is
+    /// already gone), [`RegistryEntry::new`] falls back to the wall clock and
+    /// [`identity_matches_live`] falls back to the plain liveness probe, which
+    /// is the pre-existing behaviour made explicit.
     pub started_at: u64,
 }
 
@@ -58,7 +68,11 @@ impl RegistryEntry {
         harness: Option<String>,
         cmd: Vec<String>,
     ) -> Self {
-        Self { pid, project, harness, cmd, started_at: now_secs() }
+        // Probe the real start time; fall back to the wall clock only when the
+        // platform cannot report one or the process is already gone. The
+        // matching fallback lives in `identity_matches_live`.
+        let started_at = process_start_epoch(pid).unwrap_or_else(now_secs);
+        Self { pid, project, harness, cmd, started_at }
     }
 }
 
@@ -146,10 +160,83 @@ pub fn pid_alive(pid: u32) -> bool {
     ok != 0 && code == STILL_ACTIVE
 }
 
-/// Tolerance when comparing a recorded spawn time against the live process
-/// start time. The record is written just after the child starts, so the
-/// recorded value is normally a little later than the true start; a pid that
-/// has been recycled since is separated by far more than this.
+/// Start time of the process currently on `pid`, in Unix epoch seconds, read
+/// from the kernel's own record of when that process started.
+///
+/// On Linux this is field 22 (`starttime`) of `/proc/<pid>/stat`: clock ticks
+/// since boot, converted to epoch seconds by adding the kernel boot time
+/// (`btime` in `/proc/stat`) and dividing by `sysconf(_SC_CLK_TCK)`.
+///
+/// On every other platform, and whenever the read fails (a process that is
+/// gone, or one this user may not inspect), this returns `None`. The caller
+/// then keeps the previous behaviour: record the wall clock, and compare by
+/// liveness alone. That fallback is deliberately stated rather than silently
+/// comparing two incomparable values.
+pub(crate) fn process_start_epoch(pid: u32) -> Option<u64> {
+    #[cfg(target_os = "linux")]
+    {
+        if !signalable(pid) {
+            return None;
+        }
+        let ticks = linux_start_ticks(pid)?;
+        let boot = linux_boot_epoch()?;
+        Some(boot + ticks / linux_clock_ticks_per_sec())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        // No `/proc` start-time field off Linux: fall back to the existing
+        // sysinfo probe so the recorded value and the live value still come
+        // from one source on those platforms.
+        if !signalable(pid) {
+            return None;
+        }
+        let pid = sysinfo::Pid::from_u32(pid);
+        let mut system = sysinfo::System::new();
+        system.refresh_processes_specifics(
+            sysinfo::ProcessesToUpdate::Some(&[pid]),
+            false,
+            sysinfo::ProcessRefreshKind::nothing(),
+        );
+        system.process(pid).map(|process| process.start_time())
+    }
+}
+
+/// Field 22 of `/proc/<pid>/stat`: process start time in clock ticks since boot.
+#[cfg(target_os = "linux")]
+fn linux_start_ticks(pid: u32) -> Option<u64> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    // Fields are space-separated except field 2 (`comm`), which is wrapped in
+    // parentheses and may itself contain spaces. Everything after the last `)`
+    // starts at field 3 (state), so field 22 is index 19 there.
+    let end = stat.rfind(')')?;
+    let fields: Vec<&str> = stat[end + 1..].split_whitespace().collect();
+    fields.get(19)?.parse().ok()
+}
+
+/// `btime` from `/proc/stat`: seconds since the Unix epoch at boot.
+#[cfg(target_os = "linux")]
+fn linux_boot_epoch() -> Option<u64> {
+    let stat = std::fs::read_to_string("/proc/stat").ok()?;
+    stat.lines().find_map(|line| line.strip_prefix("btime ")?.trim().parse().ok())
+}
+
+/// Ticks per second for `starttime`. `sysconf` is the authoritative source; the
+/// historical Linux default of 100 is a documented fallback if it ever fails.
+#[cfg(target_os = "linux")]
+fn linux_clock_ticks_per_sec() -> u64 {
+    // SAFETY: `sysconf` is thread-safe and only reads a static system constant.
+    let tck = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
+    if tck > 0 {
+        tck as u64
+    } else {
+        100
+    }
+}
+
+/// Tolerance when comparing a recorded start time against the live process
+/// start time. Both sides now come from the same kernel probe, so this only
+/// absorbs the one-second resolution of `btime` / integer tick division; a pid
+/// that has been recycled since is separated by far more than this.
 const START_TIME_TOLERANCE_SECS: u64 = 5;
 
 /// Start time of the process currently on `pid`, in Unix epoch seconds.
@@ -161,25 +248,19 @@ pub(crate) fn live_start_epoch(pid: u32) -> Option<u64> {
     if !signalable(pid) {
         return None;
     }
-    // `ProcessRefreshKind::nothing()` still collects pid/name/start time, and
-    // restricting the refresh to one pid keeps this cheap enough for the
-    // prune/insert/kill paths that call it.
-    let pid = sysinfo::Pid::from_u32(pid);
-    let mut system = sysinfo::System::new();
-    system.refresh_processes_specifics(
-        sysinfo::ProcessesToUpdate::Some(&[pid]),
-        false,
-        sysinfo::ProcessRefreshKind::nothing(),
-    );
-    system.process(pid).map(|process| process.start_time())
+    process_start_epoch(pid)
 }
 
 /// True when the live process on `entry.pid` is still the recorded process.
 ///
 /// A recycled PID is the hazard this closes: `kill(pid, 0)` succeeds for
 /// whatever now owns the id, so liveness alone would let `kill` signal an
-/// unrelated process. When the platform cannot report a start time, fall back
-/// to the plain liveness probe so behaviour is unchanged there.
+/// unrelated process. `entry.started_at` is recorded from the same
+/// [`process_start_epoch`] probe this compares against, so the comparison is
+/// between two values from one source rather than between a kernel start time
+/// and a wall clock. When the platform cannot report a start time (non-Linux)
+/// or the process is gone, both sides fall back to the plain liveness probe so
+/// behaviour there is unchanged.
 pub(crate) fn identity_matches_live(entry: &RegistryEntry) -> bool {
     match live_start_epoch(entry.pid) {
         Some(live) => live.abs_diff(entry.started_at) <= START_TIME_TOLERANCE_SECS,
@@ -702,6 +783,68 @@ mod tests {
             .expect("insert other");
 
         assert!(!registry.contains(live), "a later write must prune a recycled-pid entry");
+    }
+
+    // A process's wall-clock record time moves forward while it runs, so it can
+    // drift far from the kernel's start time. Recording from the wall clock let
+    // a reused PID pass the identity check whenever the two coincided; the
+    // record must instead come from the same probe `identity_matches_live`
+    // compares against. Fails before the fix (the record is `now`, ~2s later)
+    // and passes after.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn registry_records_the_real_start_time_not_the_wall_clock() {
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("spawn a live stand-in process");
+        let pid = child.id();
+        std::thread::sleep(std::time::Duration::from_millis(2100));
+
+        let entry = RegistryEntry::new(pid, None, None, vec!["sleep".into()]);
+        let real = process_start_epoch(pid).expect("a live child must expose a start time");
+        let drift = entry.started_at.abs_diff(real);
+
+        let _ = child.kill();
+        let _ = child.wait();
+        assert_eq!(
+            drift, 0,
+            "started_at must be the kernel start time ({real}), not the wall clock (drift {drift}s)"
+        );
+    }
+
+    // The reused-PID case framed as the defect states it: a record whose
+    // timestamp is a wall clock rather than the live process's start time must
+    // be refused. The live pid is very much alive, yet the record cannot be the
+    // same process because no process started at that later instant.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn identity_refuses_a_pid_whose_record_is_a_wall_clock() {
+        let pid = std::process::id();
+        let real = process_start_epoch(pid).expect("the test's own pid has a start time");
+
+        let mut forged = RegistryEntry::new(pid, None, None, vec!["forged".into()]);
+        forged.started_at = real + START_TIME_TOLERANCE_SECS + 1;
+        assert!(
+            !identity_matches_live(&forged),
+            "a reused pid whose record is later than its real start must be refused"
+        );
+
+        let honest = RegistryEntry::new(pid, None, None, vec!["honest".into()]);
+        assert!(
+            identity_matches_live(&honest),
+            "a record taken from the kernel start time must still match"
+        );
+    }
+
+    // The record and the comparison must use one source, so a fresh record's
+    // start time equals the live probe's value for the same pid.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn record_and_live_probe_share_the_same_start_time_source() {
+        let pid = std::process::id();
+        let entry = RegistryEntry::new(pid, None, None, vec!["self".into()]);
+        assert_eq!(live_start_epoch(pid), Some(entry.started_at));
     }
 
     #[test]
