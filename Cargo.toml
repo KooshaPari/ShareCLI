@@ -141,8 +141,14 @@ proptest = "1.6"
 #     and fails at glib-sys pkg-config (observed on musl-test), and is pointless
 #     on macOS. `--exclude` cannot remove it because it is a dev-dependency of
 #     the selected `sharecli` package.
+#     It is kept OFF musl and macOS for that reason, but it MUST stay linked on
+#     Linux glibc: its lib target is written to compile cross-platform and the
+#     FR-007 tray parity tests in `tests/` import `sharecli_tray_windows` to
+#     assert Windows<->Linux constant parity. Gating it to `cfg(windows)` alone
+#     leaves those test targets unable to resolve the crate under the required
+#     `cargo check --workspace --all-targets`, which is what broke ci / test.
 #   - sharecli-tray-linux is pure Rust (ksni/zbus) and only meaningful on Linux.
-[target.'cfg(windows)'.dev-dependencies]
+[target.'cfg(any(windows, all(target_os = "linux", target_env = "gnu")))'.dev-dependencies]
 sharecli-tray-windows = { path = "crates/sharecli-tray-windows" }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
