@@ -92,20 +92,34 @@ fn signalable(pid: u32) -> bool {
     pid > 1 && pid <= i32::MAX as u32
 }
 
-/// True when `pid` is a zombie: it has exited but its parent has not reaped it.
+/// True when the `state` field of `/proc/<pid>/stat` bytes marks a zombie.
+///
 /// `kill(pid, 0)` still succeeds for a zombie, so a liveness probe that only
 /// checks the signal would call a finished workload alive forever in a container
 /// whose PID 1 does not reap.
-#[cfg(target_os = "linux")]
-fn is_zombie(pid: u32) -> bool {
-    let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else {
-        return false;
-    };
+///
+/// The parser is allocation-free and takes bytes, so a `fork`ed supervisor
+/// (which must stay async-signal-safe) can read the file with `libc::read` into
+/// a stack buffer and share this exact detection instead of duplicating it.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub(crate) fn stat_is_zombie(stat: &[u8]) -> bool {
     // Field 3 is the state, after `pid (comm)`. `comm` may itself contain spaces
     // and parentheses, so split after the LAST `)`.
-    match stat.rfind(')') {
-        Some(end) => matches!(stat[end + 1..].trim_start().chars().next(), Some('Z' | 'X' | 'x')),
+    let Some(end) = stat.iter().rposition(|&b| b == b')') else {
+        return false;
+    };
+    match stat[end + 1..].iter().find(|b| !b.is_ascii_whitespace()) {
+        Some(state) => matches!(state, b'Z' | b'X' | b'x'),
         None => false,
+    }
+}
+
+/// True when `pid` is a zombie: it has exited but its parent has not reaped it.
+#[cfg(target_os = "linux")]
+fn is_zombie(pid: u32) -> bool {
+    match std::fs::read_to_string(format!("/proc/{pid}/stat")) {
+        Ok(stat) => stat_is_zombie(stat.as_bytes()),
+        Err(_) => false,
     }
 }
 

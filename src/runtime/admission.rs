@@ -177,6 +177,12 @@ impl SlotLease {
                     }
                 }
                 loop {
+                    // A zombie has exited but not been reaped, so `kill(pid, 0)`
+                    // below still succeeds for it. Break first on the zombie
+                    // state, or a finished-but-unreaped build pins the slot.
+                    if pid_is_zombie(pid) {
+                        break;
+                    }
                     let rc = libc::kill(pid, 0);
                     if rc != 0 {
                         let code = raw_errno();
@@ -195,6 +201,67 @@ impl SlotLease {
         }
         Ok(())
     }
+}
+
+/// True when `pid` is a zombie, read from `/proc/<pid>/stat` without allocating.
+///
+/// The build-slot supervisor runs right after `fork`, so it may touch only
+/// async-signal-safe operations: `open`/`read`/`close` on a stack buffer, no
+/// heap. The bytes go to the registry's [`stat_is_zombie`] so there is one
+/// definition of zombie state in the crate, not two.
+///
+/// [`stat_is_zombie`]: super::registry::stat_is_zombie
+#[cfg(target_os = "linux")]
+fn pid_is_zombie(pid: i32) -> bool {
+    const PREFIX: &[u8] = b"/proc/";
+    const SUFFIX: &[u8] = b"/stat";
+    // "/proc/" + 10 decimal digits + "/stat" + NUL.
+    let mut path = [0u8; 32];
+    let mut n = PREFIX.len();
+    path[..n].copy_from_slice(PREFIX);
+    let mut digits = [0u8; 10];
+    let mut v = pid.max(0) as u32;
+    let mut d = digits.len();
+    loop {
+        d -= 1;
+        digits[d] = b'0' + (v % 10) as u8;
+        v /= 10;
+        if v == 0 {
+            break;
+        }
+    }
+    let len = digits.len() - d;
+    let total = n + len + SUFFIX.len();
+    if total + 1 > path.len() {
+        return false;
+    }
+    path[n..n + len].copy_from_slice(&digits[d..]);
+    n += len;
+    path[n..total].copy_from_slice(SUFFIX);
+    // The NUL terminator is the initialisation value left at `path[total]`.
+    let mut buf = [0u8; 256];
+    // SAFETY: the path is NUL-terminated in-bounds, and `read` writes at most
+    // `buf.len()` bytes into a buffer we own. No allocation, no shared state.
+    let read = unsafe {
+        let fd = libc::open(path.as_ptr().cast::<libc::c_char>(), libc::O_RDONLY | libc::O_CLOEXEC);
+        if fd < 0 {
+            return false;
+        }
+        let read = libc::read(fd, buf.as_mut_ptr().cast::<libc::c_void>(), buf.len());
+        libc::close(fd);
+        read
+    };
+    if read <= 0 {
+        return false;
+    }
+    super::registry::stat_is_zombie(&buf[..read as usize])
+}
+
+/// Non-Linux stub: there is no `/proc/<pid>/stat`, and `is_zombie` in the
+/// registry also returns false off Linux, so liveness falls back to the signal.
+#[cfg(all(unix, not(target_os = "linux")))]
+fn pid_is_zombie(_pid: i32) -> bool {
+    false
 }
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
@@ -323,6 +390,61 @@ mod tests {
             Err(_) => panic!(
                 "slot leaked: second acquire did not return within 5s \
                  (a surviving descendant pinned the lease)"
+            ),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A build that exited but was never reaped is a zombie, and `kill(pid, 0)`
+    /// still succeeds for a zombie. The supervisor must read it as exited and
+    /// release the slot, or a finished build pins it forever. Pre-fix the second
+    /// acquire never returns, so the watchdog fails instead of hanging.
+    ///
+    /// Linux-gated: the zombie state comes from `/proc/<pid>/stat`, which does
+    /// not exist on the other platforms `cfg(unix)` covers.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn zombie_build_releases_the_slot() {
+        use std::process::Command;
+        use std::time::Duration;
+
+        let dir = temp_dir("zombie");
+        let lease = acquire_blocking(&dir, 1).expect("lease");
+
+        // Exits immediately. `build` is kept alive and never waited on, so the
+        // direct child stays a zombie whose `kill(pid, 0)` still succeeds.
+        let mut build =
+            Command::new("sh").arg("-c").arg("exit 0").spawn().expect("spawn fake build");
+        let pid = build.id() as i32;
+        lease.watch_until_exit(pid).expect("supervisor");
+        drop(lease);
+
+        // Confirm the child really is an unreaped zombie before asserting on the
+        // slot; `pid_alive` already treats a zombie as dead on Linux.
+        let mut zombie = false;
+        for _ in 0..400 {
+            if !crate::runtime::registry::pid_alive(pid as u32) {
+                zombie = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(zombie, "the fake build never reached an unreaped zombie state");
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        let dir2 = dir.clone();
+        std::thread::spawn(move || {
+            let second = acquire_blocking(&dir2, 1);
+            let _ = tx.send(second.is_ok());
+        });
+        let released = rx.recv_timeout(Duration::from_secs(5));
+        let _ = build.wait();
+        match released {
+            Ok(true) => {}
+            Ok(false) => panic!("second acquire errored"),
+            Err(_) => panic!(
+                "slot leaked: second acquire did not return within 5s \
+                 (a zombie build pinned the lease)"
             ),
         }
         let _ = std::fs::remove_dir_all(&dir);
