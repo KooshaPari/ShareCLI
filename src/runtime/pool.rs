@@ -397,7 +397,12 @@ impl ProcessPool {
             ));
         }
 
+        #[cfg(unix)]
         let signal = if force { libc::SIGKILL } else { libc::SIGTERM };
+        // Windows has no POSIX signals; the numbers are carried as the
+        // TerminateProcess exit code by `signal_group_or_pid`.
+        #[cfg(not(unix))]
+        let signal = if force { 9 } else { 15 };
         let label = if force { "SIGKILL" } else { "SIGTERM" };
         if let Err(error) = signal_group_or_pid(pid, signal) {
             // The target may have exited between the identity probe and the

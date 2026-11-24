@@ -92,6 +92,7 @@ fn is_zombie(_pid: u32) -> bool {
 
 /// True when `pid` exists. `kill(pid, 0)` performs the permission and existence
 /// check without delivering a signal.
+#[cfg(unix)]
 pub fn pid_alive(pid: u32) -> bool {
     if !signalable(pid) {
         return false;
@@ -102,6 +103,37 @@ pub fn pid_alive(pid: u32) -> bool {
     }
     // `EPERM` means the process exists but belongs to another user: still alive.
     std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+}
+
+/// True when `pid` exists. Windows has no `kill(pid, 0)`, so open the process
+/// with the narrowest query right and read its exit code: a live, unreaped
+/// process reports `STILL_ACTIVE`. An `ACCESS_DENIED` open means the pid exists
+/// under another account, which is still alive (the `EPERM` analogue).
+#[cfg(windows)]
+pub fn pid_alive(pid: u32) -> bool {
+    if !signalable(pid) {
+        return false;
+    }
+    const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+    const STILL_ACTIVE: u32 = 259;
+    const ERROR_ACCESS_DENIED: i32 = 5;
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut std::ffi::c_void;
+        fn GetExitCodeProcess(handle: *mut std::ffi::c_void, code: *mut u32) -> i32;
+        fn CloseHandle(handle: *mut std::ffi::c_void) -> i32;
+    }
+    // SAFETY: standard Win32 handle lifecycle; every acquired handle is closed.
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if handle.is_null() {
+        return std::io::Error::last_os_error().raw_os_error() == Some(ERROR_ACCESS_DENIED);
+    }
+    let mut code: u32 = 0;
+    let ok = unsafe { GetExitCodeProcess(handle, &mut code) };
+    unsafe {
+        let _ = CloseHandle(handle);
+    }
+    ok != 0 && code == STILL_ACTIVE
 }
 
 /// Tolerance when comparing a recorded spawn time against the live process
@@ -157,6 +189,7 @@ pub(crate) fn entry_is_live(entry: &RegistryEntry) -> bool {
 /// Returns an error when neither the group signal nor the single-process
 /// fallback could be delivered, so a caller can never mistake a failed signal
 /// (`ESRCH` for a gone pid, `EPERM` for one it may not signal) for success.
+#[cfg(unix)]
 pub fn signal_group_or_pid(pid: u32, signal: i32) -> Result<()> {
     if !signalable(pid) {
         // A registry file is operator-writable data; never let a 0 or a wrapped
@@ -173,6 +206,40 @@ pub fn signal_group_or_pid(pid: u32, signal: i32) -> Result<()> {
         return Ok(());
     }
     Err(std::io::Error::last_os_error()).with_context(|| format!("signal pid {pid} with {signal}"))
+}
+
+/// Terminate the process on `pid`. Windows has no POSIX signals or process
+/// groups, so this opens the process for termination and calls
+/// `TerminateProcess`; the requested signal number is carried as the exit code
+/// so the caller's log still names the intent.
+#[cfg(windows)]
+pub fn signal_group_or_pid(pid: u32, signal: i32) -> Result<()> {
+    if !signalable(pid) {
+        return Err(anyhow::anyhow!("pid {pid} is not a signalable process id"));
+    }
+    const PROCESS_TERMINATE: u32 = 0x0001;
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut std::ffi::c_void;
+        fn TerminateProcess(handle: *mut std::ffi::c_void, code: u32) -> i32;
+        fn CloseHandle(handle: *mut std::ffi::c_void) -> i32;
+    }
+    // SAFETY: standard Win32 handle lifecycle; the handle is always closed.
+    let handle = unsafe { OpenProcess(PROCESS_TERMINATE, 0, pid) };
+    if handle.is_null() {
+        return Err(std::io::Error::last_os_error())
+            .with_context(|| format!("open pid {pid} for termination"));
+    }
+    let exit_code = u32::try_from(signal.max(1)).unwrap_or(1);
+    let ok = unsafe { TerminateProcess(handle, exit_code) };
+    unsafe {
+        let _ = CloseHandle(handle);
+    }
+    if ok == 0 {
+        return Err(std::io::Error::last_os_error())
+            .with_context(|| format!("terminate pid {pid} with {signal}"));
+    }
+    Ok(())
 }
 
 /// Handle to the on-disk registry.
@@ -367,9 +434,15 @@ pub(crate) fn state_root() -> PathBuf {
             // whatever directory each invocation runs from, breaking the "one
             // resident authority per device" property. Use one stable per-user
             // location instead, and say so rather than failing silently.
+            // A stable per-user tag that needs no platform state directory.
+            #[cfg(unix)]
             // SAFETY: getuid cannot fail and touches no memory.
-            let uid = unsafe { libc::getuid() };
-            let fallback = std::env::temp_dir().join(format!("sharecli-{uid}"));
+            let user_tag = unsafe { libc::getuid() }.to_string();
+            #[cfg(not(unix))]
+            let user_tag = std::env::var("USERNAME")
+                .or_else(|_| std::env::var("USER"))
+                .unwrap_or_else(|_| "user".to_string());
+            let fallback = std::env::temp_dir().join(format!("sharecli-{user_tag}"));
             eprintln!(
                 "sharecli: warning: no platform state directory is available; using {} \
                  for per-device state",
