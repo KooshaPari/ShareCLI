@@ -12,19 +12,24 @@
 //!
 //! Scope and limits, stated plainly:
 //!
-//! - Every read-modify-write (`insert`, `remove`, `prune_dead`) runs under an
+//! - Every mutating operation (`insert`, `remove`, `prune_dead`) runs under an
 //!   exclusive advisory `flock` on a sidecar `processes.json.lock` and publishes
 //!   through a per-writer temp file, so two invocations spawning at the same
 //!   instant cannot drop one another's entry. The lock is advisory: a writer
 //!   that bypasses this module can still race, and a resident supervisor would
 //!   remove even that.
+//! - Read paths (`list`, `find`, `live_entries`) never take the writer lock and
+//!   never write: they filter dead entries in memory, so observing the registry
+//!   cannot rewrite it. Only `prune_dead`, on paths that already mutate, drops
+//!   dead records from the file.
 //! - Liveness is probed with `kill(pid, 0)`. `EPERM` counts as alive, a zombie
 //!   counts as dead (on Linux), and pid 0, pid 1 (init) or anything above
 //!   `i32::MAX` is never alive. A recycled PID is still possible in principle;
 //!   the recorded `started_at` and `cmd` let a caller discriminate.
 //! - A registry that exists but cannot be read or parsed is an error for every
 //!   writer, so a transient read failure can never replace records it did not
-//!   read. Read-only callers degrade to an empty view instead.
+//!   read. `prune_dead` returns that error to its caller instead of reporting an
+//!   empty "no live processes" success.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -332,6 +337,16 @@ impl Registry {
         self.read_entries().unwrap_or_default()
     }
 
+    /// Read-only live view: recorded entries whose process is still alive,
+    /// filtered in memory.
+    ///
+    /// This never takes the writer lock and never writes, so a read path such
+    /// as `list` or `find` cannot rewrite the registry. Only paths that already
+    /// mutate prune through [`Self::prune_dead`].
+    pub fn live_entries(&self) -> Vec<RegistryEntry> {
+        self.entries().into_iter().filter(entry_is_live).collect()
+    }
+
     /// Entries whose process is still alive, pruning dead ones from the file.
     ///
     /// Returns an error when the registry exists but cannot be read or parsed,
@@ -345,7 +360,7 @@ impl Registry {
             // Cannot serialise with other writers: report the live view without
             // rewriting the file. This is a deliberate read fallback, not a read
             // failure, so no record is lost and no error is reported here.
-            Err(_) => return Ok(self.entries().into_iter().filter(entry_is_live).collect()),
+            Err(_) => return Ok(self.live_entries()),
         };
         // Never publish the live subset of a registry we failed to read: that
         // returns the error to the caller instead of destroying every record.
@@ -520,6 +535,36 @@ mod tests {
         assert_eq!(pruned.len(), 1);
         assert_eq!(pruned[0].pid, live);
         assert_eq!(registry.entries().len(), 1);
+    }
+
+    #[test]
+    fn live_entries_filters_dead_without_rewriting_the_registry() {
+        let registry = temp_registry("live-entries");
+        let live = std::process::id();
+        registry
+            .insert(RegistryEntry::new(live, None, None, vec!["live".into()]))
+            .expect("insert live");
+        // PID 0 is never a live process, so it can only vanish if the file is
+        // rewritten. `live_entries` must filter it in memory and leave it.
+        registry
+            .insert(RegistryEntry::new(0, None, None, vec!["dead".into()]))
+            .expect("insert dead");
+        let before = std::fs::read_to_string(registry.path()).expect("read registry");
+
+        let live_entries = registry.live_entries();
+
+        assert_eq!(
+            live_entries.len(),
+            1,
+            "only the live entry may be returned: {live_entries:?}"
+        );
+        assert_eq!(live_entries[0].pid, live);
+        let after = std::fs::read_to_string(registry.path()).expect("read registry");
+        assert_eq!(before, after, "a read-only live view must not rewrite the registry");
+        assert!(
+            registry.entries().iter().any(|e| e.pid == 0),
+            "the dead entry must remain on disk after a read-only view"
+        );
     }
 
     #[test]

@@ -101,10 +101,11 @@ impl ProcessPool {
 
     /// Get all managed processes
     pub async fn list(&self) -> Vec<ProcessInfo> {
-        // Resolve the device registry BEFORE taking any lock: `prune_dead` does
-        // synchronous flock + file I/O + fsync, and no synchronous filesystem
-        // call may run while an async `RwLock` guard is held.
-        let recorded = self.registry().prune_dead().unwrap_or_default();
+        // Resolve the device registry BEFORE taking any lock: the registry read
+        // and liveness probes are synchronous file I/O, and no synchronous
+        // filesystem call may run while an async `RwLock` guard is held. `list`
+        // is a read path, so it must not prune or otherwise rewrite the file.
+        let recorded = self.registry().live_entries();
 
         let mut result = Vec::new();
         {
@@ -473,8 +474,9 @@ impl ProcessPool {
     /// freshly-spawned PIDs that are no longer alive are filtered out.
     pub async fn find(&self, filter: ProcessFilter) -> Vec<ProcessInfo> {
         // Registry resolution must happen before any async guard is taken:
-        // `prune_dead` performs synchronous file I/O under a flock.
-        let recorded = self.registry().prune_dead().unwrap_or_default();
+        // the registry read and liveness probes are synchronous file I/O.
+        // `find` is a read path, so it must not rewrite the registry.
+        let recorded = self.registry().live_entries();
         self.refresh().await;
         let sys = self.system.read().await;
 

@@ -179,6 +179,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn list_does_not_prune_the_registry() {
+        let path = isolated_registry_path("list-no-prune");
+        // PID 0 is never a live process, so it can only vanish if the file is
+        // rewritten. Record it directly so the write itself cannot be blamed.
+        Registry::at(path.clone())
+            .insert(RegistryEntry::new(0, None, None, vec!["dead".into()]))
+            .expect("insert dead entry");
+        assert!(Registry::at(path.clone()).contains(0));
+
+        let pool = ProcessPool::with_registry_path(path.clone());
+        let _ = pool.list().await;
+
+        assert!(
+            Registry::at(path).contains(0),
+            "list is a read path and must not prune (rewrite) the registry"
+        );
+    }
+
+    #[tokio::test]
     async fn test_process_pool() {
         let pool = isolated_pool("process-pool");
 
