@@ -22,6 +22,11 @@
 #
 # Signal workflow, not a required check: no job here is masked with
 # `continue-on-error`, so a red run stays visible instead of being swallowed.
+#
+# All Unix targets require Zig 0.14.1: crates/spawn-core-sys/build.rs shells out
+# to `zig build` (Linux) / `zig build-obj` (macOS) to produce libspawn_core.a.
+# Windows uses the pure-Rust stub, so it needs no Zig. Every non-Windows job
+# installs the same pinned Zig version used by ci-gate.yml.
 ###############################################################################
 
 name: Cross-Platform
@@ -66,6 +71,12 @@ jobs:
 
       - name: Cargo cache
         uses: Swatinem/rust-cache@eedcf2fb1c22f010a0eb66b92f378c110977f266  # v2
+
+      - name: Setup Zig (spawn-core-sys build dependency)
+        if: runner.os != 'Windows'
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29  # v2
+        with:
+          version: 0.14.1
 
       - name: Install GTK/glib system deps (Linux --all-features tray build)
         # --all-features selects tray-icon/libappindicator, whose build scripts
@@ -114,6 +125,20 @@ jobs:
         # so 'cargo build --target' can find std/core.
         run: rustup target add ${{ matrix.target }}
 
+      - name: Setup Zig (spawn-core-sys build dependency)
+        # Required by the native musl build (use-cross=false). For FreeBSD the
+        # build runs inside the cross-rs container, which gets Zig via
+        # .github/cross-freebsd.toml; the host install is harmless there.
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29  # v2
+        with:
+          version: 0.14.1
+
+      - name: Install musl tools (musl target C deps)
+        # aws-lc-sys compiles C/asm and the cc crate looks for
+        # `x86_64-linux-musl-gcc`; musl-tools provides `musl-gcc`, wired via CC_*.
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
       - name: Install cross (FreeBSD)
         if: matrix.use-cross
         run: cargo install cross --locked
@@ -122,10 +147,15 @@ jobs:
         # Exclude the Windows tray crate: its libappindicator feature resolves
         # GTK/glib, which cannot be satisfied in a musl/FreeBSD static link.
         if: matrix.use-cross
+        env:
+          CROSS_CONFIG: .github/cross-freebsd.toml
         run: cross build --target ${{ matrix.target }} --workspace --exclude sharecli-tray-windows --all-features
 
       - name: Build (native)
         if: "!matrix.use-cross"
+        env:
+          CC_x86_64_unknown_linux_musl: musl-gcc
+          AR_x86_64_unknown_linux_musl: ar
         run: cargo build --target ${{ matrix.target }} --workspace --exclude sharecli-tray-windows --all-features --locked
 
       - name: Summary
@@ -157,10 +187,18 @@ jobs:
         # Add musl to the resolved toolchain.
         run: rustup target add x86_64-unknown-linux-musl
 
+      - name: Setup Zig (spawn-core-sys build dependency)
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29  # v2
+        with:
+          version: 0.14.1
+
       - name: Test (lib, musl)
         # sharecli-tray-windows pulls the GTK/glib stack via libappindicator and
         # is Windows-only; a musl static link cannot use it, so it is excluded
         # rather than given Ubuntu native GTK it can never link against.
+        env:
+          CC_x86_64_unknown_linux_musl: musl-gcc
+          AR_x86_64_unknown_linux_musl: ar
         run: cargo test --workspace --lib --exclude sharecli-tray-windows --target x86_64-unknown-linux-musl --no-fail-fast
 
       - name: Summary

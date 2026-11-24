@@ -1,5 +1,21 @@
 # FreeBSD / WASM portability plan (soft)
 
+## Current CI signal (measured 2026-11-24)
+
+`cross-platform.yml` carries **no `wasm32` job**. wasm32 is unsupported, not
+merely unbuilt: `spawn_core` needs `fork`/`waitpid`/pthread with no WASI
+equivalent, and no workspace crate is `cfg(target_arch = "wasm32")`-gated. The
+wasm32 job was removed rather than left permanently red; the requirement is
+recorded here so it cannot be silently claimed as supported. Do not cite the
+Cross-Platform workflow as proving wasm support until the promotion checklist
+below is complete and a real wasm job exists.
+
+`x86_64-unknown-freebsd` and `x86_64-unknown-linux-musl` are **build-only**
+signal targets: they prove the tree links on those targets, exercise no tray and
+produce no release artifacts. All Unix jobs require Zig 0.14.1
+(`spawn-core-sys/build.rs`); FreeBSD gets it inside the cross-rs container via
+`.github/cross-freebsd.toml`.
+
 Audit-v38 **C07 L69** (cross-platform CI) and **L70** (reproducible local dev).
 PR CI and release already cover linux + macOS + Windows (L69 score **2**).
 This doc records the gap to score **3** (`+freebsd+wasm+musl`) and sketches

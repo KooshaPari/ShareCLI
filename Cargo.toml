@@ -130,12 +130,23 @@ sharecli-thermal-tui = { path = "crates/sharecli-thermal-tui" }
 sharecli-fleet = { path = "crates/sharecli-fleet" }
 sharecli-core = { path = "crates/sharecli-core" }
 sharecli-ipc = { path = "crates/sharecli-ipc" }
-sharecli-tray-linux = { path = "crates/sharecli-tray-linux" }
-sharecli-tray-windows = { path = "crates/sharecli-tray-windows" }
 sharecli-fuse = { path = "crates/sharecli-fuse" }
 # sharecli-mesh is a normal dependency (mesh CLI); re-export not needed in dev-deps
 ratatui = "0.30"
 proptest = "1.6"
+
+# Tray crates are platform-native dev-dependencies and MUST be target-gated:
+#   - sharecli-tray-windows -> tray-icon(libappindicator) -> gtk/glib on Linux.
+#     Ungated, that graph is pulled into `cargo test --workspace --lib` on musl
+#     and fails at glib-sys pkg-config (observed on musl-test), and is pointless
+#     on macOS. `--exclude` cannot remove it because it is a dev-dependency of
+#     the selected `sharecli` package.
+#   - sharecli-tray-linux is pure Rust (ksni/zbus) and only meaningful on Linux.
+[target.'cfg(windows)'.dev-dependencies]
+sharecli-tray-windows = { path = "crates/sharecli-tray-windows" }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+sharecli-tray-linux = { path = "crates/sharecli-tray-linux" }
 
 [[bench]]
 name = "config_parse"
