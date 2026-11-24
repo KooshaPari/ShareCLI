@@ -98,15 +98,18 @@ fn acquire_blocking(dir: &Path, slots: usize) -> Result<SlotLease> {
 #[cfg(unix)]
 fn try_lock(file: &std::fs::File) -> Result<bool> {
     use std::os::unix::io::AsRawFd;
-    // SAFETY: the fd is owned by `file` and valid for this call.
-    let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
-    if rc == 0 {
-        return Ok(true);
-    }
-    let error = std::io::Error::last_os_error();
-    match error.raw_os_error() {
-        Some(code) if code == libc::EWOULDBLOCK || code == libc::EINTR => Ok(false),
-        _ => Err(anyhow::anyhow!("flock build slot: {error}")),
+    loop {
+        // SAFETY: the fd is owned by `file` and valid for this call.
+        let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+        if rc == 0 {
+            return Ok(true);
+        }
+        let error = std::io::Error::last_os_error();
+        match error.raw_os_error() {
+            Some(code) if code == libc::EWOULDBLOCK => return Ok(false),
+            Some(code) if code == libc::EINTR => continue,
+            _ => return Err(anyhow::anyhow!("flock build slot: {error}")),
+        }
     }
 }
 
