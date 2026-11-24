@@ -381,10 +381,19 @@ impl ProcessPool {
             return Err(anyhow!("pid {pid} is not a sharecli-managed process"));
         };
 
-        // The pid may have exited since it was recorded: nothing to signal, but
-        // the stale record must still go.
+        // The pid may have exited since it was recorded: on unix the group
+        // signal would have reached any survivors, so a gone leader is success.
+        // On Windows nothing was ever signalled and a dead pid cannot identify
+        // surviving descendants, so `Ok` here would repeat the silent
+        // partial-kill fault from the other side of the race.
         if !pid_alive(pid) {
             registry.remove(pid);
+            #[cfg(windows)]
+            return Err(anyhow!(
+                "pid {pid} already exited; surviving descendants (if any) cannot be \
+                 identified or stopped on Windows without a spawn-time Job Object"
+            ));
+            #[cfg(not(windows))]
             return Ok(());
         }
         // A recycled PID must never be signalled. `kill(pid, 0)` succeeds for
@@ -400,16 +409,20 @@ impl ProcessPool {
 
         #[cfg(unix)]
         let signal = if force { libc::SIGKILL } else { libc::SIGTERM };
-        // Windows has no POSIX signals; the numbers are carried as the
-        // TerminateProcess exit code by `signal_group_or_pid`.
+        // Windows has no POSIX signals. `signal_group_or_pid` refuses there
+        // because a bare pid cannot prove tree ownership, so this `stop` fails
+        // closed instead of performing a single-pid kill that reports success.
         #[cfg(not(unix))]
         let signal = if force { 9 } else { 15 };
         let label = if force { "SIGKILL" } else { "SIGTERM" };
         if let Err(error) = signal_group_or_pid(pid, signal) {
             // The target may have exited between the identity probe and the
-            // signal; that is success, and the stale entry must go.
+            // signal. On unix that is success and the stale entry must go; on
+            // Windows the refusal was never a signal, so the exit does not make
+            // the tree state known: keep the error and drop the dead record.
             if !pid_alive(pid) {
                 registry.remove(pid);
+                #[cfg(not(windows))]
                 return Ok(());
             }
             return Err(anyhow!("pid {pid}: {error}"));

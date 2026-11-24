@@ -114,6 +114,31 @@ mod tests {
         // the test process's own pid.
     }
 
+    /// Windows caller-race contract: a recorded pid that is already gone must
+    /// not report a successful tree stop. A dead pid cannot identify surviving
+    /// descendants, so `kill_registered` fails closed and drops the record.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn kill_registered_stale_pid_fails_closed_on_windows() {
+        let path = isolated_registry_path("kill-registered-stale-windows");
+        let pool = ProcessPool::with_registry_path(path.clone());
+        let registry = Registry::at(path);
+        // `signalable` rejects ids the OS cannot address, so liveness is false
+        // without spawning or touching any process.
+        let gone = u32::MAX - 15;
+        registry
+            .insert(RegistryEntry::new(gone, None, None, vec!["gone".into()]))
+            .expect("seed stale entry");
+
+        let error = pool
+            .kill_registered(gone, false)
+            .await
+            .expect_err("a dead pid cannot prove its tree is gone, so stop must fail closed");
+
+        assert!(error.to_string().contains("already exited"), "got: {error}");
+        assert!(!registry.contains(gone), "the dead record must be dropped");
+    }
+
     #[cfg(unix)]
     #[tokio::test]
     async fn kill_registered_reports_not_stopped_when_alive_after_signal() {

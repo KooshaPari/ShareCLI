@@ -300,38 +300,23 @@ pub fn signal_group_or_pid(pid: u32, signal: i32) -> Result<()> {
     Err(std::io::Error::last_os_error()).with_context(|| format!("signal pid {pid} with {signal}"))
 }
 
-/// Terminate the process on `pid`. Windows has no POSIX signals or process
-/// groups, so this opens the process for termination and calls
-/// `TerminateProcess`; the requested signal number is carried as the exit code
-/// so the caller's log still names the intent.
+/// Windows has no POSIX process groups, and a bare pid cannot be proven to be a
+/// harness tree root. `TerminateProcess(pid)` kills that one process while its
+/// children keep running, and `kill_registered`'s exit wait would then observe
+/// the observed pid gone and report success: a silent partial kill.
+///
+/// Until a tree-safe mechanism exists (a Job Object with
+/// `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` assigned at spawn, or a Toolhelp32
+/// descendant walk terminated children-first), this refuses instead of
+/// signalling. `kill_registered` propagates the error and keeps the registry
+/// entry, so `sharecli stop` fails closed rather than lying about the outcome.
 #[cfg(windows)]
-pub fn signal_group_or_pid(pid: u32, signal: i32) -> Result<()> {
-    if !signalable(pid) {
-        return Err(anyhow::anyhow!("pid {pid} is not a signalable process id"));
-    }
-    const PROCESS_TERMINATE: u32 = 0x0001;
-    #[link(name = "kernel32")]
-    extern "system" {
-        fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut std::ffi::c_void;
-        fn TerminateProcess(handle: *mut std::ffi::c_void, code: u32) -> i32;
-        fn CloseHandle(handle: *mut std::ffi::c_void) -> i32;
-    }
-    // SAFETY: standard Win32 handle lifecycle; the handle is always closed.
-    let handle = unsafe { OpenProcess(PROCESS_TERMINATE, 0, pid) };
-    if handle.is_null() {
-        return Err(std::io::Error::last_os_error())
-            .with_context(|| format!("open pid {pid} for termination"));
-    }
-    let exit_code = u32::try_from(signal.max(1)).unwrap_or(1);
-    let ok = unsafe { TerminateProcess(handle, exit_code) };
-    unsafe {
-        let _ = CloseHandle(handle);
-    }
-    if ok == 0 {
-        return Err(std::io::Error::last_os_error())
-            .with_context(|| format!("terminate pid {pid} with {signal}"));
-    }
-    Ok(())
+pub fn signal_group_or_pid(pid: u32, _signal: i32) -> Result<()> {
+    Err(anyhow::anyhow!(
+        "pid {pid}: process-tree termination is unsupported on Windows; a bare pid \
+         cannot be proven to own a harness process tree, so killing it alone would \
+         leave its children running while reporting success. Refusing to signal"
+    ))
 }
 
 /// Handle to the on-disk registry.
@@ -863,6 +848,25 @@ mod tests {
         assert!(!pid_alive(i32::MAX as u32 + 1), "ids above i32::MAX wrap when cast to pid_t");
         assert!(!pid_alive(u32::MAX), "u32::MAX wraps when cast to pid_t");
         assert!(pid_alive(std::process::id()), "the test's own pid must read as alive");
+    }
+
+    /// The fail-closed contract for the unsupported Windows stop path: refuse,
+    /// never perform a single-pid kill and report it as a tree kill. Signalling
+    /// is refused before any syscall, so nothing is touched.
+    #[cfg(windows)]
+    #[test]
+    fn windows_stop_refuses_rather_than_partial_kill() {
+        let error = signal_group_or_pid(std::process::id(), 15)
+            .expect_err("a Windows tree kill is unprovable, so the signal must be refused");
+        let message = error.to_string();
+        assert!(
+            message.contains("unsupported on Windows"),
+            "the refusal must name the unsupported capability: {message}"
+        );
+        assert!(
+            !message.contains("terminate pid"),
+            "no termination attempt may be reported on the unsupported path: {message}"
+        );
     }
 
     #[test]
