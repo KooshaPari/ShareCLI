@@ -163,6 +163,9 @@ actions:
     path: trunk-install
 
 # Ignored patterns
+# `type: ignore` excludes these paths from linting. (`type: include` is the
+# opposite: it force-includes paths that would otherwise be ignored, which
+# made trunk lint the vendored third-party tree.)
 ignore:
   - paths:
       - node_modules/
@@ -174,9 +177,10 @@ ignore:
       - build/
       - .git/
       - vendor/
+      - rustfmt.toml
       - "*.lock"
       - "go.sum"
-    type: include
+    type: ignore
 
 # CI configuration
 ci:
