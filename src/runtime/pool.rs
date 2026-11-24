@@ -252,7 +252,9 @@ impl ProcessPool {
             // A registry write failure must not fail the spawn: the child is
             // already running and killing it here would be worse than a pid the
             // next invocation cannot see.
-            eprintln!("sharecli: warning: could not record pid {pid} for later invocations: {error}");
+            eprintln!(
+                "sharecli: warning: could not record pid {pid} for later invocations: {error}"
+            );
         }
 
         emit_spawn_audit(&info.project, &capability, "ok", Some(pid));
@@ -409,7 +411,8 @@ impl ProcessPool {
                 continue;
             }
             let name = entry.cmd.first().cloned().unwrap_or_default();
-            if let Some(mut info) = ProcessInfo::from_sysinfo(Pid::from_u32(entry.pid), name, &sys) {
+            if let Some(mut info) = ProcessInfo::from_sysinfo(Pid::from_u32(entry.pid), name, &sys)
+            {
                 info.project = entry.project.clone();
                 info.harness = entry.harness.clone();
                 result.push(info);

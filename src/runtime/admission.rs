@@ -149,8 +149,8 @@ mod tests {
     use super::*;
 
     fn temp_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir()
-            .join(format!("sharecli-admission-{name}-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("sharecli-admission-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         dir
     }
@@ -164,7 +164,9 @@ mod tests {
         // confirming it has not returned while the first lease is alive.
         let handle = {
             let dir = dir.clone();
-            std::thread::spawn(move || acquire_blocking(&dir, 1).map(|lease| lease.slot().to_path_buf()))
+            std::thread::spawn(move || {
+                acquire_blocking(&dir, 1).map(|lease| lease.slot().to_path_buf())
+            })
         };
         std::thread::sleep(std::time::Duration::from_millis(300));
         drop(first);

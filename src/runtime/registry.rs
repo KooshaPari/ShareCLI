@@ -184,7 +184,8 @@ mod tests {
     use super::*;
 
     fn temp_registry(name: &str) -> Registry {
-        let dir = std::env::temp_dir().join(format!("sharecli-registry-{name}-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("sharecli-registry-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         Registry::at(dir.join("processes.json"))
     }
@@ -206,9 +207,7 @@ mod tests {
     fn remove_clears_entry() {
         let registry = temp_registry("remove");
         let pid = std::process::id();
-        registry
-            .insert(RegistryEntry::new(pid, None, None, vec!["sleep".into()]))
-            .expect("insert");
+        registry.insert(RegistryEntry::new(pid, None, None, vec!["sleep".into()])).expect("insert");
         assert!(registry.contains(pid));
         assert!(registry.remove(pid));
         assert!(!registry.contains(pid));
