@@ -1,0 +1,1100 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+//! Device-scoped registry of sharecli-managed processes.
+//!
+//! Each `sharecli` invocation constructs its own [`ProcessPool`], whose handle
+//! map is in-memory only. That makes the pool an authority for exactly one
+//! process: `sharecli start` records a handle that the next `sharecli stop`
+//! invocation cannot see, so the stop is a silent no-op on the device.
+//!
+//! This registry is the device-level authority that closes that gap. `spawn`
+//! appends an entry, `kill` removes one, and `list` / `find` / `kill` on a fresh
+//! pool read back what earlier invocations started.
+//!
+//! Scope and limits, stated plainly:
+//!
+//! - Every mutating operation (`insert`, `remove`, `prune_dead`) runs under an
+//!   exclusive advisory `flock` on a sidecar `processes.json.lock` and publishes
+//!   through a per-writer temp file, so two invocations spawning at the same
+//!   instant cannot drop one another's entry. The lock is advisory: a writer
+//!   that bypasses this module can still race, and a resident supervisor would
+//!   remove even that.
+//! - Read paths (`list`, `find`, `live_entries`) never take the writer lock and
+//!   never write: they filter dead entries in memory, so observing the registry
+//!   cannot rewrite it. Only `prune_dead`, on paths that already mutate, drops
+//!   dead records from the file.
+//! - Liveness is probed with `kill(pid, 0)`. `EPERM` counts as alive, a zombie
+//!   counts as dead (on Linux), and pid 0, pid 1 (init) or anything above
+//!   `i32::MAX` is never alive. A recycled PID is still possible in principle;
+//!   the recorded `started_at` and `cmd` let a caller discriminate.
+//! - A registry that exists but cannot be read or parsed is an error for every
+//!   writer, so a transient read failure can never replace records it did not
+//!   read. `prune_dead` returns that error to its caller instead of reporting an
+//!   empty "no live processes" success.
+
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use anyhow::{Context, Result};
+use fs2::FileExt;
+use serde::{Deserialize, Serialize};
+
+/// One process recorded by a `sharecli` invocation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryEntry {
+    pub pid: u32,
+    pub project: Option<String>,
+    pub harness: Option<String>,
+    pub cmd: Vec<String>,
+    /// Unix epoch seconds of the process's *start*, used to tell a live
+    /// process from a recycled PID that now owns the same id.
+    ///
+    /// Recorded from the kernel's own start-time probe
+    /// ([`process_start_epoch`]), never from the wall clock read at spawn time:
+    /// a wall-clock value moves forward while the process runs, so a reused pid
+    /// could pass the identity check whenever the two clocks happened to
+    /// coincide. Where the probe is unavailable (non-Linux, or the process is
+    /// already gone), [`RegistryEntry::new`] falls back to the wall clock and
+    /// [`identity_matches_live`] falls back to the plain liveness probe, which
+    /// is the pre-existing behaviour made explicit.
+    pub started_at: u64,
+}
+
+impl RegistryEntry {
+    pub fn new(
+        pid: u32,
+        project: Option<String>,
+        harness: Option<String>,
+        cmd: Vec<String>,
+    ) -> Self {
+        // Probe the real start time; fall back to the wall clock only when the
+        // platform cannot report one or the process is already gone. The
+        // matching fallback lives in `identity_matches_live`.
+        let started_at = process_start_epoch(pid).unwrap_or_else(now_secs);
+        Self { pid, project, harness, cmd, started_at }
+    }
+}
+
+fn now_secs() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+/// True when `pid` is a value this module may address with a signal.
+///
+/// `kill(0, sig)` targets the caller's whole process group and `kill(-1, sig)`
+/// targets every process the user may signal. A group signal is derived by
+/// negating the pid, so a recorded pid of `1` would become `-1`: the widest
+/// signal there is. Pid 1 is the init/system process, which `sharecli` never
+/// spawns, so both `0` and `1` are refused before any syscall. An id above
+/// `i32::MAX` wraps negative when cast to `pid_t`, so it is refused too.
+fn signalable(pid: u32) -> bool {
+    pid > 1 && pid <= i32::MAX as u32
+}
+
+/// True when the `state` field of `/proc/<pid>/stat` bytes marks a zombie.
+///
+/// `kill(pid, 0)` still succeeds for a zombie, so a liveness probe that only
+/// checks the signal would call a finished workload alive forever in a container
+/// whose PID 1 does not reap.
+///
+/// The parser is allocation-free and takes bytes, so a `fork`ed supervisor
+/// (which must stay async-signal-safe) can read the file with `libc::read` into
+/// a stack buffer and share this exact detection instead of duplicating it.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub(crate) fn stat_is_zombie(stat: &[u8]) -> bool {
+    // Field 3 is the state, after `pid (comm)`. `comm` may itself contain spaces
+    // and parentheses, so split after the LAST `)`.
+    let Some(end) = stat.iter().rposition(|&b| b == b')') else {
+        return false;
+    };
+    match stat[end + 1..].iter().find(|b| !b.is_ascii_whitespace()) {
+        Some(state) => matches!(state, b'Z' | b'X' | b'x'),
+        None => false,
+    }
+}
+
+/// True when `pid` is a zombie: it has exited but its parent has not reaped it.
+#[cfg(target_os = "linux")]
+fn is_zombie(pid: u32) -> bool {
+    match std::fs::read_to_string(format!("/proc/{pid}/stat")) {
+        Ok(stat) => stat_is_zombie(stat.as_bytes()),
+        Err(_) => false,
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn is_zombie(_pid: u32) -> bool {
+    false
+}
+
+/// True when `pid` exists. `kill(pid, 0)` performs the permission and existence
+/// check without delivering a signal.
+#[cfg(unix)]
+pub fn pid_alive(pid: u32) -> bool {
+    if !signalable(pid) {
+        return false;
+    }
+    // SAFETY: signal 0 delivers nothing; it only validates the pid.
+    if unsafe { libc::kill(pid as libc::pid_t, 0) } == 0 {
+        return !is_zombie(pid);
+    }
+    // `EPERM` means the process exists but belongs to another user: still alive.
+    std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+}
+
+/// True when `pid` exists. Windows has no `kill(pid, 0)`, so open the process
+/// with the narrowest query right and read its exit code: a live, unreaped
+/// process reports `STILL_ACTIVE`. An `ACCESS_DENIED` open means the pid exists
+/// under another account, which is still alive (the `EPERM` analogue).
+#[cfg(windows)]
+pub fn pid_alive(pid: u32) -> bool {
+    if !signalable(pid) {
+        return false;
+    }
+    const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+    const STILL_ACTIVE: u32 = 259;
+    const ERROR_ACCESS_DENIED: i32 = 5;
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut std::ffi::c_void;
+        fn GetExitCodeProcess(handle: *mut std::ffi::c_void, code: *mut u32) -> i32;
+        fn CloseHandle(handle: *mut std::ffi::c_void) -> i32;
+    }
+    // SAFETY: standard Win32 handle lifecycle; every acquired handle is closed.
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if handle.is_null() {
+        return std::io::Error::last_os_error().raw_os_error() == Some(ERROR_ACCESS_DENIED);
+    }
+    let mut code: u32 = 0;
+    let ok = unsafe { GetExitCodeProcess(handle, &mut code) };
+    unsafe {
+        let _ = CloseHandle(handle);
+    }
+    ok != 0 && code == STILL_ACTIVE
+}
+
+/// Start time of the process currently on `pid`, in Unix epoch seconds, read
+/// from the kernel's own record of when that process started.
+///
+/// On Linux this is field 22 (`starttime`) of `/proc/<pid>/stat`: clock ticks
+/// since boot, converted to epoch seconds by adding the kernel boot time
+/// (`btime` in `/proc/stat`) and dividing by `sysconf(_SC_CLK_TCK)`.
+///
+/// On every other platform, and whenever the read fails (a process that is
+/// gone, or one this user may not inspect), this returns `None`. The caller
+/// then keeps the previous behaviour: record the wall clock, and compare by
+/// liveness alone. That fallback is deliberately stated rather than silently
+/// comparing two incomparable values.
+pub(crate) fn process_start_epoch(pid: u32) -> Option<u64> {
+    #[cfg(target_os = "linux")]
+    {
+        if !signalable(pid) {
+            return None;
+        }
+        let ticks = linux_start_ticks(pid)?;
+        let boot = linux_boot_epoch()?;
+        Some(boot + ticks / linux_clock_ticks_per_sec())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        // No `/proc` start-time field off Linux: fall back to the existing
+        // sysinfo probe so the recorded value and the live value still come
+        // from one source on those platforms.
+        if !signalable(pid) {
+            return None;
+        }
+        let pid = sysinfo::Pid::from_u32(pid);
+        let mut system = sysinfo::System::new();
+        system.refresh_processes_specifics(
+            sysinfo::ProcessesToUpdate::Some(&[pid]),
+            false,
+            sysinfo::ProcessRefreshKind::nothing(),
+        );
+        system.process(pid).map(|process| process.start_time())
+    }
+}
+
+/// Field 22 of `/proc/<pid>/stat`: process start time in clock ticks since boot.
+#[cfg(target_os = "linux")]
+fn linux_start_ticks(pid: u32) -> Option<u64> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    // Fields are space-separated except field 2 (`comm`), which is wrapped in
+    // parentheses and may itself contain spaces. Everything after the last `)`
+    // starts at field 3 (state), so field 22 is index 19 there.
+    let end = stat.rfind(')')?;
+    let fields: Vec<&str> = stat[end + 1..].split_whitespace().collect();
+    fields.get(19)?.parse().ok()
+}
+
+/// `btime` from `/proc/stat`: seconds since the Unix epoch at boot.
+#[cfg(target_os = "linux")]
+fn linux_boot_epoch() -> Option<u64> {
+    let stat = std::fs::read_to_string("/proc/stat").ok()?;
+    stat.lines().find_map(|line| line.strip_prefix("btime ")?.trim().parse().ok())
+}
+
+/// Ticks per second for `starttime`. `sysconf` is the authoritative source; the
+/// historical Linux default of 100 is a documented fallback if it ever fails.
+#[cfg(target_os = "linux")]
+fn linux_clock_ticks_per_sec() -> u64 {
+    // SAFETY: `sysconf` is thread-safe and only reads a static system constant.
+    let tck = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
+    if tck > 0 {
+        tck as u64
+    } else {
+        100
+    }
+}
+
+/// Tolerance when comparing a recorded start time against the live process
+/// start time.
+///
+/// Both sides come from the same kernel probe for the same pid, and that probe
+/// is stable for a process's lifetime: on Linux `starttime` (field 22 of
+/// `/proc/<pid>/stat`) never changes, and the `btime`/`_SC_CLK_TCK` conversion
+/// is a fixed integer division; off Linux `sysinfo` reports one stable value.
+/// An unchanged process therefore produces an IDENTICAL value on both sides,
+/// so any non-zero tolerance only widens the window in which a genuinely
+/// recycled pid is mistaken for the recorded one. Keep this at zero: refuse
+/// unless the values are exactly equal.
+const START_TIME_TOLERANCE_SECS: u64 = 0;
+
+/// Start time of the process currently on `pid`, in Unix epoch seconds.
+///
+/// `None` when the pid is not signalable, is gone, or the platform cannot
+/// report a start time. Used to tell the recorded process apart from a
+/// recycled PID that now happens to own the same id.
+pub(crate) fn live_start_epoch(pid: u32) -> Option<u64> {
+    if !signalable(pid) {
+        return None;
+    }
+    process_start_epoch(pid)
+}
+
+/// True when the live process on `entry.pid` is still the recorded process.
+///
+/// A recycled PID is the hazard this closes: `kill(pid, 0)` succeeds for
+/// whatever now owns the id, so liveness alone would let `kill` signal an
+/// unrelated process. `entry.started_at` is recorded from the same
+/// [`process_start_epoch`] probe this compares against, so the comparison is
+/// between two values from one source rather than between a kernel start time
+/// and a wall clock. When the platform cannot report a start time (non-Linux)
+/// or the process is gone, both sides fall back to the plain liveness probe so
+/// behaviour there is unchanged.
+pub(crate) fn identity_matches_live(entry: &RegistryEntry) -> bool {
+    match live_start_epoch(entry.pid) {
+        Some(live) => live.abs_diff(entry.started_at) <= START_TIME_TOLERANCE_SECS,
+        None => pid_alive(entry.pid),
+    }
+}
+
+/// True while `entry` is both alive and still the process it recorded. A
+/// mismatch is treated as dead: pruned, listed as unmanaged, never signalled.
+pub(crate) fn entry_is_live(entry: &RegistryEntry) -> bool {
+    pid_alive(entry.pid) && identity_matches_live(entry)
+}
+
+/// Signal a pid, preferring its process group so a harness's own children go
+/// with it (sharecli spawns each harness as a group leader).
+///
+/// Returns an error when neither the group signal nor the single-process
+/// fallback could be delivered, so a caller can never mistake a failed signal
+/// (`ESRCH` for a gone pid, `EPERM` for one it may not signal) for success.
+#[cfg(unix)]
+pub fn signal_group_or_pid(pid: u32, signal: i32) -> Result<()> {
+    if !signalable(pid) {
+        // A registry file is operator-writable data; never let a 0 or 1 turn
+        // into a signal for our own group or every process the user owns, nor a
+        // wrapped id turn into a signal for an unrelated process.
+        return Err(anyhow::anyhow!("pid {pid} is not a signalable process id"));
+    }
+    // SAFETY: the target is a pid sharecli recorded at spawn time.
+    let as_group = unsafe { libc::kill(-(pid as libc::pid_t), signal) };
+    if as_group == 0 {
+        return Ok(());
+    }
+    // SAFETY: same pid, single-process fallback for a non-group child.
+    if unsafe { libc::kill(pid as libc::pid_t, signal) } == 0 {
+        return Ok(());
+    }
+    Err(std::io::Error::last_os_error()).with_context(|| format!("signal pid {pid} with {signal}"))
+}
+
+/// Windows has no POSIX process groups, and a bare pid cannot be proven to be a
+/// harness tree root. `TerminateProcess(pid)` kills that one process while its
+/// children keep running, and `kill_registered`'s exit wait would then observe
+/// the observed pid gone and report success: a silent partial kill.
+///
+/// Until a tree-safe mechanism exists (a Job Object with
+/// `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` assigned at spawn, or a Toolhelp32
+/// descendant walk terminated children-first), this refuses instead of
+/// signalling. `kill_registered` propagates the error and keeps the registry
+/// entry, so `sharecli stop` fails closed rather than lying about the outcome.
+#[cfg(windows)]
+pub fn signal_group_or_pid(pid: u32, _signal: i32) -> Result<()> {
+    Err(anyhow::anyhow!(
+        "pid {pid}: process-tree termination is unsupported on Windows; a bare pid \
+         cannot be proven to own a harness process tree, so killing it alone would \
+         leave its children running while reporting success. Refusing to signal"
+    ))
+}
+
+/// Handle to the on-disk registry.
+#[derive(Debug, Clone)]
+pub struct Registry {
+    path: PathBuf,
+}
+
+/// Exclusive advisory lock on the registry's sidecar `processes.json.lock`.
+///
+/// Held across the whole read-modify-write of a writer, so two invocations can
+/// no longer read the same snapshot and let the later write drop the other's
+/// entry. Released when dropped.
+struct RegistryLock {
+    file: std::fs::File,
+}
+
+impl RegistryLock {
+    fn acquire(path: &Path) -> Result<Self> {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)
+                .with_context(|| format!("create registry dir {}", dir.display()))?;
+        }
+        let lock_path = path.with_extension("json.lock");
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(&lock_path)
+            .with_context(|| format!("open registry lock {}", lock_path.display()))?;
+        file.lock_exclusive().with_context(|| format!("lock registry {}", lock_path.display()))?;
+        Ok(Self { file })
+    }
+}
+
+impl Drop for RegistryLock {
+    fn drop(&mut self) {
+        let _ = fs2::FileExt::unlock(&self.file);
+    }
+}
+
+impl Default for Registry {
+    fn default() -> Self {
+        Self::open()
+    }
+}
+
+impl Registry {
+    /// Registry at the standard per-device location.
+    pub fn open() -> Self {
+        Self { path: default_path() }
+    }
+
+    /// Registry at an explicit path (used by tests and by `SHARECLI_STATE_DIR`).
+    pub fn at(path: impl Into<PathBuf>) -> Self {
+        Self { path: path.into() }
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Strictly read every recorded entry. A missing file is an empty registry;
+    /// any other read or parse failure is an error, so a writer can never
+    /// replace records it failed to read.
+    fn read_entries(&self) -> Result<Vec<RegistryEntry>> {
+        match std::fs::read_to_string(&self.path) {
+            Ok(text) => serde_json::from_str(&text)
+                .with_context(|| format!("parse registry {}", self.path.display())),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+            Err(error) => {
+                Err(error).with_context(|| format!("read registry {}", self.path.display()))
+            }
+        }
+    }
+
+    /// Read every recorded entry, ignoring a corrupt or absent file.
+    ///
+    /// This is the read-only view (`list`, `find`, `contains`). Writers use
+    /// [`Self::read_entries`] instead so a corrupt file is never silently
+    /// replaced with the empty list it appears to be.
+    pub fn entries(&self) -> Vec<RegistryEntry> {
+        self.read_entries().unwrap_or_default()
+    }
+
+    /// Read-only live view: recorded entries whose process is still alive,
+    /// filtered in memory.
+    ///
+    /// This never takes the writer lock and never writes, so a read path such
+    /// as `list` or `find` cannot rewrite the registry. Only paths that already
+    /// mutate prune through [`Self::prune_dead`].
+    pub fn live_entries(&self) -> Vec<RegistryEntry> {
+        self.entries().into_iter().filter(entry_is_live).collect()
+    }
+
+    /// Entries whose process is still alive, pruning dead ones from the file.
+    ///
+    /// Returns an error when the registry exists but cannot be read or parsed,
+    /// and when the pruned rewrite fails. A read failure must not look like an
+    /// empty registry: `kill_all_registered` iterates the result and would
+    /// otherwise report success while the processes it was asked to stop are
+    /// still running.
+    pub fn prune_dead(&self) -> Result<Vec<RegistryEntry>> {
+        let _guard = match RegistryLock::acquire(&self.path) {
+            Ok(guard) => guard,
+            // Cannot serialise with other writers: report the live view without
+            // rewriting the file. This is a deliberate read fallback, not a read
+            // failure, so no record is lost and no error is reported here.
+            Err(_) => return Ok(self.live_entries()),
+        };
+        // Never publish the live subset of a registry we failed to read: that
+        // returns the error to the caller instead of destroying every record.
+        let all = self.read_entries()?;
+        let (live, dead): (Vec<_>, Vec<_>) = all.into_iter().partition(entry_is_live);
+        if !dead.is_empty() {
+            self.write(&live)?;
+        }
+        Ok(live)
+    }
+
+    /// Record a spawned process. Idempotent per pid. Fails rather than
+    /// overwriting a registry it could not read.
+    pub fn insert(&self, entry: RegistryEntry) -> Result<()> {
+        let _guard = RegistryLock::acquire(&self.path)?;
+        let mut entries = self.read_entries()?;
+        entries.retain(|e| e.pid != entry.pid && entry_is_live(e));
+        entries.push(entry);
+        self.write(&entries)
+    }
+
+    /// Remove a pid. Returns whether the entry was actually removed from the
+    /// registry, so a failed read or write reports `false` instead of claiming a
+    /// removal that never reached the file.
+    pub fn remove(&self, pid: u32) -> bool {
+        let Ok(_guard) = RegistryLock::acquire(&self.path) else {
+            return false;
+        };
+        let Ok(mut entries) = self.read_entries() else {
+            return false;
+        };
+        let before = entries.len();
+        entries.retain(|e| e.pid != pid);
+        if entries.len() == before {
+            return false;
+        }
+        self.write(&entries).is_ok()
+    }
+
+    pub fn contains(&self, pid: u32) -> bool {
+        self.entries().iter().any(|e| e.pid == pid)
+    }
+
+    /// The recorded entry for `pid`, if any. Callers that are about to signal
+    /// the pid use this to validate its recorded identity first.
+    pub fn get(&self, pid: u32) -> Option<RegistryEntry> {
+        self.entries().into_iter().find(|e| e.pid == pid)
+    }
+
+    fn write(&self, entries: &[RegistryEntry]) -> Result<()> {
+        if let Some(dir) = self.path.parent() {
+            std::fs::create_dir_all(dir)
+                .with_context(|| format!("create registry dir {}", dir.display()))?;
+        }
+        let body = serde_json::to_string_pretty(entries)?;
+        let tmp = self.tmp_path();
+        let written = std::fs::OpenOptions::new().create_new(true).write(true).open(&tmp).and_then(
+            |mut file| {
+                file.write_all(body.as_bytes())?;
+                // Publish only complete, durable bytes.
+                file.sync_all()
+            },
+        );
+        if let Err(error) = written {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(error).with_context(|| format!("write registry tmp {}", tmp.display()));
+        }
+        if let Err(error) = std::fs::rename(&tmp, &self.path) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(error).with_context(|| format!("publish registry {}", self.path.display()));
+        }
+        Ok(())
+    }
+
+    /// A per-writer temporary path: two writers must never truncate, read, or
+    /// publish the same in-progress file.
+    fn tmp_path(&self) -> PathBuf {
+        static SEQ: AtomicU64 = AtomicU64::new(0);
+        let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        let name = self.path.file_name().and_then(|name| name.to_str()).unwrap_or("processes.json");
+        self.path.with_file_name(format!("{name}.{}.{nanos}.{seq}.tmp", std::process::id()))
+    }
+}
+
+/// True when `metadata` is a directory owned by `owner` with no group or other
+/// access, on the platforms that expose those bits.
+#[cfg(unix)]
+fn dir_is_private(metadata: &std::fs::Metadata, owner: u32) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    metadata.is_dir() && metadata.uid() == owner && metadata.mode() & 0o077 == 0
+}
+
+/// Create (if needed) and verify the predictable per-user fallback directory.
+///
+/// The fallback lives under the shared temp root, where the name is guessable
+/// and another user could pre-create it. A directory we did not create, or one
+/// that is reachable by group/other, is refused. When it is absent it is created
+/// with `0700` and then re-checked, so the mode we asked for is the mode we got
+/// and the path is still ours.
+#[cfg(unix)]
+fn secure_fallback_dir(dir: &Path, owner: u32) -> Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt};
+    match std::fs::symlink_metadata(dir) {
+        // Refuse a symlink outright: `symlink_metadata` does not follow it, so
+        // an attacker-planted link cannot redirect our state elsewhere.
+        Ok(meta) if meta.file_type().is_symlink() => Err(anyhow::anyhow!(
+            "fallback state dir {} is a symlink; refusing to use it",
+            dir.display()
+        )),
+        Ok(meta) => {
+            if dir_is_private(&meta, owner) {
+                Ok(())
+            } else {
+                Err(anyhow::anyhow!(
+                    "fallback state dir {} is not exclusively owned by uid {owner} with \
+                     owner-only permissions (uid {} mode {:o}); refusing to use it",
+                    dir.display(),
+                    meta.uid(),
+                    meta.mode() & 0o777,
+                ))
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            std::fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(dir)
+                .with_context(|| format!("create fallback state dir {}", dir.display()))?;
+            // Re-check after creation: the mode we asked for must be the mode we
+            // got, and the directory must still be ours.
+            let meta = std::fs::metadata(dir)
+                .with_context(|| format!("verify fallback state dir {}", dir.display()))?;
+            if dir_is_private(&meta, owner) {
+                Ok(())
+            } else {
+                Err(anyhow::anyhow!(
+                    "fallback state dir {} is not private after creation (uid {} mode {:o})",
+                    dir.display(),
+                    meta.uid(),
+                    meta.mode() & 0o777,
+                ))
+            }
+        }
+        Err(error) => {
+            Err(error).with_context(|| format!("stat fallback state dir {}", dir.display()))
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn secure_fallback_dir(dir: &Path, _owner: u32) -> Result<()> {
+    // Windows exposes no uid/mode. Keep the existing plain create-only fallback
+    // so behaviour there is unchanged.
+    std::fs::create_dir_all(dir)
+        .with_context(|| format!("create fallback state dir {}", dir.display()))
+}
+
+/// Device state root shared by the process registry and the build-slot pool.
+/// `SHARECLI_STATE_DIR` overrides it so tests and the acceptance harness never
+/// touch the operator's real state.
+pub(crate) fn state_root() -> PathBuf {
+    if let Some(dir) = std::env::var_os("SHARECLI_STATE_DIR") {
+        return PathBuf::from(dir);
+    }
+    let base = match dirs::state_dir().or_else(dirs::data_local_dir).or_else(dirs::config_dir) {
+        Some(base) => base,
+        None => {
+            // `PathBuf::from(".")` would scatter per-device state across
+            // whatever directory each invocation runs from, breaking the "one
+            // resident authority per device" property. Use one stable per-user
+            // location under the temp root instead, and verify it before use:
+            // the name is guessable, so a directory we do not exclusively own is
+            // refused rather than silently trusted.
+            #[cfg(unix)]
+            // SAFETY: getuid cannot fail and touches no memory.
+            let owner = unsafe { libc::getuid() };
+            #[cfg(not(unix))]
+            let owner = 0u32;
+            #[cfg(unix)]
+            let user_tag = owner.to_string();
+            #[cfg(not(unix))]
+            let user_tag = std::env::var("USERNAME")
+                .or_else(|_| std::env::var("USER"))
+                .unwrap_or_else(|_| "user".to_string());
+            let fallback = std::env::temp_dir().join(format!("sharecli-{user_tag}"));
+            // Refuse to continue on an insecure fallback. `state_root` cannot
+            // become fallible without rippling through every caller, and using a
+            // directory another user can write is exactly the defect this
+            // guards, so fail closed with a clear message instead.
+            if let Err(error) = secure_fallback_dir(&fallback, owner) {
+                panic!("sharecli: refusing to use insecure fallback state dir: {error:#}");
+            }
+            eprintln!(
+                "sharecli: warning: no platform state directory is available; using {} \
+                 for per-device state",
+                fallback.display()
+            );
+            fallback
+        }
+    };
+    base.join("sharecli")
+}
+
+/// `<state dir>/sharecli/processes.json`. `SHARECLI_STATE_DIR` overrides it so
+/// tests and the acceptance harness never touch the operator's real registry.
+fn default_path() -> PathBuf {
+    state_root().join("processes.json")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_registry(name: &str) -> Registry {
+        let dir =
+            std::env::temp_dir().join(format!("sharecli-registry-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        Registry::at(dir.join("processes.json"))
+    }
+
+    #[test]
+    fn insert_then_read_back() {
+        let registry = temp_registry("roundtrip");
+        let entry = RegistryEntry::new(
+            std::process::id(),
+            Some("proj".into()),
+            Some("cargo".into()),
+            vec!["cargo".into(), "build".into()],
+        );
+        registry.insert(entry.clone()).expect("insert");
+        assert_eq!(registry.entries(), vec![entry]);
+    }
+
+    #[test]
+    fn remove_clears_entry() {
+        let registry = temp_registry("remove");
+        let pid = std::process::id();
+        registry.insert(RegistryEntry::new(pid, None, None, vec!["sleep".into()])).expect("insert");
+        assert!(registry.contains(pid));
+        assert!(registry.remove(pid));
+        assert!(!registry.contains(pid));
+    }
+
+    #[test]
+    fn prune_drops_dead_pids_and_keeps_live_ones() {
+        let registry = temp_registry("prune");
+        let live = std::process::id();
+        registry
+            .insert(RegistryEntry::new(live, None, None, vec!["live".into()]))
+            .expect("insert live");
+        // PID 0 is never a user process, so it is a stable "dead" id.
+        registry
+            .insert(RegistryEntry::new(0, None, None, vec!["dead".into()]))
+            .expect("insert dead");
+        let pruned = registry.prune_dead().expect("prune must succeed");
+        assert_eq!(pruned.len(), 1);
+        assert_eq!(pruned[0].pid, live);
+        assert_eq!(registry.entries().len(), 1);
+    }
+
+    #[test]
+    fn live_entries_filters_dead_without_rewriting_the_registry() {
+        let registry = temp_registry("live-entries");
+        let live = std::process::id();
+        registry
+            .insert(RegistryEntry::new(live, None, None, vec!["live".into()]))
+            .expect("insert live");
+        // PID 0 is never a live process, so it can only vanish if the file is
+        // rewritten. `live_entries` must filter it in memory and leave it.
+        registry
+            .insert(RegistryEntry::new(0, None, None, vec!["dead".into()]))
+            .expect("insert dead");
+        let before = std::fs::read_to_string(registry.path()).expect("read registry");
+
+        let live_entries = registry.live_entries();
+
+        assert_eq!(live_entries.len(), 1, "only the live entry may be returned: {live_entries:?}");
+        assert_eq!(live_entries[0].pid, live);
+        let after = std::fs::read_to_string(registry.path()).expect("read registry");
+        assert_eq!(before, after, "a read-only live view must not rewrite the registry");
+        assert!(
+            registry.entries().iter().any(|e| e.pid == 0),
+            "the dead entry must remain on disk after a read-only view"
+        );
+    }
+
+    #[test]
+    fn prune_dead_reports_an_unreadable_registry_as_an_error() {
+        // A corrupt registry must be an ERROR, never an empty "no live
+        // processes" success: `kill_all_registered` iterates the result and
+        // would otherwise report success while leaving processes running.
+        let registry = temp_registry("prune-corrupt");
+        if let Some(dir) = registry.path().parent() {
+            std::fs::create_dir_all(dir).expect("mkdir");
+        }
+        std::fs::write(registry.path(), "{not json").expect("write");
+        let error = registry.prune_dead().expect_err("a corrupt registry must be an error");
+        assert!(
+            error.to_string().contains("parse registry"),
+            "unexpected error for a corrupt registry: {error}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(registry.path()).expect("corrupt file must survive"),
+            "{not json",
+            "an unreadable registry must never be laundered into an empty one"
+        );
+    }
+
+    #[test]
+    fn prune_drops_recycled_pid_with_stale_start_time() {
+        let registry = temp_registry("prune-recycled");
+        let live = std::process::id();
+        // The pid is very much alive, but the record claims it started an hour
+        // ago: that pid must have been recycled, so the entry is not "managed".
+        let mut recycled = RegistryEntry::new(live, None, None, vec!["stale".into()]);
+        recycled.started_at = now_secs().saturating_sub(3600);
+        registry.insert(recycled).expect("insert recycled");
+
+        let pruned = registry.prune_dead().expect("prune must succeed");
+
+        assert!(pruned.is_empty(), "a recycled pid must not read as managed: {pruned:?}");
+        assert!(registry.entries().is_empty(), "the recycled entry must be dropped from the file");
+    }
+
+    #[test]
+    fn insert_prunes_a_recycled_entry_rather_than_keeping_it() {
+        let registry = temp_registry("insert-recycled");
+        let live = std::process::id();
+        let mut recycled = RegistryEntry::new(live, None, None, vec!["stale".into()]);
+        recycled.started_at = now_secs().saturating_sub(3600);
+        registry.insert(recycled).expect("insert recycled");
+        assert!(registry.contains(live), "a write records the entry it was given");
+
+        // A later insert is a read-modify-write: the recycled entry must not
+        // survive it.
+        registry
+            .insert(RegistryEntry::new(0, None, None, vec!["dead".into()]))
+            .expect("insert other");
+
+        assert!(!registry.contains(live), "a later write must prune a recycled-pid entry");
+    }
+
+    // A process's wall-clock record time moves forward while it runs, so it can
+    // drift far from the kernel's start time. Recording from the wall clock let
+    // a reused PID pass the identity check whenever the two coincided; the
+    // record must instead come from the same probe `identity_matches_live`
+    // compares against. Fails before the fix (the record is `now`, ~2s later)
+    // and passes after.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn registry_records_the_real_start_time_not_the_wall_clock() {
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("spawn a live stand-in process");
+        let pid = child.id();
+        std::thread::sleep(std::time::Duration::from_millis(2100));
+
+        let entry = RegistryEntry::new(pid, None, None, vec!["sleep".into()]);
+        let real = process_start_epoch(pid).expect("a live child must expose a start time");
+        let drift = entry.started_at.abs_diff(real);
+
+        let _ = child.kill();
+        let _ = child.wait();
+        assert_eq!(
+            drift, 0,
+            "started_at must be the kernel start time ({real}), not the wall clock (drift {drift}s)"
+        );
+    }
+
+    // The reused-PID case framed as the defect states it: a record whose
+    // timestamp is a wall clock rather than the live process's start time must
+    // be refused. The live pid is very much alive, yet the record cannot be the
+    // same process because no process started at that later instant.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn identity_refuses_a_pid_whose_record_is_a_wall_clock() {
+        let pid = std::process::id();
+        let real = process_start_epoch(pid).expect("the test's own pid has a start time");
+
+        let mut forged = RegistryEntry::new(pid, None, None, vec!["forged".into()]);
+        forged.started_at = real + START_TIME_TOLERANCE_SECS + 1;
+        assert!(
+            !identity_matches_live(&forged),
+            "a reused pid whose record is later than its real start must be refused"
+        );
+
+        let honest = RegistryEntry::new(pid, None, None, vec!["honest".into()]);
+        assert!(
+            identity_matches_live(&honest),
+            "a record taken from the kernel start time must still match"
+        );
+    }
+
+    // A 2s drift is farther than the probe's one-second resolution but inside
+    // the old 5s window, so this is exactly the recycled pid the loose tolerance
+    // used to admit. It must now be treated as a different process.
+    #[test]
+    fn identity_refuses_a_pid_drifted_past_the_probe_resolution() {
+        let pid = std::process::id();
+        let real = process_start_epoch(pid).expect("the test's own pid has a start time");
+
+        let mut drifted = RegistryEntry::new(pid, None, None, vec!["drifted".into()]);
+        drifted.started_at = real + 2;
+        assert!(
+            !identity_matches_live(&drifted),
+            "a 2s drift exceeds the probe resolution and must be refused, not accepted \
+             inside the old 5s window"
+        );
+    }
+
+    // The record and the comparison must use one source, so a fresh record's
+    // start time equals the live probe's value for the same pid.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn record_and_live_probe_share_the_same_start_time_source() {
+        let pid = std::process::id();
+        let entry = RegistryEntry::new(pid, None, None, vec!["self".into()]);
+        assert_eq!(live_start_epoch(pid), Some(entry.started_at));
+    }
+
+    #[test]
+    fn corrupt_file_reads_as_empty_not_panic() {
+        let registry = temp_registry("corrupt");
+        if let Some(dir) = registry.path().parent() {
+            std::fs::create_dir_all(dir).expect("mkdir");
+        }
+        std::fs::write(registry.path(), "{not json").expect("write");
+        assert!(registry.entries().is_empty());
+    }
+
+    #[test]
+    fn pid_alive_rejects_ids_the_os_cannot_address() {
+        assert!(!pid_alive(0), "pid 0 is the caller's group, never a process handle");
+        assert!(!pid_alive(i32::MAX as u32 + 1), "ids above i32::MAX wrap when cast to pid_t");
+        assert!(!pid_alive(u32::MAX), "u32::MAX wraps when cast to pid_t");
+        assert!(pid_alive(std::process::id()), "the test's own pid must read as alive");
+    }
+
+    /// The fail-closed contract for the unsupported Windows stop path: refuse,
+    /// never perform a single-pid kill and report it as a tree kill. Signalling
+    /// is refused before any syscall, so nothing is touched.
+    #[cfg(windows)]
+    #[test]
+    fn windows_stop_refuses_rather_than_partial_kill() {
+        let error = signal_group_or_pid(std::process::id(), 15)
+            .expect_err("a Windows tree kill is unprovable, so the signal must be refused");
+        let message = error.to_string();
+        assert!(
+            message.contains("unsupported on Windows"),
+            "the refusal must name the unsupported capability: {message}"
+        );
+        assert!(
+            !message.contains("terminate pid"),
+            "no termination attempt may be reported on the unsupported path: {message}"
+        );
+    }
+
+    // The refusal path exercised here is the Unix one: it rejects pid 0/1 with
+    // "not a signalable process id" before any syscall. Windows refuses every
+    // pid with the "unsupported on Windows" message (covered above), so gate
+    // this to the platform whose message it asserts.
+    #[cfg(unix)]
+    #[test]
+    fn signal_refuses_pid_zero_and_one_before_any_syscall() {
+        // A group signal is derived by negating the pid, so pid 1 would become
+        // `kill(-1, sig)`: it signals EVERY process the user may signal. Pid 0
+        // is the caller's own process group. Neither may ever reach a syscall.
+        for pid in [0u32, 1u32] {
+            let result = signal_group_or_pid(pid, 15);
+            let error = result.expect_err("pid 0 and pid 1 must be refused");
+            assert!(
+                error.to_string().contains("not a signalable process id"),
+                "unexpected error for pid {pid}: {error}"
+            );
+            assert!(!pid_alive(pid), "pid {pid} must not read as a live managed process");
+        }
+        // Reaching here proves no signal was delivered: a `kill(-1, SIGTERM)`
+        // would have taken down this very test process.
+        assert!(pid_alive(std::process::id()), "the refusal must not signal the caller");
+    }
+
+    // `is_zombie` reads `/proc/<pid>/stat` and returns false off Linux, so on
+    // other platforms `pid_alive` cannot report an unreaped child as dead. Gate
+    // this test to the platform where the assertion reflects real behaviour
+    // rather than asserting a false negative on macOS/Windows.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn unreaped_zombie_child_is_not_alive() {
+        let mut child =
+            std::process::Command::new("sh").args(["-c", "exit 0"]).spawn().expect("spawn sh");
+        let pid = child.id();
+        // The shell exits immediately and `Child` has not reaped it, so it is a
+        // zombie. `kill(pid, 0)` still succeeds for a zombie, so liveness must
+        // inspect the process state instead of the signal alone.
+        let mut alive = true;
+        for _ in 0..200 {
+            alive = pid_alive(pid);
+            if !alive {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        let _ = child.wait();
+        assert!(!alive, "a zombie whose parent has not reaped it must read as dead");
+    }
+
+    #[test]
+    fn concurrent_inserts_keep_every_entry() {
+        let registry = temp_registry("concurrent");
+        let mut children: Vec<std::process::Child> = (0..8)
+            .map(|_| {
+                std::process::Command::new("sleep")
+                    .arg("30")
+                    .spawn()
+                    .expect("spawn a live stand-in process")
+            })
+            .collect();
+        let pids: Vec<u32> = children.iter().map(|child| child.id()).collect();
+        std::thread::scope(|scope| {
+            for pid in &pids {
+                let registry = registry.clone();
+                let pid = *pid;
+                scope.spawn(move || {
+                    registry
+                        .insert(RegistryEntry::new(pid, None, None, vec!["sleep".into()]))
+                        .expect("insert");
+                });
+            }
+        });
+        let mut recorded: Vec<u32> = registry.entries().iter().map(|e| e.pid).collect();
+        let mut expected = pids;
+        recorded.sort_unstable();
+        expected.sort_unstable();
+        for child in &mut children {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        assert_eq!(recorded, expected, "a concurrent insert must not drop another entry");
+    }
+
+    #[test]
+    fn corrupt_registry_is_not_overwritten_by_a_writer() {
+        let registry = temp_registry("corrupt-write");
+        if let Some(dir) = registry.path().parent() {
+            std::fs::create_dir_all(dir).expect("mkdir");
+        }
+        std::fs::write(registry.path(), "{not json").expect("write");
+        let error = registry
+            .insert(RegistryEntry::new(std::process::id(), None, None, vec!["x".into()]))
+            .expect_err("a corrupt registry must fail the write, not be replaced");
+        assert!(
+            error.to_string().contains("parse registry"),
+            "unexpected error for a corrupt registry: {error}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(registry.path()).expect("corrupt file must survive"),
+            "{not json",
+            "a failed read must never be laundered into an empty registry"
+        );
+    }
+
+    #[test]
+    fn write_publishes_through_a_unique_temp_file_and_cleans_up() {
+        let registry = temp_registry("tmp-cleanup");
+        registry
+            .insert(RegistryEntry::new(std::process::id(), None, None, vec!["x".into()]))
+            .expect("insert");
+        let dir = registry.path().parent().expect("parent").to_path_buf();
+        let leftovers: Vec<String> = std::fs::read_dir(&dir)
+            .expect("read_dir")
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.ends_with(".tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "temp files must be published or removed: {leftovers:?}");
+    }
+
+    #[cfg(unix)]
+    fn secure_test_dir(name: &str) -> std::path::PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("sharecli-secure-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_file(&dir);
+        dir
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn secure_fallback_dir_creates_a_private_directory() {
+        use std::os::unix::fs::MetadataExt;
+        let dir = secure_test_dir("created");
+        let owner = unsafe { libc::getuid() };
+
+        secure_fallback_dir(&dir, owner).expect("a fresh fallback must be created and verified");
+
+        let meta = std::fs::metadata(&dir).expect("stat created fallback");
+        assert_eq!(
+            meta.mode() & 0o077,
+            0,
+            "a created fallback must deny group/other access, got mode {:o}",
+            meta.mode() & 0o777
+        );
+        assert_eq!(meta.uid(), owner, "the created fallback must be owned by the caller");
+        // Idempotent: a second call accepts the directory it just created.
+        secure_fallback_dir(&dir, owner).expect("an existing private fallback must be accepted");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn secure_fallback_dir_refuses_a_shared_directory() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = secure_test_dir("shared");
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        // 0777: another user could plant entries between check and use.
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o777)).expect("chmod");
+        let owner = unsafe { libc::getuid() };
+
+        let error = secure_fallback_dir(&dir, owner)
+            .expect_err("a group/other-accessible fallback must be refused");
+
+        assert!(
+            error.to_string().contains("refusing to use it"),
+            "unexpected error for a shared fallback: {error}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn secure_fallback_dir_refuses_a_symlink() {
+        let target = secure_test_dir("symlink-target");
+        std::fs::create_dir_all(&target).expect("mkdir target");
+        let dir = secure_test_dir("symlink");
+        std::os::unix::fs::symlink(&target, &dir).expect("create symlink");
+        let owner = unsafe { libc::getuid() };
+
+        let error =
+            secure_fallback_dir(&dir, owner).expect_err("a symlinked fallback must be refused");
+
+        assert!(
+            error.to_string().contains("symlink"),
+            "unexpected error for a symlinked fallback: {error}"
+        );
+        let _ = std::fs::remove_file(&dir);
+        let _ = std::fs::remove_dir_all(&target);
+    }
+}

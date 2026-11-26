@@ -85,7 +85,7 @@ podman run --rm -p 9000:9000 sharecli
 
 ### Per-host install (parity floor)
 
-Same capability set on every host: CLI + `serve`, process verbs, tray/menubar (or WSL bridge), dashboard at `http://127.0.0.1:9000/` (macOS also native window). Details: [`docs/deploy/FINALITY.md`](docs/deploy/FINALITY.md).
+Core surface is the same on Linux, macOS and Windows: CLI + `serve`, process verbs, dashboard at `http://127.0.0.1:9000/` (macOS also native window). The tray/menubar is platform-native, not a single shared artifact: Linux StatusNotifier (`sharecli-tray-linux`, pure Rust), Windows WinUI (`sharecli-tray-windows`, `tray-icon`) and macOS Swift tray. musl and FreeBSD are **build-only signal targets** (no tray, no release artifacts); `wasm32` is **not supported** (see [`docs/ops/portability-freebsd-wasm.md`](docs/ops/portability-freebsd-wasm.md)). Details: [`docs/deploy/FINALITY.md`](docs/deploy/FINALITY.md).
 
 #### macOS (optimal: Swift tray + `DashboardView`)
 

@@ -7,11 +7,15 @@
 //! tray + Swift `AppState.kill` / `killAll`).
 
 use sharecli_tray_linux::ipc::{kill, kill_all};
+// `sharecli-tray-windows` is linked only on Windows and Linux glibc (see
+// Cargo.toml); the WinUI source checks stay enabled everywhere.
+#[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
 use sharecli_tray_windows::ipc::{
     kill_all_request_json, kill_request_json, IPC_METHOD_KILL, IPC_METHOD_KILL_ALL,
 };
 
 /// FR-007 / AC-007.54 — Windows tray kill IPC methods match Linux/Swift contract.
+#[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
 #[test]
 fn fr007_tray_windows_kill_ipc_methods() {
     assert_eq!(IPC_METHOD_KILL, "process.kill");
@@ -19,6 +23,7 @@ fn fr007_tray_windows_kill_ipc_methods() {
 }
 
 /// FR-007 / AC-007.54 — Windows kill request wire matches Linux tray `ipc::kill`.
+#[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
 #[test]
 fn fr007_tray_windows_kill_request_wire_parity() {
     let win = kill_request_json(3, 99);
@@ -28,6 +33,7 @@ fn fr007_tray_windows_kill_request_wire_parity() {
 }
 
 /// FR-007 / AC-007.54 — Windows kill_all request wire matches Linux tray `ipc::kill_all`.
+#[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
 #[test]
 fn fr007_tray_windows_kill_all_request_wire_parity() {
     let win = kill_all_request_json(4);
@@ -73,6 +79,7 @@ fn fr007_tray_windows_kill_wires_tray_window() {
 }
 
 /// FR-007 / AC-007.54 — Linux tray kill helpers remain canonical reference contract.
+#[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
 #[test]
 fn fr007_tray_windows_kill_linux_reference_parity() {
     // Linux ipc.rs encodes the same methods used by sharecli-ipc handler.

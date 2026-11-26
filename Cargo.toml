@@ -130,12 +130,33 @@ sharecli-thermal-tui = { path = "crates/sharecli-thermal-tui" }
 sharecli-fleet = { path = "crates/sharecli-fleet" }
 sharecli-core = { path = "crates/sharecli-core" }
 sharecli-ipc = { path = "crates/sharecli-ipc" }
-sharecli-tray-linux = { path = "crates/sharecli-tray-linux" }
-sharecli-tray-windows = { path = "crates/sharecli-tray-windows" }
 sharecli-fuse = { path = "crates/sharecli-fuse" }
 # sharecli-mesh is a normal dependency (mesh CLI); re-export not needed in dev-deps
 ratatui = "0.30"
 proptest = "1.6"
+
+# Tray crates are platform-native dev-dependencies and MUST be target-gated:
+#   - sharecli-tray-windows -> tray-icon(libappindicator) -> gtk/glib on Linux.
+#     Ungated, that graph is pulled into `cargo test --workspace --lib` on musl
+#     and fails at glib-sys pkg-config (observed on musl-test), and is pointless
+#     on macOS. `--exclude` cannot remove it because it is a dev-dependency of
+#     the selected `sharecli` package.
+#     It is kept OFF musl and macOS for that reason, but it MUST stay linked on
+#     Linux glibc: its lib target is written to compile cross-platform and the
+#     FR-007 tray parity tests in `tests/` import `sharecli_tray_windows` to
+#     assert Windows<->Linux constant parity. Gating it to `cfg(windows)` alone
+#     leaves those test targets unable to resolve the crate under the required
+#     `cargo check --workspace --all-targets`, which is what broke ci / test.
+#     Every test file that imports `sharecli_tray_windows` therefore repeats this
+#     exact `cfg(any(windows, all(target_os = "linux", target_env = "gnu")))` on
+#     the import and on each Windows-only case, so musl and macOS still compile
+#     `--tests` while their Linux-only cases stay enabled.
+#   - sharecli-tray-linux is pure Rust (ksni/zbus) and only meaningful on Linux.
+[target.'cfg(any(windows, all(target_os = "linux", target_env = "gnu")))'.dev-dependencies]
+sharecli-tray-windows = { path = "crates/sharecli-tray-windows" }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+sharecli-tray-linux = { path = "crates/sharecli-tray-linux" }
 
 [[bench]]
 name = "config_parse"
