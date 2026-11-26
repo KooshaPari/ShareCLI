@@ -38,6 +38,8 @@ jobs:
       - name: Container cosign soft gate
         env:
           GHCR_COSIGN_PUSH: ${{ github.event_name == 'workflow_dispatch' && inputs.ghcr_cosign_push && 'true' || 'false' }}
+          # podman: needed by the opt-in GHCR_COSIGN_PUSH path for podman login
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/container-cosign-soft.sh
 
       - name: Upload cosign bundle (main)

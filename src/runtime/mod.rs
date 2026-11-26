@@ -6,22 +6,28 @@
 //!
 //! Module structure (post-decomposition):
 //!
+//! - [`admission`] — device-scoped build-slot leasing so `max_concurrent_builds`
+//!   holds across sibling `sharecli` invocations, not just within one.
 //! - [`audit`] — `ProcState` enum + `From<ProcessStatus>` + spawn/stop audit
 //!   emission (`spawn_capability`, `emit_spawn_audit`, `emit_stop_audit`).
 //! - [`process_info`] — `ProcessInfo` + `from_sysinfo` + `count_open_fds` /
 //!   `count_threads` + `EnvGuard` (RAII env-var guard).
 //! - [`managed`] — `ManagedProcess` (info + handle pair used by `ProcessPool`).
 //! - [`pool`] — `ProcessPool` + `ProcessFilter` (the metadata+handle pool).
+//! - [`registry`] — device-level record of managed pids, so a process started
+//!   by one `sharecli` invocation is visible to and killable by the next.
 //! - [`shared`] — `SharedRuntime` + `PooledProcess` (node/bun web-harness pools).
 //! - [`health`] — `RuntimeHealth` + `PoolStatus` (IPC payload value types).
 //! - [`resources`] — `ProjectLimits` + `ProjectResources` + `ResourceCheck`.
 //! - [`tests`] — unit tests (loaded via `#[path]`).
 
+mod admission;
 mod audit;
 mod health;
 mod managed;
 mod pool;
 mod process_info;
+mod registry;
 mod resources;
 mod shared;
 
@@ -31,11 +37,13 @@ mod tests;
 
 // Public re-exports — preserve the `crate::runtime::*` surface used by
 // `lib.rs` and the various `commands/*` modules.
+pub use admission::{SlotLease, SlotPool};
 pub use audit::ProcState;
 pub use health::{PoolStatus, RuntimeHealth};
 pub use managed::ManagedProcess;
 pub use pool::{ProcessFilter, ProcessPool};
 pub use process_info::ProcessInfo;
+pub use registry::{Registry, RegistryEntry};
 pub use resources::{ProjectLimits, ProjectResources, ResourceCheck};
 pub use shared::{PooledProcess, SharedRuntime};
 

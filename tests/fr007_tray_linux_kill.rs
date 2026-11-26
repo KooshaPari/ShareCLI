@@ -6,6 +6,9 @@
 //! `process.kill` / `process.kill_all` (reference contract for Windows AC-007.54).
 
 use sharecli_tray_linux::ipc::{kill, kill_all};
+// `sharecli-tray-windows` is linked only on Windows and Linux glibc (see
+// Cargo.toml); the Linux tray checks below stay enabled everywhere.
+#[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
 use sharecli_tray_windows::ipc::{IPC_METHOD_KILL, IPC_METHOD_KILL_ALL};
 
 /// FR-007 / AC-007.54 — Linux tray kill IPC methods match handler contract.
@@ -17,8 +20,11 @@ fn fr007_tray_linux_kill_ipc_methods() {
         linux_ipc.contains("process.kill_all"),
         "Linux ipc MUST define process.kill_all (AC-007.54)"
     );
-    assert_eq!(IPC_METHOD_KILL, "process.kill");
-    assert_eq!(IPC_METHOD_KILL_ALL, "process.kill_all");
+    #[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
+    {
+        assert_eq!(IPC_METHOD_KILL, "process.kill");
+        assert_eq!(IPC_METHOD_KILL_ALL, "process.kill_all");
+    }
 }
 
 /// FR-007 / AC-007.54 — Linux tray menu wires Kill + Kill All Managed actions.

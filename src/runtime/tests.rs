@@ -37,14 +37,34 @@ mod tests {
         drop(system);
         pool.processes.write().await.insert(
             pid,
-            ManagedProcess { info, handle: ProcessHandle { id: Default::default(), pid } },
+            ManagedProcess {
+                info,
+                handle: ProcessHandle { id: Default::default(), pid },
+                permit: None,
+                lease: None,
+            },
         );
         pid
     }
 
+    /// A private registry file for one test. Runtime tests must never read or
+    /// write the device-wide registry (`Registry::open()`): sibling tests spawn
+    /// real children that are recorded there, so a shared registry makes
+    /// "a fresh pool lists nothing" order- and timing-dependent.
+    fn isolated_registry_path(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("sharecli-pool-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create isolated registry dir");
+        dir.join("processes.json")
+    }
+
+    fn isolated_pool(name: &str) -> ProcessPool {
+        ProcessPool::with_registry_path(isolated_registry_path(name))
+    }
+
     #[tokio::test]
     async fn failed_kill_retains_tracking() {
-        let pool = ProcessPool::new();
+        let pool = isolated_pool("failed-kill");
         let pid = insert_unowned_handle(&pool).await;
         assert!(pool.kill(pid).await.is_err());
         assert!(pool.processes.read().await.contains_key(&pid));
@@ -52,7 +72,7 @@ mod tests {
 
     #[tokio::test]
     async fn failed_kill_all_reports_error_and_retains_tracking() {
-        let pool = ProcessPool::new();
+        let pool = isolated_pool("failed-kill-all");
         let pid = insert_unowned_handle(&pool).await;
         let result = pool.kill_all().await;
         assert!(result.is_err(), "failed stop must not acknowledge success");
@@ -62,7 +82,7 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn kill_all_removes_successful_children_but_retains_failures() {
-        let pool = ProcessPool::new();
+        let pool = isolated_pool("kill-all-mixed");
         let child = pool.spawn("sleep", &["30".into()], None, None, None).await.unwrap();
         let failed_pid = insert_unowned_handle(&pool).await;
         assert!(pool.kill_all().await.is_err());
@@ -72,9 +92,139 @@ mod tests {
         assert_eq!(tracked.len(), 1);
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn kill_registered_refuses_recycled_pid() {
+        let path = isolated_registry_path("kill-registered-recycled");
+        let pool = ProcessPool::with_registry_path(path.clone());
+        let own = std::process::id();
+        let registry = Registry::at(path);
+        let mut recycled = RegistryEntry::new(own, None, None, vec!["stale".into()]);
+        recycled.started_at = recycled.started_at.saturating_sub(3600);
+        registry.insert(recycled).expect("seed recycled entry");
+
+        let error = pool
+            .kill_registered(own, false)
+            .await
+            .expect_err("a recycled pid must never be signalled");
+
+        assert!(error.to_string().contains("recycled"), "got: {error}");
+        assert!(!registry.contains(own), "the stale entry must be removed");
+        // Reaching this line at all is the evidence that no signal was sent to
+        // the test process's own pid.
+    }
+
+    /// Windows caller-race contract: a recorded pid that is already gone must
+    /// not report a successful tree stop. A dead pid cannot identify surviving
+    /// descendants, so `kill_registered` fails closed and drops the record.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn kill_registered_stale_pid_fails_closed_on_windows() {
+        let path = isolated_registry_path("kill-registered-stale-windows");
+        let pool = ProcessPool::with_registry_path(path.clone());
+        let registry = Registry::at(path);
+        // `signalable` rejects ids the OS cannot address, so liveness is false
+        // without spawning or touching any process.
+        let gone = u32::MAX - 15;
+        registry
+            .insert(RegistryEntry::new(gone, None, None, vec!["gone".into()]))
+            .expect("seed stale entry");
+
+        let error = pool
+            .kill_registered(gone, false)
+            .await
+            .expect_err("a dead pid cannot prove its tree is gone, so stop must fail closed");
+
+        assert!(error.to_string().contains("already exited"), "got: {error}");
+        assert!(!registry.contains(gone), "the dead record must be dropped");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn kill_registered_reports_not_stopped_when_alive_after_signal() {
+        use std::io::BufRead;
+
+        let path = isolated_registry_path("kill-registered-alive");
+        let pool = ProcessPool::with_registry_path(path.clone());
+        let mut child = std::process::Command::new("sh")
+            .args(["-c", "trap '' TERM; echo ready; while :; do sleep 1; done"])
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .expect("spawn a SIGTERM-ignoring child");
+        let pid = child.id();
+        // Wait for the trap to be installed before signalling; otherwise SIGTERM
+        // can win the race and the test proves nothing.
+        let mut ready = String::new();
+        std::io::BufReader::new(child.stdout.take().expect("child stdout"))
+            .read_line(&mut ready)
+            .expect("read readiness line");
+        assert_eq!(ready.trim(), "ready");
+
+        let registry = Registry::at(path);
+        registry
+            .insert(RegistryEntry::new(pid, None, None, vec!["sh".into()]))
+            .expect("record child");
+
+        let error = pool
+            .kill_registered(pid, false)
+            .await
+            .expect_err("success must imply an observed exit");
+
+        assert!(error.to_string().contains("did not exit"), "got: {error}");
+        assert!(registry.contains(pid), "a live process must keep its registry entry");
+        assert!(crate::runtime::registry::pid_alive(pid), "the child must still be alive");
+
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn kill_all_registered_stops_owned_child_with_no_registry_entry() {
+        let path = isolated_registry_path("kill-all-owned");
+        let pool = ProcessPool::with_registry_path(path.clone());
+        let child = pool.spawn("sleep", &["30".into()], None, None, None).await.unwrap();
+        // Simulate a failed registry write: the pool owns the handle, but the
+        // device registry has no record of it.
+        Registry::at(path.clone()).remove(child.pid);
+        assert!(!Registry::at(path).contains(child.pid));
+
+        pool.kill_all_registered(false).await.expect("owned handles must be stopped");
+
+        assert!(!pool.processes.read().await.contains_key(&child.pid));
+        let mut alive = true;
+        for _ in 0..40 {
+            alive = crate::runtime::registry::pid_alive(child.pid);
+            if !alive {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        assert!(!alive, "an unregistered owned child must not survive kill_all_registered");
+    }
+
+    #[tokio::test]
+    async fn list_does_not_prune_the_registry() {
+        let path = isolated_registry_path("list-no-prune");
+        // PID 0 is never a live process, so it can only vanish if the file is
+        // rewritten. Record it directly so the write itself cannot be blamed.
+        Registry::at(path.clone())
+            .insert(RegistryEntry::new(0, None, None, vec!["dead".into()]))
+            .expect("insert dead entry");
+        assert!(Registry::at(path.clone()).contains(0));
+
+        let pool = ProcessPool::with_registry_path(path.clone());
+        let _ = pool.list().await;
+
+        assert!(
+            Registry::at(path).contains(0),
+            "list is a read path and must not prune (rewrite) the registry"
+        );
+    }
+
     #[tokio::test]
     async fn test_process_pool() {
-        let pool = ProcessPool::new();
+        let pool = isolated_pool("process-pool");
 
         #[cfg(unix)]
         let (cmd, args) = ("sleep", vec!["1".to_string()]);
@@ -352,9 +502,11 @@ mod tests {
 
     #[test]
     fn process_pool_new_is_default() {
-        let a = ProcessPool::new();
-        let b = ProcessPool::default();
-        // Both should be constructible. Check list returns empty for fresh pools.
+        let a = isolated_pool("new");
+        let b = isolated_pool("default");
+        // `Default` must remain constructible with the production constructor.
+        let _default_constructs = ProcessPool::default();
+        // A fresh pool lists nothing when its registry has no entries.
         tokio::runtime::Runtime::new().unwrap().block_on(async {
             let la = a.list().await;
             let lb = b.list().await;
@@ -363,13 +515,34 @@ mod tests {
         });
     }
 
+    #[test]
+    fn process_pool_list_surfaces_device_registry_entries() {
+        let path = isolated_registry_path("registry-visible");
+        let pid = std::process::id();
+        Registry::at(path.clone())
+            .insert(RegistryEntry::new(
+                pid,
+                Some("proj-x".into()),
+                Some("cargo".into()),
+                vec!["cargo".into(), "build".into()],
+            ))
+            .expect("insert registry entry");
+
+        let pool = ProcessPool::with_registry_path(path);
+        let listed = tokio::runtime::Runtime::new().unwrap().block_on(pool.list());
+        let found =
+            listed.iter().find(|p| p.pid == pid).expect("live registry entry must be listed");
+        assert_eq!(found.project.as_deref(), Some("proj-x"));
+        assert_eq!(found.harness.as_deref(), Some("cargo"));
+    }
+
     // -----------------------------------------------------------------------
     // ProcessPool system_memory_usage
     // -----------------------------------------------------------------------
 
     #[tokio::test]
     async fn system_memory_usage_returns_nonzero() {
-        let pool = ProcessPool::new();
+        let pool = isolated_pool("memory-usage");
         let (used, total) = pool.system_memory_usage().await;
         // A running system must have >0 total memory.
         assert!(total > 0, "total memory should be non-zero");
@@ -382,7 +555,7 @@ mod tests {
 
     #[tokio::test]
     async fn find_all_returns_managed_processes() {
-        let pool = ProcessPool::new();
+        let pool = isolated_pool("find-all");
         let results = pool.find(ProcessFilter::All).await;
         // With no spawned processes, should be empty.
         assert!(results.is_empty());
@@ -390,7 +563,7 @@ mod tests {
 
     #[tokio::test]
     async fn find_by_project_filters_correctly() {
-        let pool = ProcessPool::new();
+        let pool = isolated_pool("find-by-project");
         let pid = insert_unowned_handle(&pool).await;
         {
             let mut procs = pool.processes.write().await;
@@ -410,7 +583,7 @@ mod tests {
 
     #[tokio::test]
     async fn find_by_harness_filters_correctly() {
-        let pool = ProcessPool::new();
+        let pool = isolated_pool("find-by-harness");
         let pid = insert_unowned_handle(&pool).await;
         {
             let mut procs = pool.processes.write().await;

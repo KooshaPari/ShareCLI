@@ -47,7 +47,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run TruffleHog
-        uses: trufflesecurity/trufflehog@3bd2b5887eb0efb8fa18bfd1d296032924e4ffdc
+        uses: trufflesecurity/trufflehog@4ef51f69ca6347aaa76a5e64a87eac9c0c909f71
         with:
           version: 3.97.0
           extra_args: --only-verified
@@ -110,20 +110,30 @@ jobs:
       - name: Build image
         id: build_image
         if: ${{ hashFiles('Dockerfile') != '' }}
-        run: docker build -t sharecli:scan .
+        # podman: this repo does not use the Docker engine
+        # -f Dockerfile is explicit: podman's default discovery would pick the
+        # root Containerfile first, which is a different build definition.
+        run: podman build -f Dockerfile --platform linux/amd64 -t sharecli:scan .
+
+      - name: Export image for scanning
+        if: ${{ hashFiles('Dockerfile') != '' }}
+        # podman: export the built image so Trivy scans the archive directly.
+        # Trivy's podman image source would need a running podman API socket.
+        run: podman save --format docker-archive -o "${RUNNER_TEMP}/sharecli-scan.tar" sharecli:scan
 
       - name: Run Trivy vulnerability scanner
         id: trivy_scan
         if: ${{ hashFiles('Dockerfile') != '' }}
         uses: aquasecurity/trivy-action@38b337fff0a2f984d5be173c99e3f633438167ec
         with:
-          image-ref: 'sharecli:scan'
+          scan-type: 'image'
+          input: ${{ runner.temp }}/sharecli-scan.tar
           format: 'sarif'
           output: 'trivy-results.sarif'
 
       - name: Upload Trivy results
         if: ${{ always() && hashFiles('Dockerfile') != '' }}
-        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066
+        uses: github/codeql-action/upload-sarif@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea
         with:
           sarif_file: 'trivy-results.sarif'
 

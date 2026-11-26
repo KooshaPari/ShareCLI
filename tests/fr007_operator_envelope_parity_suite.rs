@@ -23,6 +23,9 @@ use sharecli_tray_linux::ipc::{
     GateStatusSnapshot, HostResourceWatchJson, PoolSnapshot, StatusSnapshot,
 };
 use sharecli_tray_linux::operator_display as linux_display;
+// `sharecli-tray-windows` is linked only on Windows and Linux glibc (see
+// Cargo.toml); gate the Windows parity half so musl/macOS `--tests` compiles.
+#[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
 use sharecli_tray_windows::operator_display as win_display;
 
 fn bin() -> Command {
@@ -807,7 +810,23 @@ fn fr007_operator_matrix_tray_formatter_markers() {
 
     let linux_pool = linux_display::format_pool_tray_line(&pool);
     let linux_status = linux_display::format_status_snapshot_tray_line(&status);
+    assert!(
+        linux_pool.starts_with(POOL_PREFIX),
+        "linux pool MUST use operator prefix markers (AC-007.84); got: {linux_pool}"
+    );
+    assert!(
+        linux_status.starts_with(PROC_PREFIX),
+        "linux status MUST use operator prefix markers (AC-007.84); got: {linux_status}"
+    );
 
+    #[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
+    assert_windows_tray_formatter_markers(&pool, &status);
+}
+
+/// Windows half of AC-007.84, compiled only where `sharecli-tray-windows` is
+/// linked (Windows and Linux glibc, per Cargo.toml).
+#[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
+fn assert_windows_tray_formatter_markers(pool: &PoolSnapshot, status: &StatusSnapshot) {
     use sharecli_tray_windows::ipc::{
         GateStatusSnapshot as WinGate, HostResourceWatchJson as WinHost, PoolSnapshot as WinPool,
         StatusSnapshot as WinStatus,
@@ -860,19 +879,14 @@ fn fr007_operator_matrix_tray_formatter_markers() {
     let win_pool_line = win_display::format_pool_tray_line(&win_pool);
     let win_status_line = win_display::format_status_snapshot_tray_line(&win_status);
 
-    for (label, line) in [
-        ("linux pool", &linux_pool),
-        ("linux status", &linux_status),
-        ("windows pool", &win_pool_line),
-        ("windows status", &win_status_line),
-    ] {
-        assert!(
-            line.starts_with(POOL_PREFIX) || line.starts_with(PROC_PREFIX),
-            "{label} MUST use operator prefix markers (AC-007.84); got: {line}"
-        );
-    }
-    assert!(linux_pool.starts_with(POOL_PREFIX) && win_pool_line.starts_with(POOL_PREFIX));
-    assert!(linux_status.starts_with(PROC_PREFIX) && win_status_line.starts_with(PROC_PREFIX));
+    assert!(
+        win_pool_line.starts_with(POOL_PREFIX),
+        "windows pool MUST use operator prefix markers (AC-007.84); got: {win_pool_line}"
+    );
+    assert!(
+        win_status_line.starts_with(PROC_PREFIX),
+        "windows status MUST use operator prefix markers (AC-007.84); got: {win_status_line}"
+    );
 }
 
 /// FR-007 / AC-007.84 — Swift + C# tray sources ship pool/proc-scan operator formatters.

@@ -95,7 +95,7 @@ pub async fn stop(
             return Ok(());
         }
         println!("Stopping all managed processes{}...", if force { " (force)" } else { "" });
-        pool.kill_all().await?;
+        pool.kill_all_registered(force).await?;
         println!("All processes stopped.");
         return Ok(());
     }
@@ -106,7 +106,7 @@ pub async fn stop(
             return Ok(());
         }
         println!("Stopping process {p}{}...", if force { " (force)" } else { "" });
-        pool.kill(p).await?;
+        pool.kill_registered(p, force).await?;
         println!("Process {p} stopped.");
         return Ok(());
     }
@@ -133,7 +133,7 @@ pub async fn stop(
     let progress = StepProgress::new("Stopping processes", processes.len());
     let line_mode = progress.uses_line_output();
     for proc in &processes {
-        pool.kill(proc.pid).await?;
+        pool.kill_registered(proc.pid, force).await?;
         progress.inc(Some(&format!("{} ({})", proc.pid, proc.name)));
         if line_mode {
             println!("Stopped {} ({})", proc.pid, proc.name);
