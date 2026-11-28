@@ -1,6 +1,6 @@
 [package]
 name = "sharecli-tray-linux"
-version = "0.8.1"
+version = "0.9.0"
 edition = "2021"
 description = "Linux systemtray integration for sharecli (ksni/freedesktop)"
 license = "MIT"
