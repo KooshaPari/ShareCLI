@@ -34,6 +34,30 @@ export PATH="$BINPATH:$PATH"
 
 now_ms() { python3 -c 'import time;print(int(time.time()*1000))'; }
 
+# Bounded wait for background analysers. Returns 0 once every pid has exited,
+# 1 if the deadline passes first. An unbounded `wait` is not acceptable here: an
+# admission defect that leaks a slot blocks the second start forever, and the
+# harness would then hang instead of reporting the G2 failure.
+wait_bounded() { # <deadline-ms> <pid>...
+  local deadline_ms=$1
+  shift
+  local pid
+  local alive
+  while :; do
+    alive=0
+    for pid in "$@"; do
+      if kill -0 "$pid" 2>/dev/null; then
+        alive=1
+      fi
+    done
+    [ "$alive" -eq 0 ] && return 0
+    if [ "$(now_ms)" -ge "$deadline_ms" ]; then
+      return 1
+    fi
+    sleep 1
+  done
+}
+
 FAILED=0
 declare -a ROWS=()
 record() { # gate name status detail
@@ -154,9 +178,21 @@ B1=$!
 sleep 1
 FAKE_BUILD_SECS=4 "$BIN" start mvp --harness cargo --cwd "$WORK" -- build >"$WORK/b2.out" 2>&1 &
 B2=$!
-wait "$B1" "$B2" 2>/dev/null
-# Give any queued-but-not-admitted child time to run.
-sleep 6
+# Bound the wait so a leaked permit reports a G2 failure instead of hanging.
+G2_WAIT_EXPIRED=0
+SLOT_DIR="$WORK/state/build-slots"
+G2_DEADLINE=$(( $(now_ms) + 30000 ))
+if wait_bounded "$G2_DEADLINE" "$B1" "$B2"; then
+  # Give any queued-but-not-admitted child time to run.
+  sleep 6
+else
+  G2_WAIT_EXPIRED=1
+  HELD_SLOTS=$(ls -1 "$SLOT_DIR" 2>/dev/null | tr '\n' ' ')
+  record G2 "bounded admission wait" FAIL "a start did not return within 30s: an admission slot was leaked (slot dir: $SLOT_DIR; entries: ${HELD_SLOTS:-<none>})"
+  record G2 "second build admitted" FAIL "verdict undefined: a start never returned; leaked slot in $SLOT_DIR"
+  kill "$B1" "$B2" 2>/dev/null
+  wait "$B1" "$B2" 2>/dev/null
+fi
 
 # Classify a build log for the cap=1 lifetime property. Prints
 # "<verdict> <first_start> <first_end> <second_start>", where verdict is one of:
@@ -217,6 +253,11 @@ g2_selftest "serialised builds accepted" pass "$WORK/g2-pos.log"
 
 read -r G2_VERDICT _ FIRST_END SECOND_START <<<"$(g2_verdict "$LOGF")"
 
+if [ "$G2_WAIT_EXPIRED" -ne 0 ]; then
+  # Already recorded as the G2 failure path above; the build log is incomplete
+  # by construction, so classifying it would only restate the timeout.
+  :
+else
 case "${G2_VERDICT:-}" in
   fail_first_unobserved)
     record G2 "first build observed" FAIL "build 1 has no complete START/END pair in $LOGF (cap=1 cannot be asserted on zero evidence)"
@@ -239,6 +280,7 @@ case "${G2_VERDICT:-}" in
     record G2 "verdict computed" FAIL "g2_verdict produced '${G2_VERDICT:-<empty>}'"
     ;;
 esac
+fi
 
 echo "== G3 coalescing (out of MVP slice) =="
 record G3 "agent-call coalescing" NOT_RUN "requires the call-capture path; MVP slice is G1+G2"

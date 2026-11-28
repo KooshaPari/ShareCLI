@@ -20,8 +20,45 @@ pub struct AgentContentionThresholds {
 }
 
 impl Default for AgentContentionThresholds {
+    /// Baseline calibrated for one developer host running a whole agent fleet.
+    ///
+    /// The former 4/8 baseline denied at 8 agents, a count a normal host
+    /// reaches routinely (17 concurrent agents measured on a 16-core host), so
+    /// the gate refused normal work. WARN at 16 stays informative just below
+    /// the documented 20-agent device cap; REFUSE at 32 only trips at twice
+    /// that cap.
     fn default() -> Self {
-        Self { warn_at: 4, refuse_at: 8 }
+        Self { warn_at: 16, refuse_at: 32 }
+    }
+}
+
+impl AgentContentionThresholds {
+    /// Resolve thresholds from the environment, falling back to [`Self::default`].
+    ///
+    /// Overrides: `SHARECLI_AGENT_CONTENTION_WARN_AT`,
+    /// `SHARECLI_AGENT_CONTENTION_REFUSE_AT`.
+    pub fn from_env() -> Self {
+        Self::from_overrides(
+            env_parse("SHARECLI_AGENT_CONTENTION_WARN_AT"),
+            env_parse("SHARECLI_AGENT_CONTENTION_REFUSE_AT"),
+        )
+    }
+
+    /// Pure resolver behind [`Self::from_env`]; testable without mutating
+    /// process-global environment state.
+    pub fn from_overrides(warn_at: Option<usize>, refuse_at: Option<usize>) -> Self {
+        let defaults = Self::default();
+        let warn_at = warn_at.unwrap_or(defaults.warn_at);
+        let refuse_at = refuse_at.unwrap_or(defaults.refuse_at);
+        if refuse_at == 0 || warn_at >= refuse_at {
+            tracing::warn!(
+                warn_at,
+                refuse_at,
+                "invalid agent contention thresholds (need 0 < warn_at < refuse_at); using defaults"
+            );
+            return defaults;
+        }
+        Self { warn_at, refuse_at }
     }
 }
 
@@ -39,6 +76,50 @@ impl Default for AgentResourceThresholds {
         Self {
             warn_total_rss_bytes: 16 * 1_073_741_824,
             refuse_total_rss_bytes: 32 * 1_073_741_824,
+        }
+    }
+}
+
+impl AgentResourceThresholds {
+    /// Resolve RSS thresholds from the environment, falling back to defaults.
+    ///
+    /// Overrides: `SHARECLI_AGENT_RSS_WARN_BYTES`,
+    /// `SHARECLI_AGENT_RSS_REFUSE_BYTES`.
+    pub fn from_env() -> Self {
+        Self::from_overrides(
+            env_parse("SHARECLI_AGENT_RSS_WARN_BYTES"),
+            env_parse("SHARECLI_AGENT_RSS_REFUSE_BYTES"),
+        )
+    }
+
+    /// Pure resolver behind [`Self::from_env`].
+    pub fn from_overrides(
+        warn_total_rss_bytes: Option<u64>,
+        refuse_total_rss_bytes: Option<u64>,
+    ) -> Self {
+        let defaults = Self::default();
+        let warn = warn_total_rss_bytes.unwrap_or(defaults.warn_total_rss_bytes);
+        let refuse = refuse_total_rss_bytes.unwrap_or(defaults.refuse_total_rss_bytes);
+        if refuse == 0 || warn >= refuse {
+            tracing::warn!(
+                warn,
+                refuse,
+                "invalid agent RSS thresholds (need 0 < warn < refuse); using defaults"
+            );
+            return defaults;
+        }
+        Self { warn_total_rss_bytes: warn, refuse_total_rss_bytes: refuse }
+    }
+}
+
+/// Parse a threshold override from the environment, ignoring garbage values.
+fn env_parse<T: std::str::FromStr>(name: &str) -> Option<T> {
+    let raw = std::env::var(name).ok()?;
+    match raw.trim().parse::<T>() {
+        Ok(value) => Some(value),
+        Err(_) => {
+            tracing::warn!(name, value = %raw, "ignoring unparseable threshold override");
+            None
         }
     }
 }
@@ -106,8 +187,8 @@ pub fn live_agent_contention_tier() -> AgentContentionTier {
     combined_agent_contention_tier(
         count_host_agents(),
         total_watched_agent_rss_bytes(),
-        AgentContentionThresholds::default(),
-        AgentResourceThresholds::default(),
+        AgentContentionThresholds::from_env(),
+        AgentResourceThresholds::from_env(),
     )
 }
 
@@ -179,8 +260,8 @@ pub fn gate_status_snapshot_with_rss(
     let tier = combined_agent_contention_tier(
         agent_count,
         total_rss_bytes,
-        AgentContentionThresholds::default(),
-        AgentResourceThresholds::default(),
+        AgentContentionThresholds::from_env(),
+        AgentResourceThresholds::from_env(),
     );
     GateStatusSnapshot {
         thermal_pressure: thermal_level_label(thermal).to_string(),
@@ -208,8 +289,8 @@ impl GateStatusSnapshot {
 
 /// Operator status section from a captured gate snapshot (FR-007 / AC-007.17).
 pub fn format_gate_status_from_snapshot(snap: &GateStatusSnapshot) -> String {
-    let count_thresholds = AgentContentionThresholds::default();
-    let rss_thresholds = AgentResourceThresholds::default();
+    let count_thresholds = AgentContentionThresholds::from_env();
+    let rss_thresholds = AgentResourceThresholds::from_env();
     format!(
         "\n=== Thermal Gate (FR-011) ===\n\n\
          Thermal level: {}\n\
@@ -276,8 +357,9 @@ mod tests {
 
     #[test]
     fn effective_gate_decision_agent_refuse_denies_on_green() {
+        let refuse_at = AgentContentionThresholds::default().refuse_at;
         assert_eq!(
-            effective_gate_decision(ThermalLevel::Green, 8),
+            effective_gate_decision(ThermalLevel::Green, refuse_at),
             "DENY",
             "agent refuse tier MUST deny even when thermal is Green"
         );
@@ -285,8 +367,9 @@ mod tests {
 
     #[test]
     fn effective_gate_decision_agent_warn_still_admits() {
+        let warn_at = AgentContentionThresholds::default().warn_at;
         assert_eq!(
-            effective_gate_decision(ThermalLevel::Green, 4),
+            effective_gate_decision(ThermalLevel::Green, warn_at),
             "ADMIT",
             "agent warn tier MUST still ADMIT (Warn proceeds in Hypervisor)"
         );
@@ -294,10 +377,11 @@ mod tests {
 
     #[test]
     fn format_gate_status_section_includes_decision() {
-        let section = format_gate_status_section(ThermalLevel::Green, 8);
+        let refuse_at = AgentContentionThresholds::default().refuse_at;
+        let section = format_gate_status_section(ThermalLevel::Green, refuse_at);
         assert!(section.contains("=== Thermal Gate (FR-011) ==="));
         assert!(section.contains("Thermal level: GREEN"));
-        assert!(section.contains("Detected agents: 8"));
+        assert!(section.contains(&format!("Detected agents: {refuse_at}")));
         assert!(section.contains("Agent contention: REFUSE"));
         assert!(section.contains("Gate decision: [DENY]"));
     }
@@ -312,10 +396,44 @@ mod tests {
 
     #[test]
     fn gate_status_snapshot_matches_section() {
-        let snap = gate_status_snapshot_with_rss(ThermalLevel::Yellow, 4, 500);
+        let warn_at = AgentContentionThresholds::default().warn_at;
+        let snap = gate_status_snapshot_with_rss(ThermalLevel::Yellow, warn_at, 500);
         assert_eq!(snap.thermal_pressure, "YELLOW");
-        assert_eq!(snap.detected_agents, 4);
+        assert_eq!(snap.detected_agents, warn_at);
         assert_eq!(snap.agent_contention, "WARN");
         assert_eq!(snap.gate_decision, "ADMIT");
+    }
+
+    /// Thresholds are operator-configurable; invalid values fall back to defaults.
+    #[test]
+    fn contention_threshold_overrides_resolve_and_validate() {
+        let tuned = AgentContentionThresholds::from_overrides(Some(20), Some(40));
+        assert_eq!((tuned.warn_at, tuned.refuse_at), (20, 40));
+        assert_eq!(
+            AgentContentionThresholds::from_overrides(None, None),
+            AgentContentionThresholds::default()
+        );
+        assert_eq!(
+            AgentContentionThresholds::from_overrides(Some(40), Some(20)),
+            AgentContentionThresholds::default(),
+            "warn_at >= refuse_at MUST fall back to defaults"
+        );
+        assert_eq!(
+            AgentContentionThresholds::from_overrides(Some(4), Some(0)),
+            AgentContentionThresholds::default(),
+            "zero refuse_at MUST fall back to defaults"
+        );
+    }
+
+    /// RSS thresholds are operator-configurable; invalid values fall back.
+    #[test]
+    fn rss_threshold_overrides_resolve_and_validate() {
+        let tuned = AgentResourceThresholds::from_overrides(Some(8_000), Some(16_000));
+        assert_eq!((tuned.warn_total_rss_bytes, tuned.refuse_total_rss_bytes), (8_000, 16_000));
+        assert_eq!(
+            AgentResourceThresholds::from_overrides(Some(16_000), Some(8_000)),
+            AgentResourceThresholds::default(),
+            "warn >= refuse MUST fall back to defaults"
+        );
     }
 }

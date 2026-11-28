@@ -19,11 +19,14 @@
 //! - [`shared`] — `SharedRuntime` + `PooledProcess` (node/bun web-harness pools).
 //! - [`health`] — `RuntimeHealth` + `PoolStatus` (IPC payload value types).
 //! - [`resources`] — `ProjectLimits` + `ProjectResources` + `ResourceCheck`.
+//! - [`limits_store`] — persisted `~/.sharecli/limits.json` + measured
+//!   `limits check` / `optimize` evaluation.
 //! - [`tests`] — unit tests (loaded via `#[path]`).
 
 mod admission;
 mod audit;
 mod health;
+mod limits_store;
 mod managed;
 mod pool;
 mod process_info;
@@ -40,6 +43,11 @@ mod tests;
 pub use admission::{SlotLease, SlotPool};
 pub use audit::ProcState;
 pub use health::{PoolStatus, RuntimeHealth};
+pub use limits_store::{
+    default_limits_path, detect, evaluate, resolve, suggested_entry, suggestions,
+    DetectionSnapshot, DetectionState, FamilyUsage, LimitEntry, LimitRow, LimitSource,
+    LimitVerdict, LimitsFile, LimitsStore, ProjectUsage, LIMITS_PATH_ENV,
+};
 pub use managed::ManagedProcess;
 pub use pool::{ProcessFilter, ProcessPool};
 pub use process_info::ProcessInfo;

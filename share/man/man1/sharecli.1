@@ -56,7 +56,7 @@ sharecli\-project(1)
 Project management
 .TP
 sharecli\-optimize(1)
-Optimize resource usage
+Adjust limits from measured usage (dry run unless \-\-apply)
 .TP
 sharecli\-prune(1)
 Prune idle processes
@@ -68,10 +68,10 @@ sharecli\-run(1)
 Pooled execution (currently unavailable; returns an error without executing work)
 .TP
 sharecli\-limits(1)
-Set project resource limits
+Show, set, and check persisted project resource limits (FR\-002)
 .TP
 sharecli\-check(1)
-Check project resource limits
+Check one project\*(Aqs limits against detected usage
 .TP
 sharecli\-thermal(1)
 Live thermal\-gate / hypervisor state monitor (TUI)
@@ -164,9 +164,12 @@ EXAMPLES
   $ sharecli surface send \-\-surface\-id <surface\-id> \-\-text \*(Aqecho hello\*(Aq
   $ sharecli surface read \-\-surface\-id <surface\-id> \-\-max\-bytes 4096
 
-  # Resource limits (FR\-002): `limits` takes the project positionally and has
-  # no set/get subcommands; `check` reports the effective values
-  $ sharecli limits myproject \-\-memory 4096 \-\-processes 8
+  # Resource limits (FR\-002): persisted per\-project caps, checked against
+  # detected usage rather than against a default
+  $ sharecli limits
+  $ sharecli limits set myproject \-\-mem\-mb 4096 \-\-max\-procs 8
+  $ sharecli limits set \-\-global \-\-mem\-mb 2048 \-\-max\-procs 12
+  $ sharecli limits check \-\-fail\-on\-over
   $ sharecli check myproject
 
   # Live thermal\-gate / hypervisor state (TUI)
