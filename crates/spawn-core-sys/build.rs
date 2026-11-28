@@ -31,15 +31,28 @@
 //!
 //! Gotcha: use `CARGO_CFG_TARGET_OS`, not `cfg!(windows)` in this file — the
 //! latter is the *host* OS of the build script, which breaks cross-compiles.
+//!
+//! # Cross-compiles: Zig needs the Cargo `TARGET`
+//!
+//! `zig build` targets the **host** unless told otherwise. Passing Cargo's
+//! `TARGET` through as `-Dtarget=<zig triple>` (plus `-Dcpu=baseline`) is what
+//! keeps a musl cross-build from emitting a glibc-ABI object. The Cargo ->
+//! Zig spelling translation lives in `src/target_triple.rs`.
 
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+// Shared with `src/lib.rs` so the mapping is unit-testable with `cargo test`.
+#[path = "src/target_triple.rs"]
+mod target_triple;
+
 fn main() -> anyhow::Result<()> {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=src/lib.rs");
+    // The Zig target follows Cargo's TARGET, so a target switch must rebuild.
+    println!("cargo:rerun-if-env-changed=TARGET");
 
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     if target_os == "windows" {
@@ -81,13 +94,30 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn build_unix_via_zig_build(spawn_core_dir: &Path) -> anyhow::Result<()> {
-    let status = Command::new("zig")
-        .args(["build", "-Doptimize=ReleaseSafe"])
-        .current_dir(spawn_core_dir)
-        .status()
-        .map_err(|e| {
-            anyhow::anyhow!("failed to run `zig build`: {e}\nIs zig installed and on PATH?")
-        })?;
+    let mut cmd = Command::new("zig");
+    cmd.args(["build", "-Doptimize=ReleaseSafe"])
+        .current_dir(spawn_core_dir);
+
+    // Without `-Dtarget`, `zig build` always emits for the host: cross-building
+    // to musl on a glibc host then produces a glibc-ABI object that cannot link
+    // against musl's self-contained crt (undefined `mmap64`/`openat64`/…).
+    // `-Dcpu=baseline` keeps host CPU features out of a cross artifact.
+    // No usable TARGET keeps the historical host-default behaviour instead of
+    // failing the build.
+    if let Some(cargo_target) = env::var("TARGET").ok() {
+        if let Some(zig_target) = target_triple::cargo_target_to_zig(&cargo_target) {
+            println!(
+                "cargo:warning=spawn-core: building Zig staticlib for cargo TARGET \
+                 {cargo_target} (zig target {zig_target}, cpu baseline)"
+            );
+            cmd.arg(format!("-Dtarget={zig_target}"));
+            cmd.arg("-Dcpu=baseline");
+        }
+    }
+
+    let status = cmd.status().map_err(|e| {
+        anyhow::anyhow!("failed to run `zig build`: {e}\nIs zig installed and on PATH?")
+    })?;
 
     if !status.success() {
         anyhow::bail!("`zig build` exited with status {status}");
