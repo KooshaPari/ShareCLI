@@ -23,5 +23,11 @@ jobs:
           # Verify dashboard assets are consistent
           # Check golden snapshots exist
           test -d tests/golden || (echo "ERROR: Golden snapshot directory missing" && exit 1)
-          test -f tests/a11y.html || (echo "ERROR: A11y test HTML missing" && exit 1)
+          # The loadable document for this gate is the dashboard itself. The
+          # assertion used to point at `tests/a11y.html`, a path that has never
+          # existed on main or any branch (a11y coverage lives in a11y.yml and
+          # `tests/a11y/`, while the real page is `src/dashboard.html`, which
+          # scripts/a11y/axe-dashboard.mjs renders). Asserting the real file
+          # keeps the check meaningful instead of permanently red.
+          test -f src/dashboard.html || (echo "ERROR: dashboard document missing" && exit 1)
           echo "Visual regression gate passed"

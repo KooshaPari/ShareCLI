@@ -37,6 +37,22 @@ lint:
     - linters: [actionlint]
       paths:
         - .github/workflows/ci.yml
+    # Path exclusions live in the ACTIVE trunk config. Moving them out of the
+    # legacy root trunk.yaml, which trunk does not read.
+    - linters: [ALL]
+      paths:
+        - node_modules/
+        - .venv/
+        - venv/
+        - __pycache__/
+        - target/
+        - dist/
+        - build/
+        - .git/
+        - vendor/
+        - rustfmt.toml
+        - "*.lock"
+        - "go.sum"
 
 actions:
   enabled: []

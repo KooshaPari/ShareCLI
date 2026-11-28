@@ -1,0 +1,23 @@
+# Taplo scope for this repo.
+#
+# Taplo is the TOML formatter enabled by `.trunk/trunk.yaml` and run directly
+# as `taplo fmt --check` in `.github/workflows/trunk-check.yml`. Without an
+# explicit scope it formats EVERY *.toml it can see, including vendored,
+# third-party manifests and `rustfmt.toml` (which is a rustfmt config that
+# taplo reformats to a different style than rustfmt's own `--check` expects,
+# so the two gates fight).
+#
+# Own only first-party Cargo/TOML configuration. Do not modify vendor files.
+include = ["**/*.toml"]
+exclude = [
+  # Vendored third-party crates/manifests: not ours to reformat.
+  "vendor/**",
+  # Tool configs with their own canonical formatting (rustfmt owns this file).
+  "rustfmt.toml",
+  ".rustfmt.toml",
+  # Build output.
+  "target/**",
+]
+
+[formatting]
+# Keep taplo's default style; only the file scope is narrowed here.

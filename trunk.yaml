@@ -162,22 +162,6 @@ actions:
     type: plugin
     path: trunk-install
 
-# Ignored patterns
-ignore:
-  - paths:
-      - node_modules/
-      - .venv/
-      - venv/
-      - __pycache__/
-      - target/
-      - dist/
-      - build/
-      - .git/
-      - vendor/
-      - "*.lock"
-      - "go.sum"
-    type: include
-
 # CI configuration
 ci:
   enabled: true
