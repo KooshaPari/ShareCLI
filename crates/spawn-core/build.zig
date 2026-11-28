@@ -14,6 +14,10 @@ pub fn build(b: *std.Build) void {
     // Keep stack probes out of the .a so consumers do not need Zig compiler-rt
     // when we skip bundling it (Darwin path uses build-obj from build.rs).
     lib_module.stack_check = false;
+    // A static library embedded in an arbitrary consumer must be position
+    // independent: Rust's musl targets link the binary as -static-pie, where a
+    // non-PIC object fails with "relocation R_X86_64_32S ... recompile with -fPIE".
+    lib_module.pic = true;
 
     const lib = b.addLibrary(.{
         .name = "spawn_core",

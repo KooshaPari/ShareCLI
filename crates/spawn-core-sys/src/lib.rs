@@ -7,6 +7,9 @@
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+/// Cargo target triple -> Zig target triple translation used by `build.rs`.
+pub mod target_triple;
+
 #[cfg(unix)]
 mod unix_ffi;
 #[cfg(unix)]
