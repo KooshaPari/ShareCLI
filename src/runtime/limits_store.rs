@@ -49,10 +49,7 @@ pub struct LimitEntry {
 
 impl LimitEntry {
     pub fn from_defaults(defaults: &ProjectLimitsConfig) -> Self {
-        Self {
-            memory_limit_mb: defaults.memory_limit_mb,
-            max_processes: defaults.max_processes,
-        }
+        Self { memory_limit_mb: defaults.memory_limit_mb, max_processes: defaults.max_processes }
     }
 
     /// MB above the memory cap (`0` when within it).
@@ -490,7 +487,10 @@ pub fn suggestions(
         out.push(format!(
             "no global limit persisted; {} detected agents using {} MB total; \
              suggest: sharecli limits set --global --mem-mb {} --max-procs {}",
-            snapshot.agent_count, snapshot.total_memory_mb, entry.memory_limit_mb, entry.max_processes
+            snapshot.agent_count,
+            snapshot.total_memory_mb,
+            entry.memory_limit_mb,
+            entry.max_processes
         ));
     }
 
@@ -520,8 +520,7 @@ mod tests {
         let store = LimitsStore::at(&path);
         let mut file = LimitsFile::default();
         file.global = Some(LimitEntry { memory_limit_mb: 512, max_processes: 4 });
-        file.projects
-            .insert("alpha".into(), LimitEntry { memory_limit_mb: 256, max_processes: 2 });
+        file.projects.insert("alpha".into(), LimitEntry { memory_limit_mb: 256, max_processes: 2 });
         store.save(&file).expect("save");
 
         // A brand-new handle (same as a later process) reads the same values.
@@ -559,11 +558,8 @@ mod tests {
     #[test]
     fn verdict_ok_when_within_limit() {
         let file = file_with_global(1024, 10);
-        let snapshot = snapshot_with(vec![ProjectUsage {
-            project: "alpha".into(),
-            procs: 3,
-            memory_mb: 400,
-        }]);
+        let snapshot =
+            snapshot_with(vec![ProjectUsage { project: "alpha".into(), procs: 3, memory_mb: 400 }]);
         let rows = evaluate(&["alpha".into()], &file, &defaults(), &snapshot);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].verdict, LimitVerdict::Ok);
@@ -573,11 +569,8 @@ mod tests {
     #[test]
     fn verdict_over_on_each_axis() {
         let file = file_with_global(512, 4);
-        let snapshot = snapshot_with(vec![ProjectUsage {
-            project: "alpha".into(),
-            procs: 9,
-            memory_mb: 900,
-        }]);
+        let snapshot =
+            snapshot_with(vec![ProjectUsage { project: "alpha".into(), procs: 9, memory_mb: 900 }]);
         let rows = evaluate(&["alpha".into()], &file, &defaults(), &snapshot);
         assert_eq!(rows[0].verdict, LimitVerdict::Over);
         assert_eq!(rows[0].over_memory_mb(), 388);
@@ -600,11 +593,8 @@ mod tests {
     #[test]
     fn measured_projects_outside_the_requested_list_are_appended() {
         let file = LimitsFile::default();
-        let snapshot = snapshot_with(vec![ProjectUsage {
-            project: "zeta".into(),
-            procs: 1,
-            memory_mb: 10,
-        }]);
+        let snapshot =
+            snapshot_with(vec![ProjectUsage { project: "zeta".into(), procs: 1, memory_mb: 10 }]);
         let rows = evaluate(&["alpha".into()], &file, &defaults(), &snapshot);
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[1].project, "zeta");
@@ -628,11 +618,8 @@ mod tests {
     #[test]
     fn suggestions_report_a_measured_overage() {
         let file = file_with_global(512, 4);
-        let snapshot = snapshot_with(vec![ProjectUsage {
-            project: "alpha".into(),
-            procs: 9,
-            memory_mb: 900,
-        }]);
+        let snapshot =
+            snapshot_with(vec![ProjectUsage { project: "alpha".into(), procs: 9, memory_mb: 900 }]);
         let rows = evaluate(&["alpha".into()], &file, &defaults(), &snapshot);
         let got = suggestions(&file, &defaults(), &snapshot, &rows);
         assert!(got.iter().any(|s| s.contains("over its memory limit by 388 MB")));

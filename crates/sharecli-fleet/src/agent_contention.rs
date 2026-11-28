@@ -429,10 +429,7 @@ mod tests {
     #[test]
     fn rss_threshold_overrides_resolve_and_validate() {
         let tuned = AgentResourceThresholds::from_overrides(Some(8_000), Some(16_000));
-        assert_eq!(
-            (tuned.warn_total_rss_bytes, tuned.refuse_total_rss_bytes),
-            (8_000, 16_000)
-        );
+        assert_eq!((tuned.warn_total_rss_bytes, tuned.refuse_total_rss_bytes), (8_000, 16_000));
         assert_eq!(
             AgentResourceThresholds::from_overrides(Some(16_000), Some(8_000)),
             AgentResourceThresholds::default(),

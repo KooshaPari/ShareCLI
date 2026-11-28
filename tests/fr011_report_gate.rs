@@ -5,7 +5,9 @@
 //! gate fields (detected agent count, contention tier, ADMIT/DENY).
 
 use sharecli::commands::report::{build_report, SortBy};
-use sharecli_fleet::{agent_contention::AgentContentionThresholds, gate_status_snapshot, ThermalLevel};
+use sharecli_fleet::{
+    agent_contention::AgentContentionThresholds, gate_status_snapshot, ThermalLevel,
+};
 
 /// Agent count that is genuinely at the refuse threshold (thresholds are
 /// operator-configurable, so never hardcode it here).

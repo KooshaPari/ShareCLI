@@ -40,11 +40,8 @@ impl Sandbox {
         let config = root.join("config").join("config.toml");
         std::fs::create_dir_all(root.join("config")).expect("config dir");
         std::fs::create_dir_all(root.join("state")).expect("state dir");
-        std::fs::write(
-            &config,
-            "[projects]\nalpha = \"/tmp/alpha\"\nbeta = \"/tmp/beta\"\n",
-        )
-        .expect("write config");
+        std::fs::write(&config, "[projects]\nalpha = \"/tmp/alpha\"\nbeta = \"/tmp/beta\"\n")
+            .expect("write config");
         Self { _dir: dir, root, limits, config }
     }
 
@@ -117,13 +114,17 @@ fn spawn_staged_agent(dir: &Path) -> Child {
 #[test]
 fn fr005_set_survives_the_invocation_that_set_it() {
     let sandbox = Sandbox::new();
-    let (stdout, _) = sandbox.ok(&["limits", "set", "--global", "--mem-mb", "512", "--max-procs", "4"]);
+    let (stdout, _) =
+        sandbox.ok(&["limits", "set", "--global", "--mem-mb", "512", "--max-procs", "4"]);
     assert!(stdout.contains("512 MB / 4 procs"), "set MUST echo the values; got: {stdout}");
 
     // A separate process reads it back.
     let (stdout, _) = sandbox.ok(&["limits"]);
     assert!(stdout.contains("(global)"), "bare limits MUST show the global row; got: {stdout}");
-    assert!(stdout.contains("global-override"), "global MUST be reported as persisted; got: {stdout}");
+    assert!(
+        stdout.contains("global-override"),
+        "global MUST be reported as persisted; got: {stdout}"
+    );
     assert!(stdout.contains("512"), "global memory limit MUST be read back; got: {stdout}");
 
     let stored = sandbox.limits_json();
@@ -203,10 +204,7 @@ fn fr005_check_json_reports_detection_and_verdicts() {
             .find(|row| row["project"] == name)
             .unwrap_or_else(|| panic!("row for {name} missing; got: {rows:?}"));
         let verdict = row["verdict"].as_str().expect("verdict");
-        assert!(
-            matches!(verdict, "OK" | "OVER" | "NO_DATA"),
-            "unexpected verdict {verdict}"
-        );
+        assert!(matches!(verdict, "OK" | "OVER" | "NO_DATA"), "unexpected verdict {verdict}");
         assert!(row["source"].is_string(), "row MUST carry its limit source");
     }
 }
@@ -221,10 +219,7 @@ fn fr005_check_text_says_nodata_rather_than_implying_a_pass() {
         "check MUST use the verdict vocabulary; got: {stdout}"
     );
     if stdout.contains("NO_DATA") {
-        assert!(
-            stdout.contains("it is not a pass"),
-            "check MUST explain NO_DATA; got: {stdout}"
-        );
+        assert!(stdout.contains("it is not a pass"), "check MUST explain NO_DATA; got: {stdout}");
     }
 }
 
@@ -269,10 +264,7 @@ fn fr005_optimize_reports_measurement_and_applies_once() {
         stdout.contains("no suggestions") || stdout.contains("\n- ") || stdout.starts_with("- "),
         "optimize MUST emit either `no suggestions` or actionable lines; got: {stdout}"
     );
-    assert!(
-        !sandbox.limits.exists(),
-        "a dry-run optimize MUST NOT write the limits document"
-    );
+    assert!(!sandbox.limits.exists(), "a dry-run optimize MUST NOT write the limits document");
 
     let (applied, _) = sandbox.ok(&["optimize", "--apply"]);
     assert!(applied.contains("applied:"), "apply MUST report what it wrote; got: {applied}");

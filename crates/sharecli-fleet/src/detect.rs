@@ -54,19 +54,8 @@ const AMBIGUOUS_FAMILIES: &[&str] = &["forge", "goose", "gemini", "cargo"];
 /// name may appear. Treating them as wrappers is a measured false-positive
 /// source (`bash -c "... kcode ..."` classified as kcode).
 const AGENT_LAUNCH_WRAPPERS: &[&str] = &[
-    "bun",
-    "deno",
-    "env",
-    "node",
-    "nodejs",
-    "npx",
-    "pnpm",
-    "python",
-    "python2",
-    "python3",
-    "uv",
-    "uvx",
-    "yarn",
+    "bun", "deno", "env", "node", "nodejs", "npx", "pnpm", "python", "python2", "python3", "uv",
+    "uvx", "yarn",
 ];
 
 /// Cmdline substrings that fingerprint each family (AC-006.11, AC-006.20).
@@ -315,10 +304,7 @@ pub fn match_known_agent(comm: &str, cmdline: &[impl AsRef<str>]) -> Option<&'st
 /// neither the wrapper itself, another wrapper (for `npx`-style chains), a
 /// flag, nor an `env`-style assignment. Arguments deeper on the command line
 /// are never evidence, so `node script.js --config .jcode/x` is not jcode.
-fn match_wrapper_program(
-    comm_base: &str,
-    cmdline: &[impl AsRef<str>],
-) -> Option<&'static str> {
+fn match_wrapper_program(comm_base: &str, cmdline: &[impl AsRef<str>]) -> Option<&'static str> {
     for arg in cmdline {
         let raw = arg.as_ref();
         if raw.starts_with('-') || raw.contains('=') {
@@ -968,10 +954,7 @@ mod tests {
     /// The argv fallback still works, but only behind a launch wrapper.
     #[test]
     fn launch_wrapper_argv_fallback_still_matches() {
-        assert_eq!(
-            match_known_agent("node", &["node", "/opt/kcode/bin/kcode.js"]),
-            Some("kcode")
-        );
+        assert_eq!(match_known_agent("node", &["node", "/opt/kcode/bin/kcode.js"]), Some("kcode"));
         assert_eq!(match_known_agent("python3", &["-m", "aider"]), Some("aider"));
         assert_eq!(match_known_agent("bash", &["-lc", "ls"]), None);
         // A shell `-c` string is a whole command line, not a program name: a

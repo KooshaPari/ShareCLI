@@ -44,9 +44,9 @@ pub use admission::{SlotLease, SlotPool};
 pub use audit::ProcState;
 pub use health::{PoolStatus, RuntimeHealth};
 pub use limits_store::{
-    default_limits_path, detect, evaluate, resolve, suggested_entry, suggestions, DetectionSnapshot,
-    DetectionState, FamilyUsage, LimitEntry, LimitRow, LimitSource, LimitVerdict, LimitsFile,
-    LimitsStore, ProjectUsage, LIMITS_PATH_ENV,
+    default_limits_path, detect, evaluate, resolve, suggested_entry, suggestions,
+    DetectionSnapshot, DetectionState, FamilyUsage, LimitEntry, LimitRow, LimitSource,
+    LimitVerdict, LimitsFile, LimitsStore, ProjectUsage, LIMITS_PATH_ENV,
 };
 pub use managed::ManagedProcess;
 pub use pool::{ProcessFilter, ProcessPool};

@@ -221,7 +221,9 @@ pub fn check(project: Option<&str>, as_json: bool) -> Result<bool> {
     println!();
     println!("{}", detection_footer(&snapshot));
     if rows.iter().all(|r| r.verdict == crate::runtime::LimitVerdict::NoData) {
-        println!("note: NO_DATA means detection attributed no process to the row; it is not a pass");
+        println!(
+            "note: NO_DATA means detection attributed no process to the row; it is not a pass"
+        );
         if snapshot.is_available() {
             println!(
                 "note: attribution matches a project name (3+ chars) or project path (6+ chars) in an agent's argv"
