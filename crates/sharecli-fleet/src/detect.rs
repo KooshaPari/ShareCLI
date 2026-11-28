@@ -33,11 +33,41 @@ pub const KNOWN_AGENT_FAMILIES: &[&str] = &[
     "goose",
     "forge",
     "jcode",
+    "kcode",
     "opencode",
 ];
 
 /// Families whose short `comm` names collide with non-agent tooling — require cmdline fingerprints.
 const AMBIGUOUS_FAMILIES: &[&str] = &["forge", "goose", "gemini", "cargo"];
+
+/// `comm` values that *host* an agent process without being one themselves.
+///
+/// argv is consulted only when the process name is one of these launch
+/// wrappers: an interpreter or package runner whose argv names the script it
+/// runs. Every other comm is authoritative, so a process whose comm is
+/// unrelated but whose argv merely mentions an agent name classifies as
+/// UNKNOWN, not as that family (FR-006 / AC-006.2).
+///
+/// Shells (`bash -c`, `sh -c`, `zsh -c`, `pwsh -c`) are deliberately NOT
+/// wrappers: a shell that launches an agent `exec`s it, so the comm becomes the
+/// agent, while a `-c` argument is a whole command string in which any agent
+/// name may appear. Treating them as wrappers is a measured false-positive
+/// source (`bash -c "... kcode ..."` classified as kcode).
+const AGENT_LAUNCH_WRAPPERS: &[&str] = &[
+    "bun",
+    "deno",
+    "env",
+    "node",
+    "nodejs",
+    "npx",
+    "pnpm",
+    "python",
+    "python2",
+    "python3",
+    "uv",
+    "uvx",
+    "yarn",
+];
 
 /// Cmdline substrings that fingerprint each family (AC-006.11, AC-006.20).
 ///
@@ -53,6 +83,7 @@ pub const CMDLINE_FINGERPRINTS: &[(&str, &[&str])] = &[
     ("goose", &["goose", "block-goose", "goose-agent"]),
     ("forge", &["forge", ".forge", "forge conversation"]),
     ("jcode", &["jcode", ".jcode", "jcode-cli"]),
+    ("kcode", &["kcode", ".kcode", "kcode-cli"]),
     ("opencode", &["opencode", ".opencode", "opencode-cli"]),
 ];
 
@@ -250,30 +281,86 @@ pub fn clear_runtime_patterns() {
 ///
 /// Returns the canonical family id when a pattern matches; `None` otherwise.
 /// Matching never implies wrapping the agent binary.
+///
+/// Identity comes first, evidence second:
+/// 1. the process name itself must name the family (ambiguous families also
+///    need a cmdline fingerprint);
+/// 2. argv fingerprints are consulted only when the comm is a known launch
+///    wrapper ([`AGENT_LAUNCH_WRAPPERS`]) that hosts the agent.
+///
+/// A process whose comm is unrelated but whose argv merely mentions an agent
+/// name is UNKNOWN — argv alone is never sufficient evidence.
 pub fn match_known_agent(comm: &str, cmdline: &[impl AsRef<str>]) -> Option<&'static str> {
-    let comm_l = comm.to_ascii_lowercase();
-    if let Some(family) = match_token(&comm_l) {
-        let exact_comm = is_exact_comm_basename(&comm_l, family);
+    let comm_base = comm_basename(comm);
+
+    // 1. Identity first: the process name itself names the family.
+    if let Some(family) = match_token(&comm_base) {
+        let exact_comm = is_exact_comm_basename(&comm_base, family);
         if family_allowed(family, cmdline, exact_comm) {
             return Some(family);
         }
     }
+
+    // 2. Evidence second: argv may only describe an agent hosted by a wrapper.
+    if !is_launch_wrapper(&comm_base) {
+        return None;
+    }
+
+    match_wrapper_program(&comm_base, cmdline)
+}
+
+/// Resolve the family of the program a launch wrapper runs.
+///
+/// Only the program the wrapper runs is evidence: the first argv that is
+/// neither the wrapper itself, another wrapper (for `npx`-style chains), a
+/// flag, nor an `env`-style assignment. Arguments deeper on the command line
+/// are never evidence, so `node script.js --config .jcode/x` is not jcode.
+fn match_wrapper_program(
+    comm_base: &str,
+    cmdline: &[impl AsRef<str>],
+) -> Option<&'static str> {
     for arg in cmdline {
-        let t = arg.as_ref().to_ascii_lowercase();
+        let raw = arg.as_ref();
+        if raw.starts_with('-') || raw.contains('=') {
+            continue;
+        }
+        let t = raw.to_ascii_lowercase();
         let base = t.rsplit('/').next().unwrap_or(&t);
         let base = base.rsplit('\\').next().unwrap_or(base);
+        // The wrapper itself, and any wrapper chained in front of the program
+        // (`npx jcode`, `env FOO=1 node x`), are not the program it runs.
+        if base == comm_base || is_launch_wrapper(base) {
+            continue;
+        }
         if let Some(family) = match_token(base) {
             if family_allowed(family, cmdline, false) {
                 return Some(family);
             }
         }
-        if let Some(family) = match_token(&t) {
+        // Fingerprints describe the program the wrapper runs, never deeper args.
+        let program = [raw];
+        if let Some(family) = match_fingerprint_only(&program) {
             if family_allowed(family, cmdline, false) {
                 return Some(family);
             }
         }
+        // The program position is decisive: a wrapper running anything else is
+        // not hosting a known agent.
+        return None;
     }
-    match_fingerprint_only(cmdline)
+    None
+}
+
+/// Lowercased basename of a `comm`/`exe` string, without a trailing `.exe`.
+fn comm_basename(comm: &str) -> String {
+    let base = comm.rsplit('/').next().unwrap_or(comm);
+    let base = base.rsplit('\\').next().unwrap_or(base);
+    base.strip_suffix(".exe").unwrap_or(base).to_ascii_lowercase()
+}
+
+/// Whether `comm_base` merely hosts an agent (interpreter / shell / runner).
+fn is_launch_wrapper(comm_base: &str) -> bool {
+    AGENT_LAUNCH_WRAPPERS.contains(&comm_base) || comm_base.starts_with("python3.")
 }
 
 /// Match argv fingerprints when comm/token heuristics did not resolve (AC-006.20).
@@ -386,6 +473,9 @@ fn match_token(token: &str) -> Option<&'static str> {
     }
     if token == "jcode" || token.starts_with("jcode-") || token == ".jcode" {
         return Some("jcode");
+    }
+    if token == "kcode" || token.starts_with("kcode-") || token == ".kcode" {
+        return Some("kcode");
     }
     if token == "opencode" || token.starts_with("opencode-") || token == ".opencode" {
         return Some("opencode");
@@ -781,20 +871,116 @@ mod tests {
 
     #[test]
     fn fingerprint_only_codex_cli() {
-        assert_eq!(match_known_agent("bash", &["codex-cli", "start"]), Some("codex"));
+        // Fingerprints are a property of the cmdline, not of an arbitrary comm:
+        // a shell whose argv merely mentions `codex-cli` is not a codex agent.
+        assert_eq!(match_fingerprint_only(&["codex-cli", "start"]), Some("codex"));
+        assert_eq!(match_known_agent("bash", &["codex-cli", "start"]), None);
     }
 
     #[test]
     fn fingerprint_only_cursor_dotfile() {
         assert_eq!(
-            match_known_agent("bash", &["/home/user/.cursor/config.json"]),
+            match_fingerprint_only(&["/home/user/.cursor/config.json"]),
             Some("cursor-agent")
         );
+        assert_eq!(match_known_agent("bash", &["/home/user/.cursor/config.json"]), None);
     }
 
     #[test]
     fn unknown_empty_cmdline() {
         assert_eq!(match_known_agent("ls", &[] as &[&str]), None);
+    }
+
+    // --- Identity-first classification (detection truth) ---
+
+    /// Negative control: an unrelated comm that merely mentions "jcode" in its
+    /// argv MUST stay UNKNOWN. Every argv list here is a real measured host row.
+    #[test]
+    fn argv_only_agent_name_in_unrelated_comm_is_unknown() {
+        assert_eq!(
+            match_known_agent("zzz-plain", &["zzz-plain", "jcode", "--serve"]),
+            None,
+            "argv-only agent names MUST NOT classify an unrelated process"
+        );
+        assert_eq!(
+            match_known_agent(
+                "systemd-inhibit",
+                &[
+                    "systemd-inhibit",
+                    "--what=sleep:handle-lid-switch",
+                    "--who=jcode",
+                    "--why=Jcode is streaming",
+                    "sleep",
+                    "150",
+                ],
+            ),
+            None,
+            "systemd-inhibit --who=jcode is not an agent"
+        );
+        assert_eq!(
+            match_known_agent("jq", &["jq", "-r", ".jcode/sessions/session.json"]),
+            None,
+            "a jq reader of session files is not an agent"
+        );
+        assert_eq!(
+            match_known_agent(
+                "polkitd",
+                &[
+                    "/nix/store/amp9gz2y73cal339hcnyr36w8kxyrhbz-polkit-127/lib/polkit-1/polkitd",
+                    "--no-debug",
+                ],
+            ),
+            None,
+            "a nix store hash containing 'amp' MUST NOT classify as amp"
+        );
+    }
+
+    /// comm=some-agent resolves to that agent family even when the argv
+    /// mentions a different family.
+    #[test]
+    fn comm_identity_wins_over_argv_mentions() {
+        assert_eq!(
+            match_known_agent("amp", &["amp", "jcode", "notes.md"]),
+            Some("amp"),
+            "comm identity outranks an argv mention of another family"
+        );
+        assert_eq!(
+            match_known_agent("kcode", &["kcode", "--resume", ".jcode/sessions/s.json"]),
+            Some("kcode"),
+            "a kcode process reading jcode state is still kcode"
+        );
+    }
+
+    /// Regression for the false negative: comm=kcode was not detected at all.
+    #[test]
+    fn detects_kcode_family() {
+        assert!(KNOWN_AGENT_FAMILIES.contains(&"kcode"));
+        assert_eq!(match_known_agent("kcode", &[] as &[&str]), Some("kcode"));
+        assert_eq!(match_known_agent("kcode-cli", &[] as &[&str]), Some("kcode"));
+        assert_eq!(match_known_agent("/usr/local/bin/kcode", &[] as &[&str]), Some("kcode"));
+        assert_eq!(
+            match_known_agent("node", &["node", "/usr/local/bin/kcode"]),
+            Some("kcode"),
+            "a package runner hosting kcode still classifies as kcode"
+        );
+    }
+
+    /// The argv fallback still works, but only behind a launch wrapper.
+    #[test]
+    fn launch_wrapper_argv_fallback_still_matches() {
+        assert_eq!(
+            match_known_agent("node", &["node", "/opt/kcode/bin/kcode.js"]),
+            Some("kcode")
+        );
+        assert_eq!(match_known_agent("python3", &["-m", "aider"]), Some("aider"));
+        assert_eq!(match_known_agent("bash", &["-lc", "ls"]), None);
+        // A shell `-c` string is a whole command line, not a program name: a
+        // measured false positive when shells were treated as wrappers.
+        assert_eq!(
+            match_known_agent("bash", &["bash", "-c", "setsid /tmp/daisy-bin/kcode 1800"]),
+            None,
+            "bash -c <cmdline mentioning kcode> MUST stay UNKNOWN"
+        );
     }
 
     #[test]

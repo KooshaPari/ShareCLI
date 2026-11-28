@@ -111,6 +111,15 @@ fn print_ps_text_table(
     let total_mem: u64 = processes.iter().map(|p| p.memory_mb).sum();
     println!("\nTotal: {} processes, {} MB memory", processes.len(), total_mem);
 
+    if processes.is_empty() {
+        // `ps` stays managed-only (AC-007.43), but the user must never be told
+        // "nothing exists" while unmanaged agents are running (FR-006 × FR-007).
+        let detected = sharecli_fleet::scan_agents(proc_source).len();
+        if let Some(line) = unmanaged_cross_reference(detected) {
+            println!("\n{line}");
+        }
+    }
+
     if all {
         print_host_agent_scan(proc_source)?;
     }
@@ -468,4 +477,32 @@ pub async fn status(verbose: bool, json: bool, csv: bool, watch: Option<u64>) ->
 #[cfg_attr(not(test), allow(dead_code))]
 pub fn filter_by_project<'a>(processes: &'a [ProcessInfo], project: &str) -> Vec<&'a ProcessInfo> {
     processes.iter().filter(|p| p.project.as_deref() == Some(project)).collect()
+}
+
+/// The cross-reference printed when `ps` has nothing managed but the host is
+/// running detected agents (FR-006 × FR-007).
+///
+/// `ps` stays managed-only (AC-007.43); this line only stops the "Total: 0
+/// processes" report from reading as "nothing exists" on a busy host.
+#[must_use]
+pub fn unmanaged_cross_reference(detected: usize) -> Option<String> {
+    (detected > 0).then(|| format!("0 managed; {detected} detected via `sharecli proc`"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::unmanaged_cross_reference;
+
+    #[test]
+    fn unmanaged_cross_reference_reports_detected_agents() {
+        assert_eq!(
+            unmanaged_cross_reference(20).as_deref(),
+            Some("0 managed; 20 detected via `sharecli proc`")
+        );
+    }
+
+    #[test]
+    fn unmanaged_cross_reference_is_silent_when_the_host_is_idle() {
+        assert_eq!(unmanaged_cross_reference(0), None);
+    }
 }
