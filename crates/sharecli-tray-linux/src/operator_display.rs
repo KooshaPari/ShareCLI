@@ -591,16 +591,42 @@ mod tests {
         assert!(line.contains("daemon not reachable"), "got: {line}");
     }
 
+    /// Colours are distinct for the three live severities, but Offline
+    /// deliberately shares the warm amber with Warning.
+    ///
+    /// Source of truth: `src/dashboard.html` line 103,
+    /// `.gate-unavailable { color: var(--bb2-warm-amber); }`, where
+    /// `--bb2-warm-amber: #d29922`. An offline/unavailable gate is styled the
+    /// same amber as a warning on purpose, so a four-way unique palette is not
+    /// the contract. Offline still has to be distinguishable from a normal tray
+    /// by badge, decision class and icon, which is what guards the regression.
     #[test]
-    fn all_severity_variants_have_distinct_color_tokens() {
+    fn severity_variants_share_only_the_deliberate_warm_amber() {
         let normal = resolve_tray_gate_visual("GREEN", "ADMIT", true);
         let warning = resolve_tray_gate_visual("YELLOW", "THROTTLE", true);
         let critical = resolve_tray_gate_visual("RED", "DENY", true);
         let offline = resolve_tray_gate_visual("GREEN", "ADMIT", false);
-        let palette: std::collections::HashSet<&str> =
-            [normal.color_hex, warning.color_hex, critical.color_hex, offline.color_hex]
-                .into_iter()
-                .collect();
-        assert_eq!(palette.len(), 4, "each severity must have a unique color_hex");
+
+        // Each live severity keeps its own design token.
+        assert_eq!(normal.color_hex, "#3fb950", "normal must be --bb2-pulse-green");
+        assert_eq!(critical.color_hex, "#f85149", "critical must be the deny red");
+        assert_eq!(warning.color_hex, "#d29922", "warning must be --bb2-warm-amber");
+
+        // Offline is the SAME amber as warning by design (dashboard .gate-unavailable).
+        assert_eq!(
+            offline.color_hex, warning.color_hex,
+            "offline intentionally shares --bb2-warm-amber with warning (src/dashboard.html:103)"
+        );
+        assert_eq!(offline.color_hex, "#d29922");
+
+        // ...and is still unmistakable from a healthy tray by its other tokens.
+        assert_eq!(offline.badge_label, "Offline");
+        assert_eq!(offline.decision_class, "gate-unavailable");
+        assert_eq!(offline.linux_icon_name, "network-offline");
+        assert_ne!(
+            offline.badge_label, normal.badge_label,
+            "an offline tray must not read as normal"
+        );
+        assert_ne!(offline.linux_icon_name, normal.linux_icon_name);
     }
 }

@@ -177,7 +177,16 @@ pub struct MonitoringReportSnapshot {
 /// Resolve the IPC socket path, honoring `SHARECLI_IPC_SOCK` and falling back to
 /// `$XDG_DATA_HOME/sharecli/ipc.sock` (matching `sharecli-ipc::socket_path`).
 pub fn socket_path() -> PathBuf {
-    if let Ok(v) = std::env::var("SHARECLI_IPC_SOCK") {
+    resolve_socket_path(std::env::var_os("SHARECLI_IPC_SOCK"))
+}
+
+/// Pure socket-path resolver: the testable core of [`socket_path`].
+///
+/// `env_override` is the raw value of `SHARECLI_IPC_SOCK` (`None` when unset).
+/// Passing it explicitly keeps unit tests off the process-global environment,
+/// which parallel threads share and mutate unsafely.
+pub fn resolve_socket_path(env_override: Option<std::ffi::OsString>) -> PathBuf {
+    if let Some(v) = env_override {
         return PathBuf::from(v);
     }
     let base = dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
@@ -291,18 +300,38 @@ pub fn kill_all() -> Result<bool> {
 mod tests {
     use super::*;
 
+    // These tests exercise `resolve_socket_path` directly with an explicit
+    // override argument rather than mutating the process-global environment.
+    // `cargo test` runs test threads in parallel and they share one environment,
+    // so `set_var`/`remove_var` between threads raced and flaked
+    // (socket_path_honors_env_override vs socket_path_default_ends_with_ipc_sock).
+
     #[test]
     fn socket_path_honors_env_override() {
-        std::env::set_var("SHARECLI_IPC_SOCK", "/tmp/custom-sharecli.sock");
-        assert_eq!(socket_path(), PathBuf::from("/tmp/custom-sharecli.sock"));
-        std::env::remove_var("SHARECLI_IPC_SOCK");
+        let p = resolve_socket_path(Some(std::ffi::OsString::from("/tmp/custom-sharecli.sock")));
+        assert_eq!(p, PathBuf::from("/tmp/custom-sharecli.sock"));
+    }
+
+    #[test]
+    fn socket_path_empty_override_is_used_verbatim() {
+        // Empty override is honoured as-is, matching the pre-helper behaviour of
+        // `PathBuf::from(std::env::var(..))` when the variable was set to "".
+        let p = resolve_socket_path(Some(std::ffi::OsString::from("")));
+        assert_eq!(p, PathBuf::new());
     }
 
     #[test]
     fn socket_path_default_ends_with_ipc_sock() {
-        std::env::remove_var("SHARECLI_IPC_SOCK");
-        let p = socket_path();
+        let p = resolve_socket_path(None);
         assert!(p.ends_with("sharecli/ipc.sock"), "unexpected default path: {}", p.display());
+    }
+
+    #[test]
+    fn socket_path_reads_env_through_the_pure_helper() {
+        // Guards the wiring: the public `socket_path()` must delegate to the
+        // helper with the real override value. Read-only on the environment, so
+        // it is safe to run concurrently.
+        assert_eq!(socket_path(), resolve_socket_path(std::env::var_os("SHARECLI_IPC_SOCK")));
     }
 
     #[test]
