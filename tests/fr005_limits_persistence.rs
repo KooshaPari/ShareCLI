@@ -89,18 +89,27 @@ impl Sandbox {
 
 /// Stage a process the detector recognises as a `claude` agent.
 ///
-/// A shell script named `claude` keeps its interpreter alive with the script path
-/// in `argv`, which is what `match_known_agent` fingerprints. It deliberately does
-/// not `exec`, because that would replace the argv the detector reads.
+/// Detection is identity-first: a process is an agent when its own name is the
+/// family. Shells are deliberately not launch wrappers (so
+/// `bash -c "... kcode ..."` stays UNKNOWN), which means a `sh <dir>/claude`
+/// script is no longer detectable evidence. The fixture therefore stages a real
+/// process whose identity is `claude`: a copy of a rename-safe executable run
+/// directly under that name. Coreutils is multi-call on NixOS and refuses an
+/// unknown program name, so the copy is `bash`, kept alive with a sleep loop.
+fn find_on_path(name: &str) -> PathBuf {
+    std::env::var_os("PATH")
+        .into_iter()
+        .flat_map(|paths| std::env::split_paths(&paths).collect::<Vec<_>>())
+        .map(|dir| dir.join(name))
+        .find(|candidate| candidate.is_file())
+        .unwrap_or_else(|| panic!("{name} not found on PATH"))
+}
+
 fn spawn_staged_agent(dir: &Path) -> Child {
-    use std::os::unix::fs::PermissionsExt as _;
-    let script = dir.join("claude");
-    std::fs::write(&script, "#!/bin/sh\nwhile :; do sleep 1; done\n").expect("write staged agent");
-    let mut perms = std::fs::metadata(&script).expect("stat staged agent").permissions();
-    perms.set_mode(0o755);
-    std::fs::set_permissions(&script, perms).expect("chmod staged agent");
-    Command::new("/bin/sh")
-        .arg(&script)
+    let staged = dir.join("claude");
+    std::fs::copy(find_on_path("bash"), &staged).expect("stage a blocking binary as `claude`");
+    Command::new(&staged)
+        .args(["-c", "while :; do sleep 1; done"])
         .spawn()
         .expect("spawn staged agent")
 }
