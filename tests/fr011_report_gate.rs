@@ -5,26 +5,33 @@
 //! gate fields (detected agent count, contention tier, ADMIT/DENY).
 
 use sharecli::commands::report::{build_report, SortBy};
-use sharecli_fleet::{gate_status_snapshot, ThermalLevel};
+use sharecli_fleet::{agent_contention::AgentContentionThresholds, gate_status_snapshot, ThermalLevel};
+
+/// Agent count that is genuinely at the refuse threshold (thresholds are
+/// operator-configurable, so never hardcode it here).
+fn refuse_limit() -> usize {
+    AgentContentionThresholds::default().refuse_at
+}
 
 /// FR-011 / AC-011.6 — FleetReport JSON carries gate fields.
 #[test]
 fn fr011_report_json_includes_gate_fields() {
-    let gate = gate_status_snapshot(ThermalLevel::Green, 8);
+    let refuse_at = refuse_limit();
+    let gate = gate_status_snapshot(ThermalLevel::Green, refuse_at);
     let report = build_report(&[], &gate, &SortBy::Memory);
-    assert_eq!(report.detected_agents, 8);
+    assert_eq!(report.detected_agents, refuse_at);
     assert_eq!(report.agent_contention, "REFUSE");
     assert_eq!(report.gate_decision, "DENY");
 
     let json = serde_json::to_string(&report).expect("serialize report");
-    assert!(json.contains("\"detected_agents\":8"));
+    assert!(json.contains(&format!("\"detected_agents\":{refuse_at}")));
     assert!(json.contains("\"gate_decision\":\"DENY\""));
 }
 
 /// FR-011 / AC-011.6 — gate_status_snapshot matches effective_gate_decision.
 #[test]
 fn fr011_gate_status_snapshot_agent_refuse() {
-    let snap = gate_status_snapshot(ThermalLevel::Green, 8);
+    let snap = gate_status_snapshot(ThermalLevel::Green, refuse_limit());
     assert_eq!(snap.thermal_pressure, "GREEN");
     assert_eq!(snap.gate_decision, "DENY");
     assert_eq!(snap.agent_contention, "REFUSE");

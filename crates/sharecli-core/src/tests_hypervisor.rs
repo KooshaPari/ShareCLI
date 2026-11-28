@@ -288,15 +288,15 @@ async fn hypervisor_run_queued_skips_coalesce_cache() {
 /// FR-011 / AC-011.4 — high agent inventory refuses spawn even when thermal Allows.
 #[tokio::test(start_paused = true)]
 async fn agent_aware_gate_refuses_at_contention_limit() {
-    fn eight_agents() -> usize {
-        8
+    fn refuse_limit_agents() -> usize {
+        AgentContentionThresholds::default().refuse_at
     }
     let dir = TempDir::new().expect("tempdir");
     let inner = Arc::new(FakeThermalGate::new(ThermalDecision::Allow));
     let gate = Arc::new(AgentAwareThermalGate::with_agent_count(
         inner,
         AgentContentionThresholds::default(),
-        eight_agents,
+        refuse_limit_agents,
     ));
     let hv = Hypervisor::with_thermal_gate(dir.path(), gate);
 

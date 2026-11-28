@@ -58,7 +58,7 @@ impl Hypervisor {
     pub fn new(cache_root: impl Into<PathBuf>) -> Self {
         let inner = Arc::new(SystemThermalGate::new());
         let gate =
-            Arc::new(AgentAwareThermalGate::new(inner, AgentContentionThresholds::default()));
+            Arc::new(AgentAwareThermalGate::new(inner, AgentContentionThresholds::from_env()));
         Self::with_thermal_gate(cache_root, gate)
     }
 
@@ -88,7 +88,7 @@ impl Hypervisor {
     pub fn from_config(config: HypervisorConfig) -> Self {
         let inner = Arc::new(SystemThermalGate::new());
         let gate =
-            Arc::new(AgentAwareThermalGate::new(inner, AgentContentionThresholds::default()));
+            Arc::new(AgentAwareThermalGate::new(inner, AgentContentionThresholds::from_env()));
         Self::with_options(
             config,
             gate,
