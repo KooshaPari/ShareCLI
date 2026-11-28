@@ -289,9 +289,20 @@ pub fn detect_caller_agent() -> Option<DetectedAgent> {
     walk_agent_ancestors(&HostProcSource, std::process::id())
 }
 
+/// Process-table root. `SHARECLI_PROC_ROOT` lets a test present a fixed,
+/// fabricated-free process table (an empty or staged directory) instead of the
+/// live host, so detection-dependent output can be asserted deterministically.
+#[cfg(target_os = "linux")]
+fn proc_root() -> std::path::PathBuf {
+    match std::env::var_os("SHARECLI_PROC_ROOT") {
+        Some(value) if !value.is_empty() => std::path::PathBuf::from(value),
+        _ => std::path::PathBuf::from("/proc"),
+    }
+}
+
 #[cfg(target_os = "linux")]
 fn list_linux_proc() -> Vec<ProcSnapshot> {
-    let Ok(entries) = std::fs::read_dir("/proc") else {
+    let Ok(entries) = std::fs::read_dir(proc_root()) else {
         return Vec::new();
     };
     let mut out = Vec::new();

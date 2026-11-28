@@ -38,6 +38,7 @@ pub mod fuse;
 pub mod health;
 pub mod history;
 pub mod live_sections;
+pub mod limits_cmd;
 pub mod mesh;
 pub mod pool;
 pub mod proc;

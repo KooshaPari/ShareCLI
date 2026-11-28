@@ -13,12 +13,12 @@ Commands:
   health        Run a runtime health probe
   config        Configuration management
   project       Project management
-  optimize      Optimize resource usage
+  optimize      Adjust limits from measured usage (dry run unless --apply)
   prune         Prune idle processes
   pool          Show shared runtime pool status
   run           Pooled execution (currently unavailable; returns an error without executing work)
-  limits        Set project resource limits
-  check         Check project resource limits
+  limits        Show, set, and check persisted project resource limits (FR-002)
+  check         Check one project's limits against detected usage
   thermal       Live thermal-gate / hypervisor state monitor (TUI)
   serve         Start the HTTP + WebSocket dashboard server
   report        Print a fleet analytics snapshot (one-shot or live watch mode)
@@ -95,9 +95,12 @@ EXAMPLES
   $ sharecli surface send --surface-id <surface-id> --text 'echo hello'
   $ sharecli surface read --surface-id <surface-id> --max-bytes 4096
 
-  # Resource limits (FR-002): `limits` takes the project positionally and has
-  # no set/get subcommands; `check` reports the effective values
-  $ sharecli limits myproject --memory 4096 --processes 8
+  # Resource limits (FR-002): persisted per-project caps, checked against
+  # detected usage rather than against a default
+  $ sharecli limits
+  $ sharecli limits set myproject --mem-mb 4096 --max-procs 8
+  $ sharecli limits set --global --mem-mb 2048 --max-procs 12
+  $ sharecli limits check --fail-on-over
   $ sharecli check myproject
 
   # Live thermal-gate / hypervisor state (TUI)
