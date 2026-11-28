@@ -50,9 +50,8 @@ mod theme;
 mod tray_http;
 
 use commands::{
-    cast as cast_cmd, check_limits, config as config_cmd, fuse as fuse_cmd, health,
-    mesh as mesh_cmd, pool_status, project as project_cmd, ps, run_pool, serve_run, set_limits,
-    start, status, stop,
+    cast as cast_cmd, config as config_cmd, fuse as fuse_cmd, health, mesh as mesh_cmd,
+    pool_status, project as project_cmd, ps, run_pool, serve_run, start, status, stop,
 };
 use progress::StepProgress;
 use runtime::ProcessPool;
@@ -104,9 +103,12 @@ EXAMPLES
   $ sharecli surface send --surface-id <surface-id> --text 'echo hello'
   $ sharecli surface read --surface-id <surface-id> --max-bytes 4096
 
-  # Resource limits (FR-002): `limits` takes the project positionally and has
-  # no set/get subcommands; `check` reports the effective values
-  $ sharecli limits myproject --memory 4096 --processes 8
+  # Resource limits (FR-002): persisted per-project caps, checked against
+  # detected usage rather than against a default
+  $ sharecli limits
+  $ sharecli limits set myproject --mem-mb 4096 --max-procs 8
+  $ sharecli limits set --global --mem-mb 2048 --max-procs 12
+  $ sharecli limits check --fail-on-over
   $ sharecli check myproject
 
   # Live thermal-gate / hypervisor state (TUI)
@@ -355,7 +357,12 @@ enum Commands {
         cmd: config::ProjectCmd,
     },
 
-    /// Optimize resource usage
+    /// Adjust limits from measured usage (dry run unless --apply)
+    ///
+    /// Reads the live host process table, reports what each agent family actually
+    /// uses, and derives limits from that measurement. Without `--apply` nothing
+    /// is written; with `--apply` a measured global limit is persisted when no
+    /// global limit exists yet.
     Optimize {
         /// Apply optimizations automatically
         #[arg(short, long)]
@@ -403,11 +410,25 @@ enum Commands {
         project: String,
     },
 
-    /// Set project resource limits
+    /// Show, set, and check persisted project resource limits (FR-002)
+    ///
+    /// Bare `sharecli limits` prints the effective limits (config defaults plus
+    /// anything persisted in ~/.sharecli/limits.json). `limits set` persists an
+    /// override for a project or for every project with `--global`;
+    /// `limits check` compares detected usage against those limits and never
+    /// reports an unmeasured project as within budget.
+    ///
+    /// EXAMPLES
+    ///   $ sharecli limits
+    ///   $ sharecli limits set myproject --mem-mb 768 --max-procs 6
+    ///   $ sharecli limits set --global --mem-mb 2048 --max-procs 12
+    ///   $ sharecli limits check --json --fail-on-over
     Limits {
-        /// Project name
-        #[arg(required = true)]
-        project: String,
+        #[command(subcommand)]
+        action: Option<LimitsAction>,
+
+        /// Project name (legacy form: `sharecli limits <project> [--memory N]`)
+        project: Option<String>,
 
         /// Memory limit in MB
         #[arg(short, long)]
@@ -418,7 +439,7 @@ enum Commands {
         processes: Option<usize>,
     },
 
-    /// Check project resource limits
+    /// Check one project's limits against detected usage
     Check {
         /// Project name
         #[arg(required = true)]
@@ -563,6 +584,40 @@ enum Commands {
         /// action documented in docs/ops/undo-model.md.
         #[arg(long)]
         id: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum LimitsAction {
+    /// Persist a limit override for one project, or for every project with --global
+    Set {
+        /// Project name (omit when using --global)
+        project: Option<String>,
+
+        /// Write the global default limit instead of a per-project override
+        #[arg(long)]
+        global: bool,
+
+        /// Memory limit in MB
+        #[arg(long = "mem-mb")]
+        mem_mb: Option<u64>,
+
+        /// Max process count
+        #[arg(long = "max-procs")]
+        max_procs: Option<usize>,
+    },
+    /// Compare detected usage against the effective limits
+    Check {
+        /// Limit the report to one project
+        project: Option<String>,
+
+        /// Exit 1 when any row is OVER (never for NO_DATA)
+        #[arg(long)]
+        fail_on_over: bool,
+
+        /// Emit machine-readable JSON
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -1097,7 +1152,7 @@ async fn run() -> Result<()> {
         }
         Commands::Config { cmd } => config_cmd(cmd)?,
         Commands::Project { cmd } => project_cmd(cmd).await?,
-        Commands::Optimize { apply } => optimize(*apply).await?,
+        Commands::Optimize { apply } => commands::limits_cmd::optimize(*apply)?,
         Commands::Prune { idle_seconds, force } => {
             prune(idle_seconds.unwrap_or(config::global().spawn.prune_idle_seconds), *force).await?
         }
@@ -1106,10 +1161,32 @@ async fn run() -> Result<()> {
             health(harness.as_deref(), *json, *csv, *watch).await?
         }
         Commands::Run { harness, project } => run_pool(harness, project).await?,
-        Commands::Limits { project, memory, processes } => {
-            set_limits(project, *memory, *processes).await?
+        Commands::Limits { action, project, memory, processes } => match action {
+            Some(LimitsAction::Set { project, global, mem_mb, max_procs }) => {
+                commands::limits_cmd::set_limit(project.as_deref(), *global, *mem_mb, *max_procs)?
+            }
+            Some(LimitsAction::Check { project, fail_on_over, json }) => {
+                let any_over = commands::limits_cmd::check(project.as_deref(), *json)?;
+                if *fail_on_over && any_over {
+                    std::process::exit(1);
+                }
+            }
+            None => match project {
+                // Legacy shape with flags: `limits <project> --memory N --processes M`
+                Some(name) if memory.is_some() || processes.is_some() => {
+                    commands::limits_cmd::set_limit(Some(name), false, *memory, *processes)?
+                }
+                // Legacy shape without flags is read-only: print the effective limit.
+                Some(name) => commands::limits_cmd::show_one(name)?,
+                None => commands::limits_cmd::show_effective_limits()?,
+            },
+        },
+        Commands::Check { project } => {
+            let any_over = commands::limits_cmd::check(Some(project), false)?;
+            if any_over {
+                std::process::exit(1);
+            }
         }
-        Commands::Check { project } => check_limits(project).await?,
         Commands::Report { format, watch, sort } => {
             use std::str::FromStr as _;
             let fmt = commands::report::ReportFormat::from_str(format)?;
@@ -1726,52 +1803,6 @@ fn proc_compose_cmd(cmd: &ProcComposeCmd) -> Result<()> {
             }
         }
     }
-    Ok(())
-}
-
-async fn optimize(apply: bool) -> Result<()> {
-    println!("Analyzing resource usage...");
-
-    let pool = ProcessPool::new();
-    let processes = pool.list().await;
-
-    let mut by_harness: std::collections::HashMap<&str, (usize, u64)> =
-        std::collections::HashMap::new();
-
-    for proc in &processes {
-        if let Some(ref harness) = proc.harness {
-            let entry = by_harness.entry(harness.as_str()).or_insert((0, 0));
-            entry.0 += 1;
-            entry.1 += proc.memory_mb;
-        }
-    }
-
-    println!("\nCurrent resource usage:");
-    println!("{:<15} {:<10} {:<15}", "HARNESS", "COUNT", "MEMORY(MB)");
-    println!("{}", "-".repeat(40));
-
-    for (harness, (count, mem)) in &by_harness {
-        println!("{:<15} {:<10} {:<15}", harness, count, mem);
-    }
-
-    let total_mem: u64 = by_harness.values().map(|(_, m)| m).sum();
-    let total_count: usize = by_harness.values().map(|(c, _)| c).sum();
-
-    println!("\n{:<15} {:<10} {:<15}", "TOTAL", total_count, total_mem);
-    println!("\n=== Optimization Suggestions ===");
-
-    if total_count > 30 {
-        println!("- Consider reducing max instances per harness");
-    }
-    if total_mem > 4096 {
-        println!("- Memory usage is high ({} MB). Consider pruning idle processes.", total_mem);
-    }
-
-    if apply {
-        println!("\nApplying optimizations...");
-        println!("Done.");
-    }
-
     Ok(())
 }
 

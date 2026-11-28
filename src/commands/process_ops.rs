@@ -154,7 +154,12 @@ pub async fn run_pool(_harness_type: &str, _project: &str) -> crate::error::Resu
     Err(SharedRuntime::execution_unavailable().into())
 }
 
-/// Set project limits
+/// Set project limits **in memory only**.
+///
+/// Superseded by [`crate::commands::limits_cmd::set_limit`], which persists to
+/// `~/.sharecli/limits.json`; a value written here does not survive this process
+/// and is therefore not enforceable. Kept for the `ProjectResources` layer, which
+/// `sharecli` runtime tests still exercise.
 pub async fn set_limits(
     project: &str,
     memory_mb: Option<u64>,
@@ -179,7 +184,11 @@ pub async fn set_limits(
     Ok(())
 }
 
-/// Check project limits
+/// Check project limits **against in-memory limits only**.
+///
+/// Superseded by [`crate::commands::limits_cmd::check`], which compares persisted
+/// limits against detected host usage and reports `NO_DATA` rather than assuming
+/// a default is a measurement.
 pub async fn check_limits(project: &str) -> Result<()> {
     let resources = get_project_resources();
     let check = resources.check_limits(project).await?;
