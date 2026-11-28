@@ -1435,7 +1435,10 @@ mod tests {
 
     #[test]
     fn test_gate_panel_lines_count_only_warn_still_admits() {
-        let snap = gate_status_snapshot_with_rss(ThermalLevel::Green, 4, 0);
+        // Thresholds are calibrated, not constants: take the count that actually
+        // means WARN so this stays true when the baseline is re-tuned.
+        let warn_at = sharecli_fleet::AgentContentionThresholds::default().warn_at;
+        let snap = gate_status_snapshot_with_rss(ThermalLevel::Green, warn_at, 0);
         assert_eq!(snap.gate_decision, "ADMIT");
         assert_eq!(snap.agent_contention, "WARN");
 
