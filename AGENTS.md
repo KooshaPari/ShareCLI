@@ -7,7 +7,7 @@ entrypoint**: read this before editing.
 
 - **Name**: sharecli
 - **Language**: Rust (edition 2021)
-- **Purpose**: Shared CLI process manager for multi-project agent orchestration
+- **Purpose**: OS/kernel-adjacent agent runtime / hypervisor for multi-agent hosts
 - **Working directory**: repository root (this file's directory)
 
 ## Quick commands
