@@ -51,8 +51,8 @@ mod tray_http;
 
 use commands::{
     cast as cast_cmd, check_limits, config as config_cmd, fuse as fuse_cmd, health,
-    mesh as mesh_cmd, pool_status, project as project_cmd, ps, run_pool, serve_run, set_limits,
-    start, status, stop,
+    mesh as mesh_cmd, pool_status, project as project_cmd, ps, queue_cmd, run_pool, serve_run,
+    set_limits, start, status, stop,
 };
 use progress::StepProgress;
 use runtime::ProcessPool;
@@ -472,6 +472,11 @@ enum Commands {
         #[command(subcommand)]
         cmd: MeshCmd,
     },
+    /// Maildir task-queue verbs (stats / list / enqueue / claim / drain)
+    Queue {
+        #[command(subcommand)]
+        cmd: QueueCmd,
+    },
     /// FUSE IO intercept operator surface (mount, provenance, CoW)
     Fuse {
         #[command(subcommand)]
@@ -873,6 +878,70 @@ enum MeshCmd {
 }
 
 #[derive(Subcommand, Debug)]
+enum QueueCmd {
+    /// Queue depth snapshot (same data as `mesh status`)
+    Stats {
+        /// Path to Maildir queue root (default: shared mesh queue root)
+        #[arg(long, short = 'Q')]
+        queue: Option<std::path::PathBuf>,
+        /// Emit stable JSON envelope
+        #[arg(long)]
+        json: bool,
+    },
+    /// List envelopes in `new/` then `cur/`
+    List {
+        /// Path to Maildir queue root (default: shared mesh queue root)
+        #[arg(long, short = 'Q')]
+        queue: Option<std::path::PathBuf>,
+        /// Emit stable JSON envelope
+        #[arg(long)]
+        json: bool,
+    },
+    /// Enqueue a payload at a priority (0–9, lower first)
+    Enqueue {
+        /// Inline JSON payload object
+        #[arg(long, value_name = "OBJ")]
+        json: Option<String>,
+        /// Read the JSON payload from a file
+        #[arg(long, value_name = "PATH")]
+        payload_file: Option<std::path::PathBuf>,
+        /// Priority 0–9 (lower claims first)
+        #[arg(long, default_value_t = 5, value_parser = clap::value_parser!(u8).range(0..=9))]
+        priority: u8,
+        /// Path to Maildir queue root (default: shared mesh queue root)
+        #[arg(long, short = 'Q')]
+        queue: Option<std::path::PathBuf>,
+        /// Emit stable JSON envelope instead of the bare task id
+        #[arg(long)]
+        emit_json: bool,
+    },
+    /// Claim the highest-priority ready task
+    Claim {
+        /// Owner string stamped into the claimed envelope
+        #[arg(long)]
+        owner: Option<String>,
+        /// Path to Maildir queue root (default: shared mesh queue root)
+        #[arg(long, short = 'Q')]
+        queue: Option<std::path::PathBuf>,
+        /// Emit stable JSON envelope
+        #[arg(long)]
+        json: bool,
+    },
+    /// Report what would be claimed, in priority order (`--apply` claims them)
+    Drain {
+        /// Actually claim the ready tasks (default: report only)
+        #[arg(long)]
+        apply: bool,
+        /// Path to Maildir queue root (default: shared mesh queue root)
+        #[arg(long, short = 'Q')]
+        queue: Option<std::path::PathBuf>,
+        /// Emit stable JSON envelope
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
 enum CastCmd {
     /// Register a pane: `cast register <name> <address>`
     Register {
@@ -1161,6 +1230,25 @@ async fn run() -> Result<()> {
         Commands::Mesh { cmd } => match cmd {
             MeshCmd::Status { queue, json } => mesh_cmd::status(queue, *json)?,
             MeshCmd::Reclaim { queue, owner } => mesh_cmd::reclaim(queue, owner)?,
+        },
+        Commands::Queue { cmd } => match cmd {
+            QueueCmd::Stats { queue, json } => queue_cmd::stats(queue.as_deref(), *json)?,
+            QueueCmd::List { queue, json } => queue_cmd::list(queue.as_deref(), *json)?,
+            QueueCmd::Enqueue { json, payload_file, priority, queue, emit_json } => {
+                queue_cmd::enqueue(
+                    queue.as_deref(),
+                    json.as_deref(),
+                    payload_file.as_deref(),
+                    *priority,
+                    *emit_json,
+                )?
+            }
+            QueueCmd::Claim { owner, queue, json } => {
+                queue_cmd::claim(queue.as_deref(), owner.as_deref(), *json)?
+            }
+            QueueCmd::Drain { apply, queue, json } => {
+                queue_cmd::drain(queue.as_deref(), *apply, *json)?
+            }
         },
         Commands::Fuse { cmd } => match cmd {
             FuseCmd::Probe { mountpoint, json } => fuse_cmd::probe(mountpoint, *json)?,

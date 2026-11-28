@@ -43,6 +43,7 @@ pub mod pool;
 pub mod proc;
 pub mod process_ops;
 pub mod ps;
+pub mod queue_cmd;
 pub mod render_csv;
 pub mod report;
 pub mod runtime_helpers;

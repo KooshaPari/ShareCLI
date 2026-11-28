@@ -24,6 +24,7 @@ Commands:
   report        Print a fleet analytics snapshot (one-shot or live watch mode)
   fleet         Fleet device management
   mesh          Maildir mesh task-queue operator surface (status / reclaim)
+  queue         Maildir task-queue verbs (stats / list / enqueue / claim / drain)
   fuse          FUSE IO intercept operator surface (mount, provenance, CoW)
   cast          Cross-machine text injection into registered terminal panes
   proc-compose  process-compose.yaml integration

@@ -1,6 +1,6 @@
 [package]
 name = "sharecli-sync"
-version = "0.8.1"
+version = "0.9.0"
 edition = "2021"
 description = "Loom-verified sync primitives for sharecli ProcessPool (C00 L7)"
 license = "MIT"

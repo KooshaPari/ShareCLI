@@ -1,6 +1,6 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH sharecli 1  "sharecli 0.8.1" 
+.TH sharecli 1  "sharecli 0.9.0" 
 .SH NAME
 sharecli \- Shared CLI process manager for multi\-project agent orchestration
 .SH SYNOPSIS
@@ -87,6 +87,9 @@ Fleet device management
 .TP
 sharecli\-mesh(1)
 Maildir mesh task\-queue operator surface (status / reclaim)
+.TP
+sharecli\-queue(1)
+Maildir task\-queue verbs (stats / list / enqueue / claim / drain)
 .TP
 sharecli\-fuse(1)
 FUSE IO intercept operator surface (mount, provenance, CoW)
@@ -189,4 +192,4 @@ EXAMPLES
   # Service registry (process\-compose)
   $ sharecli proc\-compose list
 .SH VERSION
-v0.8.1
+v0.9.0
