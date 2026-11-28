@@ -171,6 +171,33 @@ impl MaildirQueue {
         Ok(out)
     }
 
+    /// List ready (`new/`) tasks in claim order: priority ascending, then oldest first.
+    ///
+    /// Mirrors the ordering [`Self::claim`] uses, so a dry-run can report exactly
+    /// what would be claimed next without mutating the queue.
+    pub fn list_ready(&self) -> Result<Vec<TaskEnvelope>> {
+        let mut out = self.list_envelopes(&self.new)?;
+        out.sort_by(|a, b| {
+            a.priority
+                .cmp(&b.priority)
+                .then(a.created_at.total_cmp(&b.created_at))
+                .then(a.id.cmp(&b.id))
+        });
+        Ok(out)
+    }
+
+    /// List in-flight (`cur/`) tasks, sorted by priority then oldest first.
+    pub fn list_in_flight(&self) -> Result<Vec<TaskEnvelope>> {
+        let mut out = self.list_envelopes(&self.cur)?;
+        out.sort_by(|a, b| {
+            a.priority
+                .cmp(&b.priority)
+                .then(a.created_at.total_cmp(&b.created_at))
+                .then(a.id.cmp(&b.id))
+        });
+        Ok(out)
+    }
+
     /// Reclaim in-flight tasks owned by `owner` back to `new/`.
     pub fn reclaim_owner(&self, owner: &str) -> Result<usize> {
         let mut reclaimed = 0usize;
@@ -314,5 +341,23 @@ mod tests {
         let st = q.status().unwrap();
         assert_eq!(st.ready, 1);
         assert_eq!(st.in_flight, 0);
+    }
+
+    #[test]
+    fn list_ready_is_priority_ordered_and_excludes_cur() {
+        let dir = TempDir::new().unwrap();
+        let q = MaildirQueue::open(dir.path()).unwrap();
+        let low = q.enqueue(json!({"op": "low"}), 9).unwrap();
+        let high = q.enqueue(json!({"op": "high"}), 1).unwrap();
+        let claimed = q.claim(None).unwrap().unwrap();
+        assert_eq!(claimed.id, high);
+
+        let ready = q.list_ready().unwrap();
+        assert_eq!(ready.len(), 1);
+        assert_eq!(ready[0].id, low);
+
+        let in_flight = q.list_in_flight().unwrap();
+        assert_eq!(in_flight.len(), 1);
+        assert_eq!(in_flight[0].id, high);
     }
 }

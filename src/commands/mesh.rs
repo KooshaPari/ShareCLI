@@ -8,7 +8,7 @@
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use sharecli_mesh::MaildirQueue;
+use sharecli_mesh::{MaildirQueue, MaildirStatus};
 
 /// Print Maildir depth (`ready` / `in_flight` / `pending`).
 ///
@@ -17,8 +17,15 @@ pub fn status(queue: &Path, json: bool) -> Result<()> {
     let q = MaildirQueue::open(queue)
         .with_context(|| format!("open mesh queue {}", queue.display()))?;
     let st = q.status().context("mesh queue status")?;
+    print_status(&st, json)
+}
+
+/// Render a [`MaildirStatus`] as text or JSON.
+///
+/// Shared by `mesh status` and `queue stats` so both surfaces print the same data.
+pub fn print_status(st: &MaildirStatus, json: bool) -> Result<()> {
     if json {
-        println!("{}", serde_json::to_string_pretty(&st)?);
+        println!("{}", serde_json::to_string_pretty(st)?);
         return Ok(());
     }
     println!("mesh queue: {}", st.path.display());
