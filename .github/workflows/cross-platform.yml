@@ -1,10 +1,13 @@
 ###############################################################################
 # Cross-platform CI (C07 L69 — score 3)
 #
-# Advisory matrix that validates the build on targets beyond ubuntu-latest:
+# Hard-gate matrix that validates the build on targets beyond ubuntu-latest:
 #   - ubuntu-latest + macos-latest + windows-latest (full surface: build+test)
 #   - FreeBSD (cross-compiled via cross-rs, no tests — link-only)
 #   - x86_64-unknown-linux-musl (build+test via cross-rs)
+#
+# Hard gates since PR #1047: no job is soft-failed (no `continue-on-error`), so a red
+# cell blocks.
 #
 # wasm32-unknown-unknown is intentionally NOT a build target here. No workspace
 # crate is wasm-compatible today: sharecli-core pulls tokio (mio) and process
@@ -19,9 +22,6 @@
 # FreeBSD link cannot use the Ubuntu GTK stack). On ubuntu-latest the GTK/glib
 # development packages are installed instead, because there it IS a real glib
 # target.
-#
-# Signal workflow, not a required check: no job here is masked with
-# `continue-on-error`, so a red run stays visible instead of being swallowed.
 #
 # All Unix targets require Zig 0.14.1: crates/spawn-core-sys/build.rs shells out
 # to `zig build` (Linux) / `zig build-obj` (macOS) to produce libspawn_core.a.
