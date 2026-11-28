@@ -1,0 +1,195 @@
+### CMD: /home/kooshapari/.local/bin/sharecli --help
+Shared CLI process manager for multi-project agent orchestration
+
+Usage: sharecli [OPTIONS] <COMMAND>
+
+Commands:
+  session       Inspect durable agent sessions
+  surface       Send shell-free I/O requests to a ShareCLI-enabled Ghostty surface
+  ps            List managed processes
+  start         Start a harness process
+  stop          Stop managed processes
+  status        Check process health
+  proc          List host-detected coding agents (proc scan + RSS/FD samples)
+  health        Run a runtime health probe
+  config        Configuration management
+  project       Project management
+  optimize      Optimize resource usage
+  prune         Prune idle processes
+  pool          Show shared runtime pool status
+  run           Pooled execution (currently unavailable; returns an error without executing work)
+  limits        Set project resource limits
+  check         Check project resource limits
+  thermal       Live thermal-gate / hypervisor state monitor (TUI)
+  serve         Start the HTTP + WebSocket dashboard server
+  report        Print a fleet analytics snapshot (one-shot or live watch mode)
+  fleet         Fleet device management
+  mesh          Maildir mesh task-queue operator surface (status / reclaim)
+  fuse          FUSE IO intercept operator surface (mount, provenance, CoW)
+  cast          Cross-machine text injection into registered terminal panes
+  proc-compose  process-compose.yaml integration
+  completions   Generate shell completion script
+  man           Generate roff man page for sharecli(1) (clap_mangen)
+  list          Enumerate available CLI surfaces (cast modules + utility modules)
+  soak          Run the harbor soak harness -- long-running CLI stability evaluation
+  upgrade       Check for or apply an upstream release upgrade
+  version       Print the sharecli version
+  uninstall     Print uninstall guidance and optionally purge local config/state
+  undo          Undo / restore model (C09 L81.9): inspect or replay the operations journal recorded at $XDG_STATE_HOME/sharecli/operations.jsonl
+  help          Print this message or the help of the given subcommand(s)
+
+Options:
+### RC=0
+
+### CMD: /home/kooshapari/.local/bin/sharecli ps
+PID      NAME                 MEM(MB)      PROJECT         AGENT          HARNESS
+------------------------------------------------------------------------------------
+
+Total: 0 processes, 0 MB memory
+
+No managed processes yet. Get started: sharecli start <project> <harness>
+Or open the dashboard: sharecli serve
+### RC=0
+
+### CMD: /home/kooshapari/.local/bin/sharecli status
+=== Process Status ===
+
+Total: 0 processes
+
+HARNESS         COUNT      MEMORY(MB)     
+----------------------------------------
+
+=== Shared Runtime Pool ===
+
+TYPE       TOTAL      IDLE      
+------------------------------
+node       0          0         
+bun        0          0         
+
+Max per type: 5
+
+=== System Memory ===
+
+Used: 8273 MB / 32013 MB (25%)
+
+=== Thermal Gate (FR-011) ===
+
+Thermal level: GREEN
+Detected agents: 25
+Agent RSS total: 2969260032 bytes
+Agent contention: REFUSE (count warn>=4, refuse>=8; RSS warn>=17179869184, refuse>=34359738368)
+Gate decision: [DENY]
+
+=== Host Resource Watch ===
+
+Open FDs:     5858
+RSS:          89911296 bytes
+Load (1m):    13.08
+Net RX:       20316663897 bytes
+Net TX:       5332774521 bytes
+
+Pool node 0/0 idle · bun 0/0 idle · max 5 · healthy
+Proc scan 25 · watched 24 · 0 managed · 24 agent row(s)
+
+=== FUSE Read Coalesce ===
+### RC=0
+
+### CMD: /home/kooshapari/.local/bin/sharecli health
+
+Shared runtime health: HEALTHY
+No runtime issues detected.
+
+Pool summary:
+  node: 0 total, 0 idle, 0 in use
+  bun:  0 total, 0 idle, 0 in use
+
+Max per harness type: 5
+
+=== Thermal Gate (FR-011) ===
+
+Thermal level: GREEN
+Detected agents: 25
+Agent RSS total: 2969264128 bytes
+Agent contention: REFUSE (count warn>=4, refuse>=8; RSS warn>=17179869184, refuse>=34359738368)
+Gate decision: [DENY]
+
+=== Host Resource Watch ===
+
+Open FDs:     2946
+RSS:          48558080 bytes
+Load (1m):    13.08
+Net RX:       20316931032 bytes
+Net TX:       5333497039 bytes
+
+Pool node 0/0 idle · bun 0/0 idle · max 5 · healthy
+Proc scan 25 · watched 24 · 0 managed · 24 agent row(s)
+### RC=0
+
+### CMD: /home/kooshapari/.local/bin/sharecli pool
+=== Shared Runtime Pool Status ===
+
+TYPE       TOTAL      IDLE       MAX       
+----------------------------------------
+node       0          0          5         
+bun        0          0          5         
+
+Max per type: 5
+
+=== Health Check ===
+Status: HEALTHY
+
+=== Thermal Gate (FR-011) ===
+
+Thermal level: GREEN
+Detected agents: 25
+Agent RSS total: 2969145344 bytes
+Agent contention: REFUSE (count warn>=4, refuse>=8; RSS warn>=17179869184, refuse>=34359738368)
+Gate decision: [DENY]
+
+=== Host Resource Watch ===
+
+Open FDs:     2939
+RSS:          48406528 bytes
+Load (1m):    13.24
+Net RX:       20317683020 bytes
+Net TX:       5334724615 bytes
+
+Pool node 0/0 idle · bun 0/0 idle · max 5 · healthy
+Proc scan 25 · watched 24 · 0 managed · 24 agent row(s)
+### RC=0
+
+### CMD: /home/kooshapari/.local/bin/sharecli limits
+error: the following required arguments were not provided:
+  <PROJECT>
+
+Usage: sharecli limits <PROJECT>
+
+For more information, try '--help'.
+### RC=0
+
+### CMD: /home/kooshapari/.local/bin/sharecli run -- echo hi
+SHARECLI_ERROR_CODE=io error: pooled run unavailable: no command execution backend is wired; no work was executed
+  caused by: pooled run unavailable: no command execution backend is wired; no work was executed
+### RC=0
+
+### CMD: /home/kooshapari/.local/bin/sharecli optimize
+Analyzing resource usage...
+
+Current resource usage:
+HARNESS         COUNT      MEMORY(MB)     
+----------------------------------------
+
+TOTAL           0          0              
+
+=== Optimization Suggestions ===
+### RC=0
+
+### CMD: /home/kooshapari/.local/bin/sharecli mesh status
+error: the following required arguments were not provided:
+  --queue <QUEUE>
+
+Usage: sharecli mesh status --queue <QUEUE>
+
+For more information, try '--help'.
+### RC=0
+
