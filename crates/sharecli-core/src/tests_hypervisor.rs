@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Hypervisor integration tests.
 //!
 //! These exercise the full `Hypervisor::run` / `run_queued` paths with

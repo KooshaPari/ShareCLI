@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! WebSocket handler for the `serve` listener.
 //!
 //! `ws_handler` upgrades the HTTP request and `handle_ws` then streams
