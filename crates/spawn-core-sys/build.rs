@@ -12,10 +12,14 @@
 //!
 //! # Build protocol (Unix)
 //!
-//! 1. Linux: `zig build` in `crates/spawn-core/` → `zig-out/lib/libspawn_core.a`
+//! 1. Linux: `zig build --prefix $OUT_DIR` in `crates/spawn-core/` →
+//!    `$OUT_DIR/lib/libspawn_core.a`
 //! 2. macOS: `zig build-obj` + `ar` (Zig 0.14 `zig build` static lib fails to
 //!    resolve libSystem on Darwin GHA runners)
 //! 3. Cargo links via `cargo:rustc-link-lib=static=spawn_core`
+//!
+//! Both paths write into `$OUT_DIR`, which is unique per (target, profile), so
+//! two cross builds of the same checkout cannot overwrite each other's archive.
 //!
 //! The `links = "spawn_core"` key in Cargo.toml ensures at most one copy of the
 //! lib is linked in a dependency graph and that build metadata is propagated
@@ -37,7 +41,8 @@
 //! `zig build` targets the **host** unless told otherwise. Passing Cargo's
 //! `TARGET` through as `-Dtarget=<zig triple>` (plus `-Dcpu=baseline`) is what
 //! keeps a musl cross-build from emitting a glibc-ABI object. The Cargo ->
-//! Zig spelling translation lives in `src/target_triple.rs`.
+//! Zig spelling translation (vendor drop + architecture rename) lives in
+//! `src/target_triple.rs`.
 
 use std::env;
 use std::fs;
@@ -60,15 +65,40 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
+    // Resolve the Zig target once, from Cargo's TARGET, and be loud when a
+    // cross build cannot be mapped instead of silently emitting a host object.
+    let cargo_target = env::var("TARGET").ok();
+    let host = env::var("HOST").ok();
+    let is_cross = matches!((&cargo_target, &host), (Some(t), Some(h)) if t != h);
+    let zig_target = cargo_target.as_deref().and_then(target_triple::cargo_target_to_zig);
+    if is_cross {
+        match (cargo_target.as_deref(), zig_target.as_deref()) {
+            (Some(cargo), Some(zig)) => println!(
+                "cargo:warning=spawn-core: cross-compiling Zig staticlib for cargo TARGET \
+                 {cargo} (zig target {zig}, cpu baseline)"
+            ),
+            (Some(cargo), None) => println!(
+                "cargo:warning=spawn-core: cannot map cargo TARGET {cargo} to a Zig target; \
+                 falling back to Zig's host default. The resulting object may be built for \
+                 the host architecture instead of the requested target."
+            ),
+            _ => {}
+        }
+    }
+
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let spawn_core_dir = manifest_dir.join("..").join("spawn-core");
     let spawn_core_dir = spawn_core_dir.canonicalize()?;
-    let lib_out = spawn_core_dir.join("zig-out").join("lib");
+    // `OUT_DIR` is unique per (target, profile): keeping the archive there means
+    // building for target A and target B never races on one shared
+    // `spawn-core/zig-out/lib/libspawn_core.a`.
+    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("cargo sets OUT_DIR for build scripts"));
+    let lib_out = out_dir.join("lib");
 
     if target_os == "macos" {
-        build_macos_archive(&spawn_core_dir, &lib_out)?;
+        build_macos_archive(&spawn_core_dir, &lib_out, zig_target.as_deref())?;
     } else {
-        build_unix_via_zig_build(&spawn_core_dir)?;
+        build_unix_via_zig_build(&spawn_core_dir, &out_dir, zig_target.as_deref())?;
     }
 
     // --- Tell Cargo where to find libspawn_core.a ---
@@ -93,9 +123,15 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn build_unix_via_zig_build(spawn_core_dir: &Path) -> anyhow::Result<()> {
+fn build_unix_via_zig_build(
+    spawn_core_dir: &Path,
+    prefix: &Path,
+    zig_target: Option<&str>,
+) -> anyhow::Result<()> {
     let mut cmd = Command::new("zig");
-    cmd.args(["build", "-Doptimize=ReleaseSafe"]).current_dir(spawn_core_dir);
+    cmd.args(["build", "-Doptimize=ReleaseSafe", "--prefix"])
+        .arg(prefix)
+        .current_dir(spawn_core_dir);
 
     // Without `-Dtarget`, `zig build` always emits for the host: cross-building
     // to musl on a glibc host then produces a glibc-ABI object that cannot link
@@ -103,15 +139,9 @@ fn build_unix_via_zig_build(spawn_core_dir: &Path) -> anyhow::Result<()> {
     // `-Dcpu=baseline` keeps host CPU features out of a cross artifact.
     // No usable TARGET keeps the historical host-default behaviour instead of
     // failing the build.
-    if let Some(cargo_target) = env::var("TARGET").ok() {
-        if let Some(zig_target) = target_triple::cargo_target_to_zig(&cargo_target) {
-            println!(
-                "cargo:warning=spawn-core: building Zig staticlib for cargo TARGET \
-                 {cargo_target} (zig target {zig_target}, cpu baseline)"
-            );
-            cmd.arg(format!("-Dtarget={zig_target}"));
-            cmd.arg("-Dcpu=baseline");
-        }
+    if let Some(zig_target) = zig_target {
+        cmd.arg(format!("-Dtarget={zig_target}"));
+        cmd.arg("-Dcpu=baseline");
     }
 
     let status = cmd.status().map_err(|e| {
@@ -127,15 +157,27 @@ fn build_unix_via_zig_build(spawn_core_dir: &Path) -> anyhow::Result<()> {
 /// Zig 0.14 `addLibrary` static linkage on Darwin tries to resolve libc into the
 /// archive step and fails with undefined `_getcwd` / `_fork` / …. Compile a
 /// single object with stack-check off, then `ar` it into `libspawn_core.a`.
-fn build_macos_archive(spawn_core_dir: &Path, lib_out: &Path) -> anyhow::Result<()> {
+fn build_macos_archive(
+    spawn_core_dir: &Path,
+    lib_out: &Path,
+    zig_target: Option<&str>,
+) -> anyhow::Result<()> {
     fs::create_dir_all(lib_out)?;
     let obj = lib_out.join("spawn_core.o");
     let archive = lib_out.join("libspawn_core.a");
 
     let mut cmd = Command::new("zig");
     cmd.args(["build-obj", "src/spawn_core.zig", "-OReleaseSafe", "-lc", "-fno-stack-check"])
-        .arg(format!("-femit-bin={}", obj.display()))
         .current_dir(spawn_core_dir);
+
+    // Same Cargo -> Zig translation as the Linux path, so an
+    // `x86_64-apple-darwin` build on an arm64 host emits an x86_64 object
+    // instead of the host's arm64 one.
+    if let Some(zig_target) = zig_target {
+        cmd.arg("-target").arg(zig_target);
+    }
+
+    cmd.arg(format!("-femit-bin={}", obj.display()));
 
     if let Ok(sdk) = env::var("SDKROOT") {
         if !sdk.is_empty() {
