@@ -6,13 +6,22 @@
 //! `monitoring.report` snapshot (AC-007.48 / AC-007.51); MUST NOT issue supplementary
 //! `pool.status` / `status.snapshot` IPC round-trips during refresh.
 
+// `sharecli-tray-linux` is a Linux-only dev-dependency (see Cargo.toml), so its
+// imports and every case that consumes it are gated to Linux; on macOS/Windows
+// this target must still COMPILE with the Linux-only cases simply absent.
+#[cfg(target_os = "linux")]
 use sharecli_tray_linux::ipc::{PoolSnapshot, StatusSnapshot};
+#[cfg(target_os = "linux")]
 use sharecli_tray_linux::operator_display as linux_display;
 // `sharecli-tray-windows` is linked only on Windows and Linux glibc (see
 // Cargo.toml); gate the Windows parity case so musl/macOS `--tests` compiles.
-#[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
+// The parity case compares the Windows helpers against the Linux crate, so it
+// can only compile where BOTH crates exist: Linux glibc. The import carries the
+// same gate so it is never unused (which `-D warnings` would reject).
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
 use sharecli_tray_windows::operator_display as win_display;
 
+#[cfg(target_os = "linux")]
 fn sample_pool() -> PoolSnapshot {
     PoolSnapshot {
         node_total: 2,
@@ -39,6 +48,7 @@ fn sample_pool() -> PoolSnapshot {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn sample_status() -> StatusSnapshot {
     StatusSnapshot {
         total_processes: 2,
@@ -71,6 +81,7 @@ fn sample_status() -> StatusSnapshot {
 }
 
 /// FR-007 / AC-007.72 — live monitoring.report embeds pool/status for tray operator formatters.
+#[cfg(target_os = "linux")]
 #[tokio::test]
 async fn fr007_tray_pool_status_consume_live() {
     let handler = sharecli_ipc::handler::Handler::new().await.expect("Handler::new");
@@ -102,6 +113,7 @@ async fn fr007_tray_pool_status_consume_live() {
 }
 
 /// FR-007 / AC-007.72 — Linux tray format helpers map pool + status snapshot fields.
+#[cfg(target_os = "linux")]
 #[test]
 fn fr007_tray_pool_status_consume_linux_format() {
     let pool = sample_pool();
@@ -118,7 +130,11 @@ fn fr007_tray_pool_status_consume_linux_format() {
 }
 
 /// FR-007 / AC-007.72 — Windows tray Rust helpers stay byte-identical to Linux.
-#[cfg(any(windows, all(target_os = "linux", target_env = "gnu")))]
+///
+/// Compares `sharecli_tray_windows` output against `sharecli_tray_linux`, so it
+/// needs both crates linked: Linux glibc only. On Windows the Linux crate is not
+/// a dependency, so the case is absent rather than failing to compile.
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
 #[test]
 fn fr007_tray_pool_status_consume_windows_linux_parity() {
     use sharecli_tray_windows::ipc::{

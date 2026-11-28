@@ -298,6 +298,11 @@ fn fr005_set_rejects_ambiguous_or_empty_targets() {
     assert!(!sandbox.limits.exists(), "a rejected set MUST NOT create a document");
 }
 
+// `SHARECLI_PROC_ROOT` is honoured only under `cfg(target_os = "linux")`
+// (see crates/sharecli-fleet/src/proc_scan.rs::proc_root). On macOS/BSDs the
+// detector scans live processes through sysinfo, so the stubbed-empty-proc
+// expectation does not hold; gate the case to Linux rather than weaken it.
+#[cfg(target_os = "linux")]
 #[test]
 fn fr003_optimize_says_no_suggestions_when_detection_is_empty() {
     let sandbox = Sandbox::new();
