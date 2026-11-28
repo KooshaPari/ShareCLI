@@ -73,11 +73,7 @@ mod tests {
             ("x86_64--linux-gnu", None),
         ];
         for (cargo, expected) in cases {
-            assert_eq!(
-                cargo_target_to_zig(cargo).as_deref(),
-                expected,
-                "mapping for {cargo:?}"
-            );
+            assert_eq!(cargo_target_to_zig(cargo).as_deref(), expected, "mapping for {cargo:?}");
         }
     }
 }

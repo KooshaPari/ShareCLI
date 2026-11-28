@@ -95,8 +95,7 @@ fn main() -> anyhow::Result<()> {
 
 fn build_unix_via_zig_build(spawn_core_dir: &Path) -> anyhow::Result<()> {
     let mut cmd = Command::new("zig");
-    cmd.args(["build", "-Doptimize=ReleaseSafe"])
-        .current_dir(spawn_core_dir);
+    cmd.args(["build", "-Doptimize=ReleaseSafe"]).current_dir(spawn_core_dir);
 
     // Without `-Dtarget`, `zig build` always emits for the host: cross-building
     // to musl on a glibc host then produces a glibc-ABI object that cannot link
